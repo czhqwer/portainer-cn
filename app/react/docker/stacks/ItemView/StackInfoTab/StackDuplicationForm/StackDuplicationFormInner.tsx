@@ -1,5 +1,6 @@
 import { Field, Form, useFormikContext } from 'formik';
 import { Copy, ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { EnvironmentId } from '@/react/portainer/environments/types';
 
@@ -25,6 +26,7 @@ export function StackDuplicationFormInner({
   currentStackName,
   isLoading,
 }: Props) {
+  const { t } = useTranslation();
   const { values, errors, setFieldValue, submitForm } =
     useFormikContext<FormSubmitValues>();
 
@@ -51,16 +53,36 @@ export function StackDuplicationFormInner({
   return (
     <Form>
       <TextTip color="blue">
-        <p>This feature allows you to duplicate or migrate this stack. </p>
-        <p>To rename the stack, choose the same environment when migrating.</p>
+        <p>
+          {t(
+            'legacyText.This feature allows you to duplicate or migrate this stack.',
+            {
+              defaultValue:
+                'This feature allows you to duplicate or migrate this stack.',
+            }
+          )}
+        </p>
+        <p>
+          {t(
+            'legacyText.To rename the stack, choose the same environment when migrating.',
+            {
+              defaultValue:
+                'To rename the stack, choose the same environment when migrating.',
+            }
+          )}
+        </p>
       </TextTip>
 
       <div className="form-group">
         <Field
           as={Input}
           type="text"
-          placeholder="Stack name (optional for migration)"
-          aria-label="Stack name"
+          placeholder={t('placeholders.Stack name (optional for migration)', {
+            defaultValue: 'Stack name (optional for migration)',
+          })}
+          aria-label={t('legacyText.Stack name', {
+            defaultValue: 'Stack name',
+          })}
           name="newName"
           data-cy="stack-duplicate-name-input"
         />
@@ -86,15 +108,21 @@ export function StackDuplicationFormInner({
           isLoading={isMigrateInProgress}
           loadingText={
             values.environmentId === currentEnvironmentId
-              ? 'Renaming in progress...'
-              : 'Migration in progress...'
+              ? t('legacyText.Renaming in progress...', {
+                  defaultValue: 'Renaming in progress...',
+                })
+              : t('legacyText.Migration in progress...', {
+                  defaultValue: 'Migration in progress...',
+                })
           }
           onClick={() => handleAction('migrate')}
           icon={ArrowRight}
           data-cy="stack-migrate-button"
           className="!ml-0"
         >
-          {values.environmentId === currentEnvironmentId ? 'Rename' : 'Migrate'}
+          {values.environmentId === currentEnvironmentId
+            ? t('legacyText.Rename', { defaultValue: 'Rename' })
+            : t('legacyText.Migrate', { defaultValue: 'Migrate' })}
         </LoadingButton>
 
         <LoadingButton
@@ -103,17 +131,25 @@ export function StackDuplicationFormInner({
           size="small"
           disabled={isDuplicateDisabled}
           isLoading={isDuplicateInProgress}
-          loadingText="Duplication in progress..."
+          loadingText={t('legacyText.Duplication in progress...', {
+            defaultValue: 'Duplication in progress...',
+          })}
           onClick={() => handleAction('duplicate')}
           icon={Copy}
           data-cy="stack-duplicate-button"
         >
-          Duplicate
+          {t('legacyText.Duplicate', { defaultValue: 'Duplicate' })}
         </LoadingButton>
       </div>
 
       {yamlError && isEnvSelected && (
-        <div className="form-group" role="alert" aria-label="Yaml Error">
+        <div
+          className="form-group"
+          role="alert"
+          aria-label={t('legacyText.Yaml Error', {
+            defaultValue: 'Yaml Error',
+          })}
+        >
           <div>
             <span className="text-danger small">{yamlError}</span>
           </div>

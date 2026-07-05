@@ -1,4 +1,5 @@
 import { useRouter } from '@uirouter/react';
+import { useTranslation } from 'react-i18next';
 
 import { humanize } from '@/portainer/filters/filters';
 import { EnvironmentId } from '@/react/portainer/environments/types';
@@ -6,7 +7,7 @@ import { EnvironmentId } from '@/react/portainer/environments/types';
 import { Widget } from '@@/Widget/Widget';
 import { WidgetBody } from '@@/Widget/WidgetBody';
 import { WidgetTitle } from '@@/Widget/WidgetTitle';
-import { DetailsTable } from '@@/DetailsTable/DetailsTable';
+import { DetailsTable } from '@@/DetailsTable';
 import { Tooltip } from '@@/Tip/Tooltip';
 
 import { DockerStorageInfo } from '../DockerStorageInfo';
@@ -39,6 +40,7 @@ export function HostDetailsPanel({
   endpointId,
 }: Props) {
   const router = useRouter();
+  const { t } = useTranslation();
 
   return (
     <div className="row">
@@ -47,44 +49,44 @@ export function HostDetailsPanel({
           <WidgetTitle title="Host Details" icon="code" />
           <WidgetBody className="no-padding">
             <DetailsTable dataCy="host-details" className="!mb-0">
-              <tr>
-                <td>Hostname</td>
-                <td>{host.name}</td>
-              </tr>
+              <DetailsTable.Row label="Hostname">{host.name}</DetailsTable.Row>
               {host.os && (
-                <tr>
-                  <td>OS Information</td>
-                  <td>
-                    {host.os.type} {host.os.arch} {host.os.name}
-                  </td>
-                </tr>
+                <DetailsTable.Row label="OS Information">
+                  {host.os.type} {host.os.arch} {host.os.name}
+                </DetailsTable.Row>
               )}
               {host.kernelVersion && (
-                <tr>
-                  <td>Kernel Version</td>
-                  <td>{host.kernelVersion}</td>
-                </tr>
+                <DetailsTable.Row label="Kernel Version">
+                  {host.kernelVersion}
+                </DetailsTable.Row>
               )}
-              <tr>
-                <td>Total CPU</td>
-                <td>{host.totalCPU}</td>
-              </tr>
-              <tr>
-                <td>Total memory</td>
-                <td>{humanize(host.totalMemory)}</td>
-              </tr>
+              <DetailsTable.Row label="Total CPU">
+                {host.totalCPU}
+              </DetailsTable.Row>
+              <DetailsTable.Row label="Total memory">
+                {humanize(host.totalMemory)}
+              </DetailsTable.Row>
               {endpointId && (
-                <tr>
-                  <td>
+                <DetailsTable.Row
+                  label={
                     <span className="flex items-center">
-                      Disk usage
-                      <Tooltip message="Disk usage on the partition backing Docker's data directory. Docker usage includes images, container layers, volumes, and build cache." />
+                      {t('legacyText.Disk usage', {
+                        defaultValue: 'Disk usage',
+                      })}
+                      <Tooltip
+                        message={t(
+                          "legacyText.Disk usage on the partition backing Docker's data directory. Docker usage includes images, container layers, volumes, and build cache.",
+                          {
+                            defaultValue:
+                              "Disk usage on the partition backing Docker's data directory. Docker usage includes images, container layers, volumes, and build cache.",
+                          }
+                        )}
+                      />
                     </span>
-                  </td>
-                  <td>
-                    <DockerStorageInfo endpointId={endpointId} />
-                  </td>
-                </tr>
+                  }
+                >
+                  <DockerStorageInfo endpointId={endpointId} />
+                </DetailsTable.Row>
               )}
               {isBrowseEnabled && (
                 <tr>
@@ -92,10 +94,12 @@ export function HostDetailsPanel({
                     <button
                       type="button"
                       className="btn btn-primary btn-sm"
-                      title="Browse"
+                      title={t('legacyText.Browse', {
+                        defaultValue: 'Browse',
+                      })}
                       onClick={() => router.stateService.go(browseUrl)}
                     >
-                      Browse
+                      {t('legacyText.Browse', { defaultValue: 'Browse' })}
                     </button>
                   </td>
                 </tr>

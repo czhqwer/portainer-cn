@@ -1,4 +1,5 @@
 import { List, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Authorized } from '@/react/hooks/useUser';
 
@@ -39,6 +40,7 @@ export function PortsMappingField({
   onReset(all?: boolean): void;
   onSubmit(): void;
 }) {
+  const { t } = useTranslation();
   const { handleRemoveItem, handleAdd, handleChangeItem } = useInputList<Value>(
     {
       value: values,
@@ -67,12 +69,22 @@ export function PortsMappingField({
         <Table data-cy="service-published-ports-table">
           <thead>
             <tr>
-              <th>Host port</th>
-              <th>Container port</th>
-              <th>Protocol</th>
-              <th>Publish mode</th>
+              <th>
+                {t('tableHeaders.Host port', { defaultValue: 'Host port' })}
+              </th>
+              <th>
+                {t('tableHeaders.Container port', {
+                  defaultValue: 'Container port',
+                })}
+              </th>
+              <th>{t('tableHeaders.Protocol', { defaultValue: 'Protocol' })}</th>
+              <th>
+                {t('tableHeaders.Publish mode', {
+                  defaultValue: 'Publish mode',
+                })}
+              </th>
               <Authorized authorizations="DockerServiceUpdate">
-                <th>Actions</th>
+                <th>{t('tableHeaders.Actions', { defaultValue: 'Actions' })}</th>
               </Authorized>
             </tr>
           </thead>
@@ -93,7 +105,11 @@ export function PortsMappingField({
           </tbody>
         </Table>
       ) : (
-        <p className="p-5">This service has no ports published.</p>
+        <p className="p-5">
+          {t('legacyText.This service has no ports published.', {
+            defaultValue: 'This service has no ports published.',
+          })}
+        </p>
       )}
       {typeof errors === 'string' && (
         <div className="form-group col-md-12">
@@ -113,6 +129,8 @@ function Item({
   onRemove,
   index,
 }: ItemProps<Value> & { onRemove(): void }) {
+  const { t } = useTranslation();
+
   return (
     <>
       <tr>
@@ -143,7 +161,9 @@ function Item({
             options={[{ value: 'tcp' }, { value: 'udp' }]}
             disabled={disabled}
             readOnly={readOnly}
-            aria-label="protocol selector"
+            aria-label={t('legacyText.protocol selector', {
+              defaultValue: 'protocol selector',
+            })}
           />
         </td>
         <td>
@@ -155,7 +175,9 @@ function Item({
               { value: 'host', label: 'host' },
             ]}
             disabled={disabled}
-            aria-label="publish mode"
+            aria-label={t('legacyText.publish mode', {
+              defaultValue: 'publish mode',
+            })}
             data-cy={`publishMode-${index}`}
           />
         </td>

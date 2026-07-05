@@ -3,6 +3,7 @@ import { humanize } from '@/portainer/filters/filters';
 import { EnvironmentId } from '@/react/portainer/environments/types';
 import { useEnvironment } from '@/react/portainer/environments/queries';
 import { getPlatformTypeName } from '@/react/portainer/environments/utils';
+import { useTranslation } from 'react-i18next';
 
 import { ProgressBar } from '@@/ProgressBar';
 import { Tooltip } from '@@/Tip/Tooltip/Tooltip';
@@ -17,6 +18,7 @@ export function DockerStorageInfo({
 }: {
   endpointId: EnvironmentId;
 }) {
+  const { t } = useTranslation();
   const environmentQuery = useEnvironment(endpointId);
   const environment = environmentQuery.data;
   const agentVersion = environment?.Agent.Version;
@@ -27,7 +29,13 @@ export function DockerStorageInfo({
   const dockerStorageUsage = dockerStorageUsageQuery.data;
 
   if (environmentQuery.isLoading || dockerStorageUsageQuery.isLoading) {
-    return <InlineLoader>Loading storage information...</InlineLoader>;
+    return (
+      <InlineLoader>
+        {t('legacyText.Loading storage information...', {
+          defaultValue: 'Loading storage information...',
+        })}
+      </InlineLoader>
+    );
   }
 
   if (dockerStorageUsageQuery.isError) {
@@ -41,11 +49,19 @@ export function DockerStorageInfo({
       // Empty version means a pre-2.15 agent that doesn't report its version —
       // definitely predates docker-storage support.
       (!agentVersion || isVersionSmaller(agentVersion, MIN_AGENT_VERSION));
-    const minAgentVersionMessage = `Disk usage requires agent version ${MIN_AGENT_VERSION} or later. Upgrade your agent to enable this feature.`;
+    const minAgentVersionMessage = t(
+      'legacyText.Disk usage requires agent version {{version}} or later. Upgrade your agent to enable this feature.',
+      {
+        version: MIN_AGENT_VERSION,
+        defaultValue: `Disk usage requires agent version ${MIN_AGENT_VERSION} or later. Upgrade your agent to enable this feature.`,
+      }
+    );
 
     return (
       <span className="flex items-center">
-        <span className="text-muted small">Not available</span>
+        <span className="text-muted small">
+          {t('legacyText.Not available', { defaultValue: 'Not available' })}
+        </span>
         <Tooltip
           message={needsUpgrade ? minAgentVersionMessage : errorMessage}
         />
@@ -56,8 +72,14 @@ export function DockerStorageInfo({
   if (!environment) {
     return (
       <span className="flex items-center">
-        <span className="text-muted small">Not available</span>
-        <Tooltip message="Unable to read environment information." />
+        <span className="text-muted small">
+          {t('legacyText.Not available', { defaultValue: 'Not available' })}
+        </span>
+        <Tooltip
+          message={t('legacyText.Unable to read environment information.', {
+            defaultValue: 'Unable to read environment information.',
+          })}
+        />
       </span>
     );
   }
@@ -70,9 +92,17 @@ export function DockerStorageInfo({
   if (dockerStorageUsage?.totalBytes === undefined) {
     return (
       <span className="flex items-center">
-        <span className="text-muted small">Not available</span>
+        <span className="text-muted small">
+          {t('legacyText.Not available', { defaultValue: 'Not available' })}
+        </span>
         <Tooltip
-          message={`The agent could not determine ${platformName} storage usage. Ensure the ${platformName} socket and host filesystem are accessible to the agent.`}
+          message={t(
+            'legacyText.The agent could not determine {{platformName}} storage usage. Ensure the {{platformName}} socket and host filesystem are accessible to the agent.',
+            {
+              platformName,
+              defaultValue: `The agent could not determine ${platformName} storage usage. Ensure the ${platformName} socket and host filesystem are accessible to the agent.`,
+            }
+          )}
         />
       </span>
     );
@@ -106,14 +136,21 @@ export function DockerStorageInfo({
             className="!w-full"
           />
         </div>
-        <span className="small text-muted shrink-0" aria-label="Total capacity">
+        <span
+          className="small text-muted shrink-0"
+          aria-label={t('legacyText.Total capacity', {
+            defaultValue: 'Total capacity',
+          })}
+        >
           {humanize(dockerStorageUsage.totalBytes)}
         </span>
       </div>
       <div
         className="flex flex-wrap justify-between gap-2"
         role="list"
-        aria-label="Disk usage breakdown"
+        aria-label={t('legacyText.Disk usage breakdown', {
+          defaultValue: 'Disk usage breakdown',
+        })}
       >
         <div className="mt-1 flex flex-wrap gap-3 text-xs">
           <span className="flex items-center gap-1" role="listitem">
@@ -128,19 +165,31 @@ export function DockerStorageInfo({
               message={
                 <div className="flex flex-col gap-1 text-xs">
                   <div className="flex justify-between gap-4">
-                    <span>Images</span>
+                    <span>
+                      {t('legacyText.Images', { defaultValue: 'Images' })}
+                    </span>
                     <span>{humanize(dockerStorageUsage.imageBytes)}</span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span>Containers</span>
+                    <span>
+                      {t('legacyText.Containers', {
+                        defaultValue: 'Containers',
+                      })}
+                    </span>
                     <span>{humanize(dockerStorageUsage.containerBytes)}</span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span>Volumes</span>
+                    <span>
+                      {t('legacyText.Volumes', { defaultValue: 'Volumes' })}
+                    </span>
                     <span>{humanize(dockerStorageUsage.volumeBytes)}</span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span>Build cache</span>
+                    <span>
+                      {t('legacyText.Build cache', {
+                        defaultValue: 'Build cache',
+                      })}
+                    </span>
                     <span>{humanize(dockerStorageUsage.buildCacheBytes)}</span>
                   </div>
                 </div>
@@ -152,18 +201,25 @@ export function DockerStorageInfo({
               aria-hidden="true"
               className="inline-block h-2 w-2 rounded-sm bg-warning-8"
             />
-            <span>Other ({humanize(otherBytes)})</span>
+            <span>
+              {t('legacyText.Other', { defaultValue: 'Other' })} (
+              {humanize(otherBytes)})
+            </span>
           </span>
           <span className="flex items-center gap-1" role="listitem">
             <span
               aria-hidden="true"
               className="inline-block h-2 w-2 rounded-sm bg-gray-5"
             />
-            <span>Free ({humanize(dockerStorageUsage.availableBytes)})</span>
+            <span>
+              {t('legacyText.Free', { defaultValue: 'Free' })} (
+              {humanize(dockerStorageUsage.availableBytes)})
+            </span>
           </span>
         </div>
         <div className="text-muted mt-1 text-xs" role="listitem">
-          Partition: <code className="px-0">{dockerStorageUsage.rootDir}</code>
+          {t('legacyText.Partition', { defaultValue: 'Partition' })}:{' '}
+          <code className="px-0">{dockerStorageUsage.rootDir}</code>
         </div>
       </div>
     </>
