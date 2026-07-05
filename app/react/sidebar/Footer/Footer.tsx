@@ -1,5 +1,6 @@
 import { PropsWithChildren } from 'react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { UpdateNotification } from './UpdateNotifications';
 import { BuildInfoModalButton } from './BuildInfoModal';
@@ -11,13 +12,19 @@ export function Footer() {
 }
 
 function CEFooter() {
+  const { t } = useTranslation();
+
   return (
     <div className={clsx(styles.root, 'text-center')}>
       <UpdateNotification />
 
       <FooterContent>
         <span>&copy;</span>
-        <span>Portainer Community Edition</span>
+        <span>
+          {t('legacyText.Portainer Community Edition', {
+            defaultValue: 'Portainer Community Edition',
+          })}
+        </span>
 
         <BuildInfoModalButton />
       </FooterContent>

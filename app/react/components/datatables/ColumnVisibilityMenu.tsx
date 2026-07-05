@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { Menu, MenuButton, MenuList } from '@reach/menu-button';
 import { Columns } from 'lucide-react';
 import { Table } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 
 import { Checkbox } from '@@/form-components/Checkbox';
 
@@ -17,6 +18,7 @@ export function ColumnVisibilityMenu<D extends object>({
   value,
   table,
 }: Props<D>) {
+  const { t } = useTranslation();
   const columnsToHide = table.getAllColumns().filter((col) => col.getCanHide());
   if (!columnsToHide.length) {
     return null;
@@ -36,33 +38,45 @@ export function ColumnVisibilityMenu<D extends object>({
               className="space-right"
               strokeWidth="3px"
               aria-hidden="true"
-              aria-label="Columns"
+              aria-label={t('legacyText.Columns', { defaultValue: 'Columns' })}
             />
           </MenuButton>
           <MenuList>
             <div className="tableMenu">
-              <div className="menuHeader">Show / Hide Columns</div>
+              <div className="menuHeader">
+                {t('legacyText.Show / Hide Columns', {
+                  defaultValue: 'Show / Hide Columns',
+                })}
+              </div>
               <div className="menuContent">
-                {columnsToHide.map((column) => (
-                  <div key={column.id}>
-                    <Checkbox
-                      checked={column.getIsVisible()}
-                      data-cy="column-visibility-checkbox"
-                      label={
-                        typeof column.columnDef.header === 'string'
-                          ? column.columnDef.header
-                          : _.capitalize(column.columnDef.id)
-                      }
-                      id={`visibility_${column.id}`}
-                      onChange={(e) =>
-                        handleChangeColumnVisibility(
-                          column.id,
-                          e.target.checked
-                        )
-                      }
-                    />
-                  </div>
-                ))}
+                {columnsToHide.map((column) => {
+                  const label =
+                    typeof column.columnDef.header === 'string'
+                      ? column.columnDef.header
+                      : _.capitalize(column.columnDef.id);
+                  const translatedLabel = t(`tableHeaders.${label}`, {
+                    defaultValue: t(`legacyText.${label}`, {
+                      defaultValue: label,
+                    }),
+                  });
+
+                  return (
+                    <div key={column.id}>
+                      <Checkbox
+                        checked={column.getIsVisible()}
+                        data-cy="column-visibility-checkbox"
+                        label={translatedLabel}
+                        id={`visibility_${column.id}`}
+                        onChange={(e) =>
+                          handleChangeColumnVisibility(
+                            column.id,
+                            e.target.checked
+                          )
+                        }
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </MenuList>

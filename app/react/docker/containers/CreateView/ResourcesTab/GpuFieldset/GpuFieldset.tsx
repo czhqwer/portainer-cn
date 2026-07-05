@@ -7,6 +7,7 @@ import {
   OnChangeValue,
   OptionProps,
 } from 'react-select';
+import { useTranslation } from 'react-i18next';
 
 import { Select } from '@@/form-components/ReactSelect';
 import { Switch } from '@@/form-components/SwitchField/Switch';
@@ -77,22 +78,26 @@ export function GpuFieldset({
   usedAllGpus,
   enableGpuManagement,
 }: Props) {
+  const { t } = useTranslation();
   const options = useMemo(() => {
     const options = (gpus || []).map((gpu) => ({
       value: gpu.value,
       label:
         usedGpus.includes(gpu.value) || usedAllGpus
-          ? `${gpu.name} (in use)`
+          ? t('legacyText.{{name}} (in use)', {
+              name: gpu.name,
+              defaultValue: `${gpu.name} (in use)`,
+            })
           : gpu.name,
     }));
 
     options.unshift({
       value: 'all',
-      label: 'Use All GPUs',
+      label: t('legacyText.Use All GPUs', { defaultValue: 'Use All GPUs' }),
     });
 
     return options;
-  }, [gpus, usedGpus, usedAllGpus]);
+  }, [gpus, t, usedGpus, usedAllGpus]);
 
   const gpuCmd = useMemo(() => {
     const devices = values.selectedGPUs.join(',');
@@ -118,18 +123,32 @@ export function GpuFieldset({
   return (
     <div>
       <TextTip inline={false} color="blue">
-        <p>GPU support is currently limited to NVIDIA graphics cards only.</p>
+        <p>
+          {t(
+            'legacyText.GPU support is currently limited to NVIDIA graphics cards only.',
+            {
+              defaultValue:
+                'GPU support is currently limited to NVIDIA graphics cards only.',
+            }
+          )}
+        </p>
       </TextTip>
 
       {!enableGpuManagement && (
         <TextTip color="blue">
-          GPU in the UI is not currently enabled for this environment.
+          {t(
+            'legacyText.GPU in the UI is not currently enabled for this environment.',
+            {
+              defaultValue:
+                'GPU in the UI is not currently enabled for this environment.',
+            }
+          )}
         </TextTip>
       )}
 
       <div className="form-group">
         <div className="col-sm-3 col-lg-2 control-label text-left">
-          Enable GPU
+          {t('legacyText.Enable GPU', { defaultValue: 'Enable GPU' })}
           <Switch
             id="enabled"
             name="enabled"
@@ -163,8 +182,18 @@ export function GpuFieldset({
         <>
           <div className="form-group">
             <div className="col-sm-3 col-lg-2 control-label text-left">
-              Capabilities
-              <Tooltip message="‘compute’ and ‘utility’ capabilities are preselected by Portainer because they are used by default when you don’t explicitly specify capabilities with docker CLI ‘--gpus’ option." />
+              {t('legacyText.Capabilities', {
+                defaultValue: 'Capabilities',
+              })}
+              <Tooltip
+                message={t(
+                  'legacyText.compute and utility capabilities are preselected by Portainer because they are used by default when you do not explicitly specify capabilities with the docker CLI --gpus option.',
+                  {
+                    defaultValue:
+                      'compute and utility capabilities are preselected by Portainer because they are used by default when you do not explicitly specify capabilities with the docker CLI --gpus option.',
+                  }
+                )}
+              />
             </div>
             <div className="col-sm-9 col-lg-10 text-left">
               <Select<GpuOption, true>
@@ -182,8 +211,16 @@ export function GpuFieldset({
 
           <div className="form-group">
             <div className="col-sm-3 col-lg-2 control-label text-left">
-              Control
-              <Tooltip message="This is the generated equivalent of the '--gpus' docker CLI parameter based on your settings." />
+              {t('legacyText.Control', { defaultValue: 'Control' })}
+              <Tooltip
+                message={t(
+                  'legacyText.This is the generated equivalent of the --gpus docker CLI parameter based on your settings.',
+                  {
+                    defaultValue:
+                      'This is the generated equivalent of the --gpus docker CLI parameter based on your settings.',
+                  }
+                )}
+              />
             </div>
             <div className="col-sm-9 col-lg-10">
               <code>{gpuCmd}</code>
@@ -236,12 +273,16 @@ function Option(props: OptionProps<GpuOption, true>) {
   const {
     data: { value, description },
   } = props;
+  const { t } = useTranslation();
+  const translatedDescription = description
+    ? t(`legacyText.${description}`, { defaultValue: description })
+    : '';
 
   return (
     <div>
       {/* eslint-disable-next-line react/jsx-props-no-spreading */}
       <components.Option {...props}>
-        {`${value} - ${description}`}
+        {translatedDescription ? `${value} - ${translatedDescription}` : value}
       </components.Option>
     </div>
   );

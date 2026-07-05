@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
 import { ComponentProps, PropsWithChildren } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -22,6 +23,12 @@ export function AddButton({
     disabled?: boolean;
   } & AutomationTestingProps
 >) {
+  const { t } = useTranslation();
+  const label =
+    typeof children === 'string'
+      ? t(`legacyText.${children}`, { defaultValue: children })
+      : children || t('legacyText.Add', { defaultValue: 'Add' });
+
   return (
     <Button
       as={Link}
@@ -32,7 +39,7 @@ export function AddButton({
       color={color}
       disabled={disabled}
     >
-      {children || 'Add'}
+      {label}
     </Button>
   );
 }

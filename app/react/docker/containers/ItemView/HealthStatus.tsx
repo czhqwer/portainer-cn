@@ -1,6 +1,7 @@
 import { ComponentProps } from 'react';
 import { HeartPulse, Server } from 'lucide-react';
 import { Health } from 'docker-types/generated/1.44';
+import { useTranslation } from 'react-i18next';
 
 import { TableContainer, TableTitle } from '@@/datatables';
 import { DetailsTable } from '@@/DetailsTable';
@@ -20,6 +21,8 @@ interface Props {
 }
 
 export function HealthStatus({ health }: Props) {
+  const { t } = useTranslation();
+
   return (
     <TableContainer>
       <TableTitle label="Container health" icon={Server} />
@@ -33,10 +36,16 @@ export function HealthStatus({ health }: Props) {
                 mode={StatusMode[health.Status]}
                 className="space-right"
               />
-              {health.Status}
+              {t(`legacyText.${health.Status}`, {
+                defaultValue: health.Status,
+              })}
             </div>
           ) : (
-            <div>No health status</div>
+            <div>
+              {t('legacyText.No health status', {
+                defaultValue: 'No health status',
+              })}
+            </div>
           )}
         </DetailsTable.Row>
 

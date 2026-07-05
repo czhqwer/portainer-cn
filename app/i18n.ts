@@ -19,7 +19,7 @@ i18n
     supportedLngs: ['en', 'zh-CN'],
     load: 'currentOnly',
     backend: {
-      loadPath: 'locales/{{lng}}/translation.json?v=portainer-cn-20260705-68',
+      loadPath: 'locales/{{lng}}/translation.json?v=portainer-cn-20260705-69',
     },
     detection: {
       order: ['localStorage'],

@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { Link } from '@@/Link';
 
@@ -13,6 +14,7 @@ interface Props {
 
 export function Header({ logo: customLogo }: Props) {
   const { isOpen } = useSidebarState();
+  const { t } = useTranslation();
 
   return (
     <div
@@ -35,7 +37,9 @@ export function Header({ logo: customLogo }: Props) {
             'th-dark:text-gray-warm-6'
           )}
         >
-          <span className="font-medium">Powered by</span>
+          <span className="font-medium">
+            {t('legacyText.Powered by', { defaultValue: 'Powered by' })}
+          </span>
           <span className="font-semibold">portainer community</span>
         </div>
       )}
