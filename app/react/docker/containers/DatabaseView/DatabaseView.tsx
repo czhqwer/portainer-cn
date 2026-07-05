@@ -18,8 +18,6 @@ import { Icon } from '@@/Icon';
 import { Button, ButtonGroup, LoadingButton } from '@@/buttons';
 import { FormControl } from '@@/form-components/FormControl';
 
-import { ContainerId } from '../types';
-
 import {
   DatabaseConnection,
   DatabaseConnectionPayload,
@@ -253,6 +251,9 @@ export function DatabaseView() {
                     type="button"
                     color="default"
                     size="small"
+                    data-cy={`database-query-template-${template
+                      .split(' ')[0]
+                      .toLowerCase()}`}
                     onClick={() => setQuery(template)}
                   >
                     {template.split(' ')[0]}
@@ -308,6 +309,7 @@ export function DatabaseView() {
                 disabled={!activeConnection || !query.trim()}
                 isLoading={runQuery.isLoading}
                 loadingText="Running..."
+                data-cy="database-run-query-button"
               >
                 <Icon icon={Play} className="lucide space-right" />
                 Run
@@ -317,6 +319,7 @@ export function DatabaseView() {
                   <Button
                     type="button"
                     color="default"
+                    data-cy="database-edit-connection-button"
                     onClick={() => editConnection(activeConnection)}
                   >
                     <Icon icon={Pencil} className="lucide space-right" />
@@ -325,6 +328,7 @@ export function DatabaseView() {
                   <Button
                     type="button"
                     color="dangerlight"
+                    data-cy="database-delete-connection-button"
                     onClick={() => handleDelete(activeConnection)}
                   >
                     <Icon icon={Trash2} className="lucide space-right" />
@@ -483,12 +487,18 @@ function ConnectionForm({
           color="primary"
           isLoading={isLoading}
           loadingText="Saving..."
+          data-cy="database-save-connection-button"
         >
           <Icon icon={Save} className="lucide space-right" />
           Save
         </LoadingButton>
         {isEditing && (
-          <Button type="button" color="default" onClick={onCancel}>
+          <Button
+            type="button"
+            color="default"
+            data-cy="database-cancel-edit-button"
+            onClick={onCancel}
+          >
             <Icon icon={X} className="lucide space-right" />
             Cancel
           </Button>
