@@ -1,6 +1,7 @@
 import { createColumnHelper } from '@tanstack/react-table';
 import { Check, X } from 'lucide-react';
 
+import i18n from '@/i18n';
 import { isoDateFromTimestamp } from '@/portainer/filters/filters';
 
 import { multiple } from '@@/datatables/filter-types';
@@ -22,6 +23,10 @@ const activityTypesProps = {
   },
   [ActivityType.Logout]: { label: 'Logout', icon: undefined, mode: undefined },
 } as const;
+
+function translateActivityType(label: string) {
+  return i18n.t(`legacyText.${label}`, { defaultValue: label });
+}
 
 const columnHelper = createColumnHelper<AuthLog>();
 
@@ -48,27 +53,30 @@ export const columns = [
     header: 'User',
   }),
 
-  columnHelper.accessor((item) => activityTypesProps[item.type].label, {
-    header: 'Result',
-    enableColumnFilter: true,
-    filterFn: multiple,
-    meta: {
-      filter: filterHOC('Filter'),
-    },
-    cell({ row: { original: item } }) {
-      const props = activityTypesProps[item.type];
-      if (!props) {
-        return null;
-      }
+  columnHelper.accessor(
+    (item) => translateActivityType(activityTypesProps[item.type].label),
+    {
+      header: 'Result',
+      enableColumnFilter: true,
+      filterFn: multiple,
+      meta: {
+        filter: filterHOC('Filter'),
+      },
+      cell({ row: { original: item } }) {
+        const props = activityTypesProps[item.type];
+        if (!props) {
+          return null;
+        }
 
-      const { label, icon, mode } = props;
+        const { label, icon, mode } = props;
 
-      return (
-        <span className="flex items-center gap-1">
-          {label}
-          {icon && mode && <Icon icon={icon} mode={mode} />}
-        </span>
-      );
-    },
-  }),
+        return (
+          <span className="flex items-center gap-1">
+            {translateActivityType(label)}
+            {icon && mode && <Icon icon={icon} mode={mode} />}
+          </span>
+        );
+      },
+    }
+  ),
 ];

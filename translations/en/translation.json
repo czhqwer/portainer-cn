@@ -573,6 +573,7 @@
     "Origin": "Origin",
     "Context": "Context",
     "Result": "Result",
+    "Payload": "Payload",
     "Last Update": "Last Update"
   },
   "tabTitles": {
@@ -766,7 +767,9 @@
     "Show / Hide Columns": "Show / Hide Columns",
     "Add logging driver option": "Add logging driver option",
     "Test Connection": "Test Connection",
-    "Cron Jobs & Jobs": "Cron Jobs & Jobs"
+    "Cron Jobs & Jobs": "Cron Jobs & Jobs",
+    "Export as CSV": "Export as CSV",
+    "inspect": "inspect"
   },
   "buttonTitles": {
     "Refresh": "Refresh",
@@ -1310,6 +1313,10 @@
     "Add volume": "Add volume",
     "Add network": "Add network",
     "Filter": "Filter",
+    "Filter by state": "Filter by state",
+    "Authentication success": "Authentication success",
+    "Authentication failure": "Authentication failure",
+    "Logout": "Logout",
     "Quick Actions": "Quick Actions",
     "Published Ports": "Published Ports",
     "Pull the image": "Pull the image",
@@ -3914,6 +3921,7 @@
     "Activity logs": "Activity logs",
     "User activity logs": "User activity logs",
     "Portainer user activity logs have a maximum retention of 7 days.": "Portainer user activity logs have a maximum retention of 7 days.",
+    "Portainer user activity logs have a maximum retention of {{count}} days.": "Portainer user activity logs have a maximum retention of {{count}} days.",
     "Environment registries": "Environment registries",
     "Show for all users": "Show for all users",
     "Automatic user provisioning": "Automatic user provisioning",

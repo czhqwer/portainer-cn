@@ -573,6 +573,7 @@
     "Origin": "来源",
     "Context": "上下文",
     "Result": "结果",
+    "Payload": "负载",
     "Last Update": "最后更新"
   },
   "tabTitles": {
@@ -766,7 +767,9 @@
     "Show / Hide Columns": "显示/隐藏列",
     "Add logging driver option": "添加日志驱动选项",
     "Test Connection": "测试连接",
-    "Cron Jobs & Jobs": "Cron Job 和 Job"
+    "Cron Jobs & Jobs": "Cron Job 和 Job",
+    "Export as CSV": "导出为 CSV",
+    "inspect": "查看"
   },
   "buttonTitles": {
     "Refresh": "刷新",
@@ -1370,6 +1373,10 @@
     "Add volume": "添加数据卷",
     "Add network": "添加网络",
     "Filter": "过滤",
+    "Filter by state": "按状态过滤",
+    "Authentication success": "认证成功",
+    "Authentication failure": "认证失败",
+    "Logout": "退出登录",
     "Quick Actions": "快捷操作",
     "Published Ports": "已发布端口",
     "Pull the image": "拉取镜像",
@@ -3974,6 +3981,7 @@
     "Activity logs": "活动日志",
     "User activity logs": "用户活动日志",
     "Portainer user activity logs have a maximum retention of 7 days.": "Portainer 用户活动日志最多保留 7 天。",
+    "Portainer user activity logs have a maximum retention of {{count}} days.": "Portainer 用户活动日志最多保留 {{count}} 天。",
     "Environment registries": "环境镜像仓库",
     "Show for all users": "对所有用户显示",
     "Automatic user provisioning": "自动用户预配",

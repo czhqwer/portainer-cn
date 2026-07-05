@@ -1,10 +1,7 @@
 import clsx from 'clsx';
 
-import { isBE } from '@/react/portainer/feature-flags/feature-flags.service';
-
 import { Link } from '@@/Link';
 
-import fullLogoBE from './portainer_logo-BE.svg';
 import fullLogoCE from './portainer_logo-CE.svg';
 import portainerIcon from './portainer-p-icon-white.svg';
 import { useSidebarState } from './useSidebarState';
@@ -39,22 +36,7 @@ export function Header({ logo: customLogo }: Props) {
           )}
         >
           <span className="font-medium">Powered by</span>
-          <span className="font-semibold">
-            {isBE ? (
-              'portainer business'
-            ) : (
-              <a
-                href="https://www.portainer.io/install-BE-now"
-                className={clsx(
-                  'hover:underline',
-                  'text-blue-6 hover:text-blue-8',
-                  'th-dark:text-blue-7 th-dark:hover:text-blue-9'
-                )}
-              >
-                portainer community
-              </a>
-            )}
-          </span>
+          <span className="font-semibold">portainer community</span>
         </div>
       )}
     </div>
@@ -70,7 +52,7 @@ function getLogo(isOpen: boolean, customLogo?: string) {
     return portainerIcon;
   }
 
-  return isBE ? fullLogoBE : fullLogoCE;
+  return fullLogoCE;
 }
 
 function Logo({

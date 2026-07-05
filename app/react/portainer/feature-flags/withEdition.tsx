@@ -1,5 +1,7 @@
 import { ComponentType } from 'react';
 
+import { hideCommercialFeatures } from './feature-flags.service';
+
 export function withEdition<T>(
   WrappedComponent: ComponentType<T>,
   edition: 'BE' | 'CE'
@@ -9,6 +11,10 @@ export function withEdition<T>(
     WrappedComponent.displayName || WrappedComponent.name || 'Component';
 
   function WrapperComponent(props: T & JSX.IntrinsicAttributes) {
+    if (hideCommercialFeatures && edition === 'BE') {
+      return null;
+    }
+
     if (process.env.PORTAINER_EDITION !== edition) {
       return null;
     }

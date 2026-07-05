@@ -1,4 +1,5 @@
 import { DownloadIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Widget } from '@@/Widget';
 import { TextTip } from '@@/Tip/TextTip';
@@ -17,6 +18,8 @@ export function FilterBar({
   onExport: () => void;
   retentionDays: number;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Widget>
       <Widget.Body>
@@ -24,8 +27,14 @@ export function FilterBar({
           <DateRangePicker value={value} onChange={onChange} />
 
           <TextTip color="blue">
-            Portainer user activity logs have a maximum retention of{' '}
-            {retentionDays} days.
+            {t(
+              'legacyText.Portainer user activity logs have a maximum retention of {{count}} days.',
+              {
+                count: retentionDays,
+                defaultValue:
+                  'Portainer user activity logs have a maximum retention of {{count}} days.',
+              }
+            )}
           </TextTip>
 
           <div className="mt-4">

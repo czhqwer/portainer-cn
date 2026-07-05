@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { environmentStore } from '@/react/hooks/current-environment-store';
 import { Environment } from '@/react/portainer/environments/types';
 import { isEdgeEnvironment } from '@/react/portainer/environments/utils';
+import { hideCommercialFeatures } from '@/react/portainer/feature-flags/feature-flags.service';
 
 import { confirm } from '@@/modals/confirm';
 import { PageHeader } from '@@/PageHeader';
@@ -65,11 +66,15 @@ export function HomeView() {
         breadcrumbs={[{ label: 'Environments' }]}
       />
 
-      {process.env.PORTAINER_EDITION !== 'CE' && <LicenseNodePanel />}
+      {!hideCommercialFeatures && process.env.PORTAINER_EDITION !== 'CE' && (
+        <LicenseNodePanel />
+      )}
 
       <MotdPanel />
 
-      {process.env.PORTAINER_EDITION !== 'CE' && <BackupFailedPanel />}
+      {!hideCommercialFeatures && process.env.PORTAINER_EDITION !== 'CE' && (
+        <BackupFailedPanel />
+      )}
 
       {connectingToEdgeEndpoint ? (
         <div className="mb-5 flex flex-1 flex-col items-center justify-center">

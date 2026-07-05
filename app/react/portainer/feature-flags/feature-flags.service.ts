@@ -1,6 +1,10 @@
 import { Edition, FeatureId, FeatureState } from './enums';
 
-export const isBE = process.env.PORTAINER_EDITION === 'BE';
+const HIDE_COMMERCIAL_FEATURES: boolean = true;
+
+export const hideCommercialFeatures: boolean = HIDE_COMMERCIAL_FEATURES;
+export const isBE: boolean =
+  !hideCommercialFeatures && process.env.PORTAINER_EDITION === 'BE';
 interface ServiceState {
   currentEdition: Edition;
   features: Record<FeatureId, Edition>;
@@ -13,7 +17,7 @@ const state: ServiceState = {
 
 export async function init(edition: Edition) {
   // will be loaded on runtime
-  const currentEdition = edition;
+  const currentEdition = hideCommercialFeatures ? Edition.CE : edition;
   const features = {
     [FeatureId.K8S_RESOURCE_POOL_LB_QUOTA]: Edition.BE,
     [FeatureId.K8S_RESOURCE_POOL_STORAGE_QUOTA]: Edition.BE,

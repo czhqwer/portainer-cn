@@ -1,5 +1,6 @@
-import { createColumnHelper } from '@tanstack/react-table';
+import { createColumnHelper, Row } from '@tanstack/react-table';
 import { History, Search } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { isoDateFromTimestamp } from '@/portainer/filters/filters';
 
@@ -37,16 +38,7 @@ const columns = [
     header: 'Payload',
     enableSorting: false,
     cell: ({ row, getValue }) =>
-      getValue() ? (
-        <Button
-          color="link"
-          onClick={() => row.toggleExpanded()}
-          icon={Search}
-          data-cy={`activity-logs-inspect_${row.index}`}
-        >
-          inspect
-        </Button>
-      ) : null,
+      getValue() ? <InspectButton row={row} /> : null,
   }),
 ];
 
@@ -112,5 +104,20 @@ function SubRow({ item }: { item: ActivityLog }) {
         <JsonTree data={item.payload} />
       </td>
     </tr>
+  );
+}
+
+function InspectButton({ row }: { row: Row<ActivityLog> }) {
+  const { t } = useTranslation();
+
+  return (
+    <Button
+      color="link"
+      onClick={() => row.toggleExpanded()}
+      icon={Search}
+      data-cy={`activity-logs-inspect_${row.index}`}
+    >
+      {t('buttons.inspect', { defaultValue: 'inspect' })}
+    </Button>
   );
 }
