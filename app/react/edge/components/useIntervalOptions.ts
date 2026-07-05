@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useSettings } from '@/react/portainer/settings/queries';
 
@@ -21,6 +22,7 @@ export function useIntervalOptions(
   initialOptions: Options,
   isDefaultHidden: boolean
 ) {
+  const { t } = useTranslation();
   const [{ value: defaultValue }] = initialOptions;
   const [options, setOptions] = useState<Option[]>(initialOptions);
 
@@ -63,5 +65,8 @@ export function useIntervalOptions(
     defaultValue,
   ]);
 
-  return options;
+  return options.map((option) => ({
+    ...option,
+    label: t('legacyText.' + option.label, { defaultValue: option.label }),
+  }));
 }

@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { ComponentProps, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@@/buttons';
 
@@ -31,6 +32,13 @@ export function NavTabs<T extends string | number = string>({
   justified = false,
 }: Props<T>) {
   const selected = options.find((option) => option.id === selectedId);
+  const { t } = useTranslation();
+
+  function translateLabel(label: ReactNode) {
+    return typeof label === 'string'
+      ? t('tabTitles.' + label, { defaultValue: label })
+      : label;
+  }
 
   return (
     <div>
@@ -58,7 +66,7 @@ export function NavTabs<T extends string | number = string>({
                   icon={option.icon}
                   props={{ role: 'button' }}
                 >
-                  {option.label}
+                  {translateLabel(option.label)}
                 </Button>
               </li>
             )

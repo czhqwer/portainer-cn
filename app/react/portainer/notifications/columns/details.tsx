@@ -1,3 +1,5 @@
+import { translateNotificationText } from '@/portainer/services/notifications';
+
 import { columnHelper } from './helper';
 
 export const details = columnHelper.accessor('details', {
@@ -6,6 +8,10 @@ export const details = columnHelper.accessor('details', {
   cell: ({ getValue }) => {
     const value = getValue();
 
-    return <div className="whitespace-normal">{value}</div>;
+    return (
+      <div className="whitespace-normal">
+        {translateNotificationText(value || '')}
+      </div>
+    );
   },
 });

@@ -1,3 +1,4 @@
+﻿import i18n from '@/i18n';
 import { getEnvironments } from '@/react/portainer/environments/environment.service';
 import { restoreOptions } from '@/react/portainer/init/InitAdminView/restore-options';
 
@@ -15,6 +16,7 @@ angular.module('portainer.app').controller('InitAdminController', [
   'StatusService',
   function ($scope, $state, Notifications, Authentication, StateManager, SettingsService, UserService, BackupService, StatusService) {
     $scope.restoreOptions = restoreOptions;
+    $scope.t = i18n.t.bind(i18n);
 
     $scope.uploadBackup = uploadBackup;
 

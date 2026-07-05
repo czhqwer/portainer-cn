@@ -1,5 +1,6 @@
 import { PropsWithChildren, ReactNode } from 'react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { Tooltip } from '@@/Tip/Tooltip';
 import { InlineLoader } from '@@/InlineLoader';
@@ -37,6 +38,12 @@ export function FormControl({
   isLoading = false,
   loadingText = 'Loading...',
 }: PropsWithChildren<Props>) {
+  const { t, i18n } = useTranslation();
+  const translatedLabel = translateText(label, 'formLabels', t, i18n);
+  const translatedTooltip = translateText(tooltip, 'formLabels', t, i18n);
+  const translatedLoadingText = translateText(loadingText, 'common', t, i18n);
+  const translatedErrors = translateText(errors, 'formLabels', t, i18n);
+
   return (
     <div
       className={clsx(
@@ -50,12 +57,15 @@ export function FormControl({
         htmlFor={inputId}
         className={clsx(sizeClassLabel(size), 'control-label', 'text-left')}
       >
-        {label}
+        {translatedLabel}
 
         {required && <span className="text-danger">*</span>}
 
         {tooltip && (
-          <Tooltip message={tooltip} setHtmlMessage={setTooltipHtmlMessage} />
+          <Tooltip
+            message={translatedTooltip}
+            setHtmlMessage={setTooltipHtmlMessage}
+          />
         )}
       </label>
 
@@ -63,11 +73,11 @@ export function FormControl({
         {isLoading && (
           // 34px height to reduce layout shift when loading is complete
           <div className="flex h-[34px] items-center">
-            <InlineLoader>{loadingText}</InlineLoader>
+            <InlineLoader>{translatedLoadingText}</InlineLoader>
           </div>
         )}
         {!isLoading && children}
-        {!!errors && !isLoading && <FormError>{errors}</FormError>}
+        {!!errors && !isLoading && <FormError>{translatedErrors}</FormError>}
       </div>
     </div>
   );
@@ -103,4 +113,51 @@ function sizeClassChildren(size: Size) {
     default:
       return 'col-sm-9 col-lg-10';
   }
+}
+
+function translateText(
+  value: ReactNode,
+  namespace: string,
+  t: (key: string, options: { defaultValue: string }) => string,
+  i18n: {
+    language?: string;
+    resolvedLanguage?: string;
+    languages?: readonly string[];
+    getResourceBundle(language: string, namespace: string): unknown;
+  }
+) {
+  return typeof value === 'string'
+    ? getResourceText(namespace, value, i18n) ||
+        t(namespace + '.' + value, { defaultValue: value })
+    : value;
+}
+
+function getResourceText(
+  section: string,
+  key: string,
+  i18n: {
+    language?: string;
+    resolvedLanguage?: string;
+    languages?: readonly string[];
+    getResourceBundle(language: string, namespace: string): unknown;
+  }
+) {
+  const languages = [
+    i18n.language,
+    i18n.resolvedLanguage,
+    ...(i18n.languages || []),
+    'en',
+  ].filter((language): language is string => !!language);
+
+  for (const language of languages) {
+    const bundle = i18n.getResourceBundle(language, 'translation') as
+      | Record<string, Record<string, string>>
+      | undefined;
+    const value = bundle?.[section]?.[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+
+  return undefined;
 }

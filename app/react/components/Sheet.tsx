@@ -8,6 +8,7 @@ import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import clsx from 'clsx';
 import { RefreshCw, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from './buttons';
 
@@ -33,12 +34,15 @@ function SheetHeader({
   title,
   children,
 }: PropsWithChildren<SheetTitleProps>) {
+  const { t } = useTranslation();
+  const translatedTitle = t('panelTitles.' + title, { defaultValue: title });
+
   return (
     <div className="row">
       <div className="col-sm-12 flex justify-between gap-2 pt-3">
         <div className="flex items-center gap-2">
           <SheetPrimitive.DialogTitle className="m-0 text-2xl font-medium text-gray-11 th-highcontrast:text-white th-dark:text-white">
-            {title}
+            {translatedTitle}
           </SheetPrimitive.DialogTitle>
           {onReload ? (
             <Button
@@ -46,7 +50,7 @@ function SheetHeader({
               size="large"
               onClick={onReload}
               className="m-0 p-0 focus:text-inherit"
-              title="Refresh drawer content"
+              title={t('common.refreshDrawerContent')}
               data-cy="sheet-refreshButton"
             >
               <RefreshCw className="icon" />

@@ -1,6 +1,7 @@
 import { Formik, Form } from 'formik';
 import { Laptop, Network } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Settings } from '@/react/portainer/settings/types';
 import { PortainerUrlField } from '@/react/portainer/common/PortainerUrlField';
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function EdgeComputeSettings({ settings, onSubmit }: Props) {
+  const { t } = useTranslation();
   const [isConnectivityModalOpen, setIsConnectivityModalOpen] = useState(false);
 
   if (!settings) {
@@ -85,8 +87,7 @@ export function EdgeComputeSettings({ settings, onSubmit }: Props) {
                 </FormControl>
 
                 <TextTip color="blue" className="mb-2">
-                  Enable this setting to use Portainer Edge Compute
-                  capabilities.
+                  {t('settings.edgeCompute.enableDescription')}
                 </TextTip>
 
                 {isBE && values.EnableEdgeComputeFeatures && (

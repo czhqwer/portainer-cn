@@ -1,6 +1,7 @@
-import clsx from 'clsx';
+﻿import clsx from 'clsx';
 import { type LucideIcon, Check } from 'lucide-react';
 import { Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '@/react/components/Icon';
 
@@ -36,9 +37,19 @@ export function BoxSelectorItem<T extends Value>({
   slim = false,
   checkIcon = Check,
 }: Props<T>) {
+  const { t } = useTranslation();
   const { limitedToBE = false, url: featureUrl } = getFeatureDetails(
     option.feature
   );
+  const label = t(`legacyText.${option.label}`, {
+    defaultValue: option.label,
+  });
+  const description =
+    typeof option.description === 'string'
+      ? t(`legacyText.${option.description}`, {
+          defaultValue: option.description,
+        })
+      : option.description;
 
   const ContentBox = slim ? 'div' : Fragment;
 
@@ -75,8 +86,8 @@ export function BoxSelectorItem<T extends Value>({
           {renderIcon()}
         </div>
         <ContentBox>
-          <div className={styles.header}>{option.label}</div>
-          <div className="mb-0">{option.description}</div>
+          <div className={styles.header}>{label}</div>
+          <div className="mb-0">{description}</div>
         </ContentBox>
       </div>
     </BoxOption>

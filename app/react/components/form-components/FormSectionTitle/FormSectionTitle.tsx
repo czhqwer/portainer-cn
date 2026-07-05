@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { PropsWithChildren } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   htmlFor?: string;
@@ -21,6 +22,12 @@ export function FormSectionTitle({
   className,
   id,
 }: PropsWithChildren<Props>) {
+  const { t } = useTranslation();
+  const translatedChildren =
+    typeof children === 'string'
+      ? t('panelTitles.' + children, { defaultValue: children })
+      : children;
+
   if (htmlFor) {
     return (
       <label
@@ -32,7 +39,7 @@ export function FormSectionTitle({
         )}
         id={id}
       >
-        {children}
+        {translatedChildren}
       </label>
     );
   }
@@ -45,7 +52,7 @@ export function FormSectionTitle({
       )}
       id={id}
     >
-      {children}
+      {translatedChildren}
     </div>
   );
 }

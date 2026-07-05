@@ -2,6 +2,7 @@ import React, { MouseEvent } from 'react';
 import Tippy, { type TippyProps } from '@tippyjs/react';
 import clsx from 'clsx';
 import _ from 'lodash';
+import { useTranslation } from 'react-i18next';
 
 import 'tippy.js/dist/tippy.css';
 
@@ -33,10 +34,19 @@ export function TooltipWithChildren({
   appendTo,
 }: Props) {
   const id = _.uniqueId('tooltip-');
+  const { t } = useTranslation();
 
   const { url, limitedToBE } = BEFeatureID
     ? getFeatureDetails(BEFeatureID)
     : { url: '', limitedToBE: false };
+  const translatedHeading =
+    typeof heading === 'string'
+      ? t(`legacyText.${heading}`, { defaultValue: heading })
+      : heading;
+  const translatedMessage =
+    typeof message === 'string'
+      ? t(`legacyText.${message}`, { defaultValue: message })
+      : message;
 
   const messageHTML = (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
@@ -47,7 +57,7 @@ export function TooltipWithChildren({
     >
       {(heading || (BEFeatureID && limitedToBE)) && (
         <div className="mb-3 inline-flex w-full justify-between">
-          <span>{heading}</span>
+          <span>{translatedHeading}</span>
           {BEFeatureID && limitedToBE && (
             <a
               href={url}
@@ -60,7 +70,7 @@ export function TooltipWithChildren({
           )}
         </div>
       )}
-      <div className={styles.tooltipMessage}>{message}</div>
+      <div className={styles.tooltipMessage}>{translatedMessage}</div>
     </div>
   );
 

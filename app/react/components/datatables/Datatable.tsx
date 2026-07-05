@@ -19,6 +19,7 @@ import {
 import { ReactNode, useMemo } from 'react';
 import clsx from 'clsx';
 import _ from 'lodash';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -107,6 +108,7 @@ export function Datatable<D extends DefaultType>({
   ariaLabel,
   id,
 }: Props<D> & PaginationProps) {
+  const { t } = useTranslation();
   const pageCount = useMemo(
     () => Math.ceil(totalCount / settings.pageSize),
     [settings.pageSize, totalCount]
@@ -195,7 +197,8 @@ export function Datatable<D extends DefaultType>({
   const { titleAriaLabel, contentAriaLabel } = getAriaLabels(
     ariaLabel,
     title,
-    titleId
+    titleId,
+    t
   );
 
   return (
@@ -259,18 +262,40 @@ export function Datatable<D extends DefaultType>({
 function getAriaLabels(
   titleAriaLabel?: string,
   title?: ReactNode,
-  titleId?: string
+  titleId?: string,
+  t?: (key: string, options: { defaultValue: string; label?: string }) => string
 ) {
+  const translateLabel = (label: string) =>
+    t?.('panelTitles.' + label, { defaultValue: label }) || label;
+  const translateTableLabel = (label: string) =>
+    t?.('legacyText.{{label}} table', {
+      label,
+      defaultValue: `${label} table`,
+    }) || `${label} table`;
+
   if (titleAriaLabel) {
-    return { titleAriaLabel, contentAriaLabel: `${titleAriaLabel} table` };
+    const translatedLabel = translateLabel(titleAriaLabel);
+    return {
+      titleAriaLabel: translatedLabel,
+      contentAriaLabel: translateTableLabel(translatedLabel),
+    };
   }
   if (typeof title === 'string') {
-    return { titleAriaLabel: title, contentAriaLabel: `${title} table` };
+    const translatedTitle = translateLabel(title);
+    return {
+      titleAriaLabel: translatedTitle,
+      contentAriaLabel: translateTableLabel(translatedTitle),
+    };
   }
   if (titleId) {
-    return { titleAriaLabel: titleId, contentAriaLabel: `${titleId} table` };
+    const translatedTitleId = translateLabel(titleId);
+    return {
+      titleAriaLabel: translatedTitleId,
+      contentAriaLabel: translateTableLabel(translatedTitleId),
+    };
   }
-  return { titleAriaLabel: 'table', contentAriaLabel: 'table' };
+  const translatedTable = t?.('legacyText.table', { defaultValue: 'table' }) || 'table';
+  return { titleAriaLabel: translatedTable, contentAriaLabel: translatedTable };
 }
 
 function defaultRenderRow<D extends DefaultType>(

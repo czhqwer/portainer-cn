@@ -7,6 +7,7 @@ import {
   ReactNode,
 } from 'react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -71,6 +72,14 @@ export function Button<TasProps = unknown>({
   ...ariaProps
 }: PropsWithChildren<Props<TasProps>>) {
   const Component = as as 'button';
+  const { t } = useTranslation();
+  const translatedTitle = title
+    ? t('buttonTitles.' + title, { defaultValue: title })
+    : title;
+  const translatedChildren =
+    typeof children === 'string'
+      ? t('buttons.' + children, { defaultValue: children })
+      : children;
   return (
     <Component
       ref={mRef}
@@ -84,14 +93,14 @@ export function Button<TasProps = unknown>({
           onClick?.(e);
         }
       }}
-      title={title}
+      title={translatedTitle}
       // eslint-disable-next-line react/jsx-props-no-spreading
       {...ariaProps}
       // eslint-disable-next-line react/jsx-props-no-spreading
       {...props}
     >
       {icon && <Icon icon={icon} size={getIconSize(size)} />}
-      {children}
+      {translatedChildren}
     </Component>
   );
 }

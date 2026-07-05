@@ -1,6 +1,7 @@
 import { Formik, Form } from 'formik';
 import { SchemaOf, object, string } from 'yup';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { FormControl } from '@@/form-components/FormControl';
 import { Input } from '@@/form-components/Input';
@@ -31,6 +32,7 @@ export function RegistryFormDockerhub({
   isLoading,
   nameIsUsed,
 }: Props) {
+  const { t } = useTranslation();
   const [isConnectionTested, setIsConnectionTested] = useState(false);
 
   return (
@@ -46,16 +48,15 @@ export function RegistryFormDockerhub({
           <FormSection title="Important notice">
             <TextTip color="blue">
               <p>
-                For information on how to generate a DockerHub Access Token,
-                follow the{' '}
+                {t('registries.dockerhub.accessTokenGuidePrefix')}{' '}
                 <a
                   href="https://docs.docker.com/docker-hub/access-tokens/"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  dockerhub guide
+                  {t('registries.dockerhub.accessTokenGuideLink')}
                 </a>
-                .
+                {t('registries.dockerhub.accessTokenGuideSuffix')}
               </p>
             </TextTip>
           </FormSection>

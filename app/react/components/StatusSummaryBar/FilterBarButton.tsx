@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -32,6 +33,9 @@ export function FilterBarButton({
   isLoading = false,
   'data-cy': dataCy,
 }: Props) {
+  const { t } = useTranslation();
+  const translatedLabel = t(`legacyText.${label}`, { defaultValue: label });
+
   if (!isLoading && count === 0) {
     return null;
   }
@@ -60,7 +64,10 @@ export function FilterBarButton({
         checked={isSelected}
         onClick={onClick}
         readOnly
-        aria-label={`Filter by ${label}`}
+        aria-label={t('legacyText.Filter by {{label}}', {
+          label: translatedLabel,
+          defaultValue: `Filter by ${translatedLabel}`,
+        })}
         tabIndex={0}
       />
       {colors && (
@@ -75,7 +82,7 @@ export function FilterBarButton({
             {count}
           </span>
           <span className="text-xs uppercase tracking-wide text-[var(--text-muted-color)]">
-            {label}
+            {translatedLabel}
           </span>
         </span>
       )}
@@ -87,7 +94,7 @@ export function FilterBarButton({
             <span className="text-2xl font-bold">{count}</span>
           )}
           <span className="text-base uppercase tracking-wide text-[var(--text-muted-color)]">
-            {label}
+            {translatedLabel}
           </span>
         </span>
       )}

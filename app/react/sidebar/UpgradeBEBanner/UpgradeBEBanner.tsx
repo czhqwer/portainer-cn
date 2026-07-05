@@ -1,5 +1,6 @@
 import { ArrowUpCircle } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 
 import { useNodesCount } from '@/react/portainer/system/useNodesCount';
@@ -27,6 +28,7 @@ const enabledPlatforms: Array<ContainerPlatform> = [
 ];
 
 function UpgradeBEBanner() {
+  const { t } = useTranslation();
   const {
     user: { Id },
   } = useCurrentUser();
@@ -69,7 +71,13 @@ function UpgradeBEBanner() {
             'fill-gray-6 stroke-[#023959] th-highcontrast:stroke-black th-dark:stroke-black'
           )}
         />
-        {isSidebarOpen && <>Upgrade to Business Edition</>}
+        {isSidebarOpen && (
+          <>
+            {t('legacyText.Upgrade to Business Edition', {
+              defaultValue: 'Upgrade to Business Edition',
+            })}
+          </>
+        )}
       </button>
 
       {isOpen && <UpgradeDialog onDismiss={() => setIsOpen(false)} />}

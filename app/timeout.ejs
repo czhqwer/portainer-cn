@@ -20,7 +20,7 @@
   <body>
     <div class="page-wrapper">
       <!-- timeout info box -->
-      <div class="container simple-box">
+      <div class="simple-box container">
         <div class="col-md-8 col-md-offset-2 col-sm-10 col-sm-offset-1">
           <!-- simple box logo -->
           <div class="row">
@@ -31,17 +31,31 @@
           <div class="panel panel-default">
             <div class="panel-body">
               <div>
-                <span class="form-section-title">New Portainer installation</span>
+                <span class="form-section-title" data-i18n data-en="New Portainer installation" data-zh="新的 Portainer 安装">New Portainer installation</span>
               </div>
 
               <!-- init admin init timeout notification -->
               <div class="padding-top">
-                <span class="small text-muted">
+                <span
+                  class="small text-muted"
+                  data-i18n
+                  data-en="Your Portainer instance timed out for security purposes. To re-enable your Portainer instance, you will need to restart Portainer."
+                  data-zh="出于安全原因，你的 Portainer 实例已超时。要重新启用 Portainer 实例，需要重启 Portainer。"
+                >
                   Your Portainer instance timed out for security purposes. To re-enable your Portainer instance, you will need to restart Portainer.
                 </span>
                 <br /><br />
                 <span class="text-muted small">
-                  For further information, view our <a class="hyperlink" href="https://docs.portainer.io/faqs/installing/your-portainer-instance-has-timed-out-for-security-purposes-error-fix" target="_blank">documentation</a>.
+                  <span data-i18n data-en="For further information, view our" data-zh="更多信息请查看我们的">For further information, view our</span>
+                  <a
+                    class="hyperlink"
+                    href="https://docs.portainer.io/faqs/installing/your-portainer-instance-has-timed-out-for-security-purposes-error-fix"
+                    target="_blank"
+                    data-i18n
+                    data-en="documentation"
+                    data-zh="文档"
+                    >documentation</a
+                  ><span data-i18n data-en="." data-zh="。">.</span>
                 </span>
               </div>
               <!-- !init admin init timeout notification -->
@@ -52,5 +66,24 @@
 
       <!-- !timeout info box -->
     </div>
+    <script>
+      (function () {
+        var language = 'zh-CN';
+        try {
+          language = window.localStorage.getItem('i18nextLng') || language;
+        } catch (e) {
+          language = 'zh-CN';
+        }
+
+        var key = language === 'en' ? 'en' : 'zh';
+        document.documentElement.lang = key === 'en' ? 'en' : 'zh-CN';
+        document.querySelectorAll('[data-i18n]').forEach(function (element) {
+          var value = element.getAttribute('data-' + key);
+          if (value) {
+            element.textContent = value;
+          }
+        });
+      })();
+    </script>
   </body>
 </html>

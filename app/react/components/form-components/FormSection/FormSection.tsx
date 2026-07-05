@@ -1,4 +1,5 @@
 import { PropsWithChildren, ReactNode, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { CollapseExpandButton } from '@@/CollapseExpandButton';
 
@@ -34,6 +35,11 @@ export function FormSection({
     () => `form-section-label-${componentIndex++}` as const
   );
   const [isExpanded, setIsExpanded] = useState(!defaultFolded);
+  const { t } = useTranslation();
+  const translatedTitle =
+    typeof title === 'string'
+      ? t('panelTitles.' + title, { defaultValue: title })
+      : title;
 
   const collapsibleIdSuffix = typeof title === 'string' ? title : id || labelId;
   const collapsibleId = `foldingButton${collapsibleIdSuffix}`;
@@ -58,7 +64,7 @@ export function FormSection({
           />
         )}
 
-        {title}
+        {translatedTitle}
       </FormSectionTitle>
       {/* col-sm-12 in the title has a 'float: left' style - 'clear-both' makes sure it doesn't get in the way of the next div */}
       {/* https://stackoverflow.com/questions/7759837/put-divs-below-floatleft-divs */}

@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Search, X } from 'lucide-react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { useLocalStorage } from '@/react/hooks/useLocalStorage';
 import { AutomationTestingProps } from '@/types';
@@ -24,7 +25,11 @@ export function SearchBar({
   className,
   children,
 }: Props) {
+  const { t } = useTranslation();
   const [searchValue, setSearchValue] = useDebounce(value, onChange);
+  const translatedPlaceholder = t(getPlaceholderKey(placeholder), {
+    defaultValue: placeholder,
+  });
 
   function onClear() {
     setSearchValue('');
@@ -41,8 +46,10 @@ export function SearchBar({
         className="searchInput"
         value={searchValue}
         onChange={(e) => setSearchValue(e.target.value)}
-        placeholder={placeholder}
-        aria-label="Search input"
+        placeholder={translatedPlaceholder}
+        aria-label={t('legacyText.Search input', {
+          defaultValue: 'Search input',
+        })}
       />
       {children}
       <Button
@@ -54,6 +61,14 @@ export function SearchBar({
       />
     </div>
   );
+}
+
+function getPlaceholderKey(placeholder: string) {
+  if (placeholder === 'Search...') {
+    return 'placeholders.searchEllipsis';
+  }
+
+  return 'placeholders.' + placeholder;
 }
 
 export function useSearchBarState(

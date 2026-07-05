@@ -1,4 +1,6 @@
 import { ReactNode, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { i18n as I18n } from 'i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -28,7 +30,10 @@ function SwitchPrompt({
   message?: ReactNode;
   defaultValue?: boolean;
 } & AutomationTestingProps) {
+  const { i18n } = useTranslation();
   const [value, setValue] = useState(defaultValue);
+  const translatedMessage =
+    typeof message === 'string' ? translateLegacyString(message, i18n) : message;
 
   return (
     <Dialog
@@ -36,7 +41,9 @@ function SwitchPrompt({
       title={title}
       message={
         <>
-          {message && <div className="mb-3">{message}</div>}
+          {translatedMessage && (
+            <div className="mb-3">{translatedMessage}</div>
+          )}
           <SwitchField
             name="value"
             data-cy={dataCy}
@@ -50,6 +57,25 @@ function SwitchPrompt({
       buttons={[buildCancelButton(), confirmButton]}
     />
   );
+}
+
+function translateLegacyString(text: string, i18n: I18n) {
+  const languages = [
+    i18n.language,
+    i18n.resolvedLanguage,
+    ...(i18n.languages || []),
+    'en',
+  ].filter(Boolean);
+
+  for (const language of languages) {
+    const bundle = i18n.getResourceBundle(language, 'translation');
+    const value = bundle?.legacyText?.[text];
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+
+  return text;
 }
 
 export async function openSwitchPrompt(

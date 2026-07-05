@@ -1,4 +1,5 @@
 import angular from 'angular';
+import i18n from '@/i18n';
 import uuidv4 from 'uuid/v4';
 import { getEnvironments } from '@/react/portainer/environments/environment.service';
 import { dispatchCacheRefreshEvent } from '@/portainer/services/http-request.helper';
@@ -267,7 +268,7 @@ class AuthenticationController {
 
       await this.authEnabledFlowAsync();
     } catch (err) {
-      this.Notifications.error('Failure', err, 'Unable to retrieve public settings');
+      this.Notifications.error(i18n.t('common.failure'), err, i18n.t('legacyText.Unable to retrieve public settings', { defaultValue: 'Unable to retrieve public settings' }));
     }
   }
 

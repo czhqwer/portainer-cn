@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { mixed } from 'yup';
 import { ContainerConfig } from 'docker-types';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -19,6 +20,8 @@ export function ConsoleSettings({
   value: ConsoleSetting;
   onChange(value: ConsoleSetting): void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <FormControl label="Console" size="xsmall">
       <Item
@@ -26,7 +29,10 @@ export function ConsoleSettings({
         onChange={handleChange}
         label={
           <>
-            Interactive & TTY <span className="small text-muted">(-i -t)</span>
+            {t('legacyText.Interactive & TTY', {
+              defaultValue: 'Interactive & TTY',
+            })}{' '}
+            <span className="small text-muted">(-i -t)</span>
           </>
         }
         selected={value}
@@ -37,7 +43,10 @@ export function ConsoleSettings({
         onChange={handleChange}
         label={
           <>
-            Interactive <span className="small text-muted">(-i)</span>
+            {t('legacyText.Interactive', {
+              defaultValue: 'Interactive',
+            })}{' '}
+            <span className="small text-muted">(-i)</span>
           </>
         }
         selected={value}
@@ -57,7 +66,7 @@ export function ConsoleSettings({
       <Item
         value="none"
         onChange={handleChange}
-        label={<>None</>}
+        label={<>{t('legacyText.None', { defaultValue: 'None' })}</>}
         selected={value}
         data-cy="container-console-none"
       />

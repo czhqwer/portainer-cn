@@ -1,4 +1,5 @@
 import { PropsWithChildren, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useSidebarState } from './useSidebarState';
 
@@ -16,17 +17,25 @@ export function SidebarSection({
   showTitleWhenOpen,
   'aria-label': ariaLabel,
 }: PropsWithChildren<Props>) {
+  const { t } = useTranslation();
+  const translatedTitle =
+    typeof title === 'string'
+      ? t(`legacyText.${title}`, { defaultValue: title })
+      : title;
+
   return (
     <div>
       <SidebarSectionTitle
         showWhenOpen={showTitleWhenOpen}
         hoverText={hoverText}
       >
-        {title}
+        {translatedTitle}
       </SidebarSectionTitle>
 
       <nav
-        aria-label={typeof title === 'string' ? title : ariaLabel}
+        aria-label={
+          typeof title === 'string' ? String(translatedTitle) : ariaLabel
+        }
         className="mt-4"
       >
         <ul>{children}</ul>

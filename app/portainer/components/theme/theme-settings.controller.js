@@ -2,6 +2,7 @@ import { notifyError, notifySuccess } from '@/portainer/services/notifications';
 import { userQueryKeys } from '@/portainer/users/queries/queryKeys';
 import { queryClient } from '@/react-tools/react-query';
 import { options } from '@/react/portainer/account/AccountView/theme-options';
+import i18n from '@/i18n';
 
 export default class ThemeSettingsController {
   /* @ngInject */
@@ -13,6 +14,7 @@ export default class ThemeSettingsController {
     this.UserService = UserService;
 
     this.setThemeColor = this.setThemeColor.bind(this);
+    this.t = i18n.t.bind(i18n);
   }
 
   async setThemeColor(color) {
@@ -33,9 +35,9 @@ export default class ThemeSettingsController {
       await this.UserService.updateUserTheme(this.state.userId, theme);
       await queryClient.invalidateQueries(userQueryKeys.user(this.state.userId));
 
-      notifySuccess('Success', 'User theme settings successfully updated');
+      notifySuccess(i18n.t('common.success'), i18n.t('account.theme.updatedMessage'));
     } catch (err) {
-      notifyError('Failure', err, 'Unable to update user theme settings');
+      notifyError(i18n.t('common.failure'), err, i18n.t('account.theme.updateError'));
     }
   }
 
@@ -54,7 +56,7 @@ export default class ThemeSettingsController {
 
         this.state.themeColor = user.ThemeSettings.color || this.state.themeColor;
       } catch (err) {
-        notifyError('Failure', err, 'Unable to get user details');
+        notifyError(i18n.t('common.failure'), err, i18n.t('account.theme.userDetailsError'));
       }
     });
   }

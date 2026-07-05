@@ -1,4 +1,5 @@
 import angular from 'angular';
+import i18n from '@/i18n';
 import { dispatchCacheRefreshEvent } from '@/portainer/services/http-request.helper';
 import { cleanReturnUrl } from '@/react/portainer/helpers/returnUrl';
 
@@ -57,7 +58,7 @@ class LogoutController {
     try {
       await this.logout();
     } catch (err) {
-      this.Notifications.error('Failure', err, 'An error occurred during logout');
+      this.Notifications.error(i18n.t('common.failure'), err, i18n.t('legacyText.An error occurred during logout', { defaultValue: 'An error occurred during logout' }));
     }
   }
 

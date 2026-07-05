@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { FormError } from '@@/form-components/FormError';
 import { FormSectionTitle } from '@@/form-components/FormSectionTitle';
@@ -42,6 +43,11 @@ export function BoxSelector<T extends Value>({
   label,
   ...props
 }: Props<T>) {
+  const { t } = useTranslation();
+  const translatedLabel = label
+    ? t(`legacyText.${label}`, { defaultValue: label })
+    : label;
+
   const rootClassName = clsx(
     useGridLayout
       ? 'grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
@@ -51,13 +57,15 @@ export function BoxSelector<T extends Value>({
 
   return (
     <>
-      {!!label && <FormSectionTitle>{label}</FormSectionTitle>}
+      {!!translatedLabel && (
+        <FormSectionTitle>{translatedLabel}</FormSectionTitle>
+      )}
       <div className='form-group after:clear-both after:table after:content-[""]'>
         <div className="col-sm-12">
           <div
             className={rootClassName}
             role={props.isMulti ? 'group' : 'radiogroup'}
-            aria-label={label}
+            aria-label={translatedLabel}
           >
             {options
               .filter((option) => !option.hide)

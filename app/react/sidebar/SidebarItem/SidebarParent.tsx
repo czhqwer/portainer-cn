@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { PropsWithChildren, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -25,13 +26,18 @@ type Props = {
 export function SidebarParent({
   children,
   icon,
-  label: title,
+  label: originalTitle,
   to,
   params,
   pathOptions,
   listId,
   'data-cy': dataCy,
 }: PropsWithChildren<Props & AutomationTestingProps>) {
+  const { t } = useTranslation();
+  const title = t(`legacyText.${originalTitle}`, {
+    defaultValue: originalTitle,
+  });
+
   const anchorProps = useSidebarSrefActive(
     to,
     undefined,

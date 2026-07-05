@@ -4,12 +4,12 @@
       <rd-widget-body>
         <div class="col-sm-12 form-section-title">
           <span style="float: left">
-            {{ $ctrl.titleText }}
+            {{ $ctrl.translateTitle($ctrl.titleText) }}
           </span>
           <span class="small" style="float: right" ng-if="$ctrl.dismissAction">
             <a ng-click="$ctrl.dismissAction()">
               <pr-icon icon="'x'"></pr-icon>
-              dismiss</a
+              {{ $ctrl.t('common.dismiss') }}</a
             >
           </span>
         </div>

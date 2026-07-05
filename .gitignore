@@ -1,4 +1,4 @@
-node_modules
+﻿node_modules
 bower_components
 dist
 portainer-checksum.txt
@@ -20,4 +20,6 @@ api/docs
 go.work.sum
 
 .vitest
+
+.portainer-data
 

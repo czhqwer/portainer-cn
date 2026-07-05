@@ -1,6 +1,7 @@
 import { type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { MouseEventHandler, PropsWithChildren } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -39,13 +40,15 @@ export function SidebarItem({
   'data-cy': dataCy,
 }: Props) {
   const { isOpen } = useSidebarState();
+  const { t } = useTranslation();
+  const translatedLabel = t(`legacyText.${label}`, { defaultValue: label });
   const anchorProps = useSidebarSrefActive(to, undefined, params, undefined, {
     ignorePaths,
     includePaths,
   });
 
   const sidebarAnchor = (
-    <Wrapper label={label}>
+    <Wrapper label={translatedLabel}>
       <ItemAnchor
         href={anchorProps.href}
         onClick={anchorProps.onClick}
@@ -56,7 +59,7 @@ export function SidebarItem({
         count={count}
       >
         {!!icon && <Icon icon={icon} className={clsx('flex [&>svg]:w-4')} />}
-        {(isOpen || isSubMenu) && <span>{label}</span>}
+        {(isOpen || isSubMenu) && <span>{translatedLabel}</span>}
       </ItemAnchor>
     </Wrapper>
   );
@@ -67,7 +70,7 @@ export function SidebarItem({
     <SidebarTooltip
       content={
         <div className="rounded th-highcontrast:border th-highcontrast:border-solid th-highcontrast:border-white th-highcontrast:bg-black">
-          <Wrapper label={label}>
+          <Wrapper label={translatedLabel}>
             <ItemAnchor
               href={anchorProps.href}
               onClick={anchorProps.onClick}
@@ -77,7 +80,7 @@ export function SidebarItem({
               isSubMenu={isSubMenu}
               count={count}
             >
-              <span className="px-3">{label}</span>
+              <span className="px-3">{translatedLabel}</span>
             </ItemAnchor>
           </Wrapper>
         </div>

@@ -1,6 +1,7 @@
 import { Form, Formik } from 'formik';
 import { useReducer } from 'react';
 import { Laptop } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { EdgeCheckinIntervalField } from '@/react/edge/components/EdgeCheckInIntervalField';
 import { EdgeAsyncIntervalsForm } from '@/react/edge/components/EdgeAsyncIntervalsForm';
@@ -34,6 +35,7 @@ const asyncIntervalFieldSettings = {
 };
 
 export function DeploymentSyncOptions() {
+  const { t } = useTranslation();
   const settingsQuery = useSettings();
   const settingsMutation = useUpdateSettingsMutation();
   const [formKey, resetForm] = useReducer((state) => state + 1, 0);
@@ -64,8 +66,7 @@ export function DeploymentSyncOptions() {
             {({ setFieldValue, values, isValid, dirty }) => (
               <Form className="form-horizontal">
                 <TextTip color="blue">
-                  Default values set here will be available to choose as an
-                  option for edge environment creation
+                  {t('settings.edgeCompute.deploymentSyncDescription')}
                 </TextTip>
 
                 <FormSection title="Check-in Intervals">

@@ -1,6 +1,7 @@
 import { useRouter } from '@uirouter/react';
 import { PropsWithChildren } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { dispatchCacheRefreshEvent } from '@/portainer/services/http-request.helper';
 
@@ -38,6 +39,8 @@ export function PageHeader({
   children,
 }: PropsWithChildren<Props>) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const translatedTitle = title ? translateHeaderText(title, t) : '';
 
   return (
     <>
@@ -51,7 +54,7 @@ export function PageHeader({
       </HeaderContainer>
 
       {showTitle && title && (
-        <PageTitle title={title}>
+        <PageTitle title={translatedTitle}>
           {(reload || children) && (
             <div className="ml-auto flex items-center gap-2">
               {reload && (
@@ -61,7 +64,9 @@ export function PageHeader({
                   onClick={onClickedRefresh}
                   className="m-0 p-0 focus:text-inherit"
                   disabled={loading}
-                  title="Refresh page"
+                  title={t('pageTitles.Refresh page', {
+                    defaultValue: 'Refresh page',
+                  })}
                   data-cy="refresh-page-button"
                 >
                   <RefreshCw className="icon" />
@@ -79,4 +84,22 @@ export function PageHeader({
     dispatchCacheRefreshEvent();
     return onReload ? onReload() : router.stateService.reload();
   }
+}
+
+function translateHeaderText(
+  value: string,
+  t: (key: string, options: { defaultValue: string }) => string
+) {
+  const normalizedValue = stripAngularStringQuotes(value);
+  const i18nExpressionMatch = normalizedValue.match(/^t\('(.+)'\)$/);
+  if (i18nExpressionMatch) {
+    return t(i18nExpressionMatch[1], { defaultValue: normalizedValue });
+  }
+
+  return t('pageTitles.' + normalizedValue, { defaultValue: normalizedValue });
+}
+
+function stripAngularStringQuotes(value: string) {
+  const quoteMatch = value.match(/^['"](.+)['"]$/);
+  return quoteMatch ? quoteMatch[1] : value;
 }

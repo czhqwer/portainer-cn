@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, ArrowLeftRight, CheckCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { LoadingButton } from '@@/buttons';
 import { TextTip } from '@@/Tip/TextTip';
@@ -24,6 +25,7 @@ export function RegistryTestConnection({
   isConnectionTested,
   disabled,
 }: Props) {
+  const { t } = useTranslation();
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
@@ -33,10 +35,10 @@ export function RegistryTestConnection({
     if (!isConnectionTested) {
       setTestResult({
         success: false,
-        message: 'Connection not tested yet.',
+        message: t('registries.testConnection.notTested'),
       });
     }
-  }, [isConnectionTested]);
+  }, [isConnectionTested, t]);
 
   const pingMutation = useCheckRegistryConnectionMutation();
 
@@ -73,8 +75,7 @@ export function RegistryTestConnection({
     if (!values.Username || !values.Password) {
       setTestResult({
         success: false,
-        message:
-          'Please fill in all required fields before testing the connection.',
+        message: t('registries.testConnection.requiredFields'),
       });
       return;
     }
@@ -92,25 +93,21 @@ export function RegistryTestConnection({
         if (response.success) {
           setTestResult({
             success: true,
-            message:
-              response.message ||
-              'Registry connection successful! You can now save the registry.',
+            message: response.message || t('registries.testConnection.success'),
           });
           onTestSuccess();
         } else {
           setTestResult({
             success: false,
             message:
-              response.message ||
-              'Failed to connect to the registry. Please check your credentials.',
+              response.message || t('registries.testConnection.failure'),
           });
         }
       },
       onError() {
         setTestResult({
           success: false,
-          message:
-            'Failed to test registry connection. Please try again later.',
+          message: t('registries.testConnection.error'),
         });
       },
     });

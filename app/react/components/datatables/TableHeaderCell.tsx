@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { CSSProperties, PropsWithChildren, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { TableHeaderSortIcons } from './TableHeaderSortIcons';
 
@@ -25,6 +26,13 @@ export function TableHeaderCell({
   className,
   style,
 }: Props) {
+  const { t } = useTranslation();
+  const renderedTitle = render();
+  const translatedTitle =
+    typeof renderedTitle === 'string'
+      ? t('tableHeaders.' + renderedTitle, { defaultValue: renderedTitle })
+      : renderedTitle;
+
   return (
     <th style={style} className={className}>
       <div className="flex h-full flex-row flex-nowrap items-center gap-1">
@@ -34,7 +42,7 @@ export function TableHeaderCell({
           isSorted={isSorted}
           isSortedDesc={isSortedDesc}
         >
-          {render()}
+          {translatedTitle}
         </SortWrapper>
         {renderFilter ? renderFilter() : null}
       </div>
@@ -56,6 +64,8 @@ function SortWrapper({
   isSorted,
   isSortedDesc = true,
 }: PropsWithChildren<SortWrapperProps>) {
+  const { t } = useTranslation();
+
   if (!canSort) {
     return <>{children}</>;
   }
@@ -68,7 +78,7 @@ function SortWrapper({
         '!ml-0 h-full border-none !bg-transparent !px-0 focus:border-none',
         !isSorted && 'group'
       )}
-      aria-label="Sort column"
+      aria-label={t('common.sortColumn')}
     >
       <div className="flex h-full w-full flex-row items-center justify-start">
         {children}
@@ -95,6 +105,11 @@ export function TableColumnHeaderAngular({
   isSortedDesc = true,
   children,
 }: PropsWithChildren<TableColumnHeaderAngularProps>) {
+  const { t } = useTranslation();
+  const translatedColTitle = t('tableHeaders.' + colTitle, {
+    defaultValue: colTitle,
+  });
+
   return (
     <div className="flex h-full flex-row flex-nowrap">
       <SortWrapper
@@ -102,7 +117,7 @@ export function TableColumnHeaderAngular({
         isSorted={!!isSorted}
         isSortedDesc={isSortedDesc}
       >
-        {colTitle}
+        {translatedColTitle}
         {children}
       </SortWrapper>
     </div>

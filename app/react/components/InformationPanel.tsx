@@ -1,4 +1,5 @@
 import { PropsWithChildren } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 
 import { Widget, WidgetBody } from './Widget';
@@ -18,13 +19,18 @@ export function InformationPanel({
   bodyClassName,
   children,
 }: PropsWithChildren<Props>) {
+  const { t } = useTranslation();
+  const translatedTitle = title
+    ? t('panelTitles.' + title, { defaultValue: title })
+    : title;
+
   return (
     <Widget className="border-none">
       <WidgetBody className={bodyClassName}>
         <div style={wrapperStyle}>
           {title && (
             <div className="form-section-title">
-              <span>{title}</span>
+              <span>{translatedTitle}</span>
               {!!onDismiss && (
                 <span className="small" style={{ float: 'right' }}>
                   <Button
@@ -33,7 +39,7 @@ export function InformationPanel({
                     onClick={() => onDismiss()}
                     data-cy="dismiss-information-panel-button"
                   >
-                    dismiss
+                    {t('common.dismiss')}
                   </Button>
                 </span>
               )}

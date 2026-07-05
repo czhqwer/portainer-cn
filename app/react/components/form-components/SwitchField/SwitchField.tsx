@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import uuid from 'uuid';
 import { ComponentProps, PropsWithChildren, ReactNode, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { FeatureId } from '@/react/portainer/feature-flags/enums';
 import { AutomationTestingProps } from '@/types';
@@ -47,15 +48,25 @@ export function SwitchField({
   const [toggleId] = useState(() => `toggle_${uuid()}`);
   const toggleName = name ? `toggle_${name}` : '';
 
+  const { t } = useTranslation();
+  const translatedLabel = t('formLabels.' + label, { defaultValue: label });
+  const translatedTooltip =
+    typeof tooltip === 'string'
+      ? t('formLabels.' + tooltip, { defaultValue: tooltip })
+      : tooltip;
+
   return (
     <div className={clsx(styles.root, fieldClass)}>
       <label
         className={clsx('space-right control-label !p-0 text-left', labelClass)}
         htmlFor={toggleId}
       >
-        {label}
+        {translatedLabel}
         {tooltip && (
-          <Tooltip message={tooltip} setHtmlMessage={setTooltipHtmlMessage} />
+          <Tooltip
+            message={translatedTooltip}
+            setHtmlMessage={setTooltipHtmlMessage}
+          />
         )}
       </label>
       <Switch

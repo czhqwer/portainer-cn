@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { SelectHTMLAttributes } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 
@@ -21,6 +22,7 @@ export function Select<T extends number | string>({
   'data-cy': dataCy,
   ...props
 }: Props<T> & SelectHTMLAttributes<HTMLSelectElement>) {
+  const { t } = useTranslation();
   return (
     <select
       // eslint-disable-next-line react/jsx-props-no-spreading
@@ -35,7 +37,7 @@ export function Select<T extends number | string>({
           disabled={item.disabled}
           data-cy={`${dataCy}-${item.value}`}
         >
-          {item.label}
+          {t('legacyText.' + item.label, { defaultValue: item.label })}
         </option>
       ))}
     </select>

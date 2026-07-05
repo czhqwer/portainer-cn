@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { ComponentType, PropsWithChildren, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '@@/Icon';
 
@@ -93,6 +94,16 @@ interface CardHeaderProps {
 }
 
 function CardHeader({ title, subtitle, icon, actions }: CardHeaderProps) {
+  const { t } = useTranslation();
+  const translatedTitle =
+    typeof title === 'string'
+      ? t('panelTitles.' + title, { defaultValue: title })
+      : title;
+  const translatedSubtitle =
+    typeof subtitle === 'string'
+      ? t('panelTitles.' + subtitle, { defaultValue: subtitle })
+      : subtitle;
+
   return (
     <div
       className={clsx(
@@ -112,12 +123,12 @@ function CardHeader({ title, subtitle, icon, actions }: CardHeaderProps) {
             />
           )}
           <span className="text-sm font-extrabold leading-tight tracking-wide text-gray-9 th-highcontrast:text-white th-dark:text-gray-4">
-            {title}
+            {translatedTitle}
           </span>
         </div>
         {subtitle && (
           <span className="text-xs leading-tight text-[var(--text-muted-color)]">
-            {subtitle}
+            {translatedSubtitle}
           </span>
         )}
       </div>

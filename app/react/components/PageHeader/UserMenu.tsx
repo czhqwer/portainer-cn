@@ -7,6 +7,7 @@ import {
 import { UISrefProps, useSref } from '@uirouter/react';
 import clsx from 'clsx';
 import { UserIcon, ChevronDown } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { queryClient } from '@/react-tools/react-query';
 import { AutomationTestingProps } from '@/types';
@@ -17,6 +18,7 @@ import { ThemeSelector } from './UserMenuThemeSelector';
 
 export function UserMenu() {
   const { user } = useCurrentUser();
+  const { t } = useTranslation();
 
   return (
     <Menu>
@@ -26,7 +28,9 @@ export function UserMenu() {
           styles.menuButton
         )}
         data-cy="userMenu-button"
-        aria-label="User menu toggle"
+        aria-label={t('legacyText.User menu toggle', {
+          defaultValue: 'User menu toggle',
+        })}
       >
         <div
           className={clsx(
@@ -44,7 +48,7 @@ export function UserMenu() {
 
       <MenuList
         className={styles.menuList}
-        aria-label="User Menu"
+        aria-label={t('legacyText.User Menu', { defaultValue: 'User Menu' })}
         data-cy="userMenu"
       >
         <MenuLink
@@ -79,6 +83,8 @@ function MenuLink({
   'data-cy': dataCy,
 }: MenuLinkProps) {
   const anchorProps = useSref(to, params, options);
+  const { t } = useTranslation();
+  const translatedLabel = t(`legacyText.${label}`, { defaultValue: label });
 
   return (
     <ReachMenuLink
@@ -88,10 +94,10 @@ function MenuLink({
         anchorProps.onClick(e);
       }}
       className={styles.menuLink}
-      aria-label={label}
+      aria-label={translatedLabel}
       data-cy={dataCy}
     >
-      {label}
+      {translatedLabel}
     </ReachMenuLink>
   );
 }

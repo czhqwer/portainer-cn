@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import clsx from 'clsx';
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, IconProps } from '@/react/components/Icon';
 import { pluralize } from '@/portainer/helpers/strings';
@@ -31,6 +32,12 @@ export function DashboardItem({
   children,
   'data-cy': dataCy,
 }: Props) {
+  const { t } = useTranslation();
+  const resourceTypeLabel = t(
+    'dashboardTypes.' + pluralize(value || 0, type, pluralType),
+    { defaultValue: pluralize(value || 0, type, pluralType) }
+  );
+
   const Item = (
     <div
       className={clsx(
@@ -47,7 +54,7 @@ export function DashboardItem({
           isRefetching ? 'opacity-100' : 'opacity-0'
         )}
       >
-        Refreshing total
+        {t('common.refreshingTotal')}
         <Loader2 className="ml-1 h-4 animate-spin-slow" />
       </div>
       <div
@@ -56,10 +63,10 @@ export function DashboardItem({
           isLoading ? 'opacity-100' : 'opacity-0'
         )}
       >
-        Loading total
+        {t('common.loadingTotal')}
         <Loader2 className="ml-1 h-4 animate-spin-slow" />
       </div>
-      <div className="flex items-center" aria-label={type}>
+      <div className="flex items-center" aria-label={resourceTypeLabel}>
         <div
           className={clsx(
             'icon-badge mr-4 !p-2 text-2xl',
@@ -92,7 +99,7 @@ export function DashboardItem({
             )}
             aria-label="resourceType"
           >
-            {pluralize(value || 0, type, pluralType)}
+            {resourceTypeLabel}
           </div>
         </div>
 

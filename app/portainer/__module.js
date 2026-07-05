@@ -1,4 +1,4 @@
-import featureFlagModule from '@/react/portainer/feature-flags';
+﻿import featureFlagModule from '@/react/portainer/feature-flags';
 
 import './rbac';
 
@@ -504,6 +504,7 @@ function isTransitionRequiresAuthentication(transition) {
 }
 
 /* @ngInject */
-function run($transitions) {
+function run($transitions, LegacyI18n) {
   requiresAuthHook($transitions);
+  LegacyI18n.start();
 }

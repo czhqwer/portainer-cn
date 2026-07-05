@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { ModalType } from './types';
 import { useModalContext } from './Modal';
@@ -12,6 +13,11 @@ interface Props {
 
 export function ModalHeader({ title, modalType }: Props) {
   useModalContext();
+  const { t } = useTranslation();
+  const translatedTitle =
+    typeof title === 'string'
+      ? t('modalTitles.' + title, { defaultValue: title })
+      : title;
 
   return (
     <div className={styles.modalHeader}>
@@ -24,7 +30,7 @@ export function ModalHeader({ title, modalType }: Props) {
         />
       )}
       {typeof title === 'string' ? (
-        <h5 className="m-0 font-bold">{title}</h5>
+        <h5 className="m-0 font-bold">{translatedTitle}</h5>
       ) : (
         title
       )}

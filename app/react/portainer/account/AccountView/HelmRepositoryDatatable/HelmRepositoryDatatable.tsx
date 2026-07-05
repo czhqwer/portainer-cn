@@ -1,4 +1,5 @@
 import { useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useCurrentUser } from '@/react/hooks/useUser';
 import helm from '@/assets/ico/vendor/helm.svg?c';
@@ -79,6 +80,8 @@ export function HelmRepositoryDatatable() {
 }
 
 function HelmDatatableDescription({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useTranslation();
+
   return (
     <TextTip color="blue" className="mb-3">
       <p>
@@ -89,13 +92,21 @@ function HelmDatatableDescription({ isAdmin }: { isAdmin: boolean }) {
       </p>
       {isAdmin && (
         <>
-          To manage your helm repositories globally, navigate to{' '}
+          {t(
+            'legacyText.To manage your helm repositories globally, navigate to',
+            {
+              defaultValue:
+                'To manage your helm repositories globally, navigate to',
+            }
+          )}{' '}
           <Link
             to="portainer.settings"
             params={{ '#': 'kubernetes-settings' }}
             data-cy="helm-settings-link"
           >
-            Settings &gt; General
+            {t('legacyText.Settings > General', {
+              defaultValue: 'Settings > General',
+            })}
           </Link>
           .
         </>

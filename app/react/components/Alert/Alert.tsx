@@ -7,6 +7,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { PropsWithChildren, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '@@/Icon';
 
@@ -72,6 +73,10 @@ export function Alert({
   className?: string;
 }>) {
   const { container, header, body, icon } = alertSettings[color];
+  const { t } = useTranslation();
+  const translatedTitle = title
+    ? t('alertTitles.' + title, { defaultValue: title })
+    : title;
 
   return (
     <AlertContainer
@@ -82,7 +87,7 @@ export function Alert({
         <>
           <AlertHeader className={header}>
             <Icon icon={icon} />
-            {title}
+            {translatedTitle}
           </AlertHeader>
           <AlertBody className={body} hasTitle={!!title}>
             {children}

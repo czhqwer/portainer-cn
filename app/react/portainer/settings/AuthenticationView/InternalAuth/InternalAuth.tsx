@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 import { Settings } from '@/react/portainer/settings/types';
 
 import { confirmDestructive } from '@@/modals/confirm';
@@ -20,6 +22,8 @@ export function InternalAuth({
   value,
   onChange,
 }: Props) {
+  const { t } = useTranslation();
+
   async function onSubmit() {
     if (value.RequiredPasswordLength < 10) {
       const confirmed = await confirmDestructive({
@@ -41,13 +45,12 @@ export function InternalAuth({
     <>
       <FormSectionTitle>Information</FormSectionTitle>
       <div className="form-group col-sm-12 text-muted small">
-        When using internal authentication, Portainer will encrypt user
-        passwords and store credentials locally.
+        {t('settings.authentication.internal.description')}
       </div>
 
       <FormSectionTitle>Password rules</FormSectionTitle>
       <div className="form-group col-sm-12 text-muted small">
-        Define minimum length for user-generated passwords.
+        {t('settings.authentication.internal.passwordRulesDescription')}
       </div>
 
       <div className="form-group">

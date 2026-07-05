@@ -1,4 +1,5 @@
 import { Wand2, Plug2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { EnvironmentType } from '@/react/portainer/environments/types';
 import DockerIcon from '@/assets/ico/vendor/docker-icon.svg?c';
@@ -14,7 +15,10 @@ import { useConnectLocalEnvironment } from './useFetchOrCreateLocalEnvironment';
 import styles from './HomeView.module.css';
 
 export function HomeView() {
+  const { t } = useTranslation();
   const localEnvironmentAdded = useConnectLocalEnvironment();
+  const localEnvironmentType = getTypeLabel(localEnvironmentAdded.type);
+
   return (
     <>
       <PageHeader
@@ -35,8 +39,13 @@ export function HomeView() {
                 <div className="text-muted small">
                   {localEnvironmentAdded.status === 'success' && (
                     <p>
-                      We have connected your local environment of{' '}
-                      {getTypeLabel(localEnvironmentAdded.type)} to Portainer.
+                      {t(
+                        'legacyText.We have connected your local environment of {{type}} to Portainer.',
+                        {
+                          type: localEnvironmentType,
+                          defaultValue: `We have connected your local environment of ${localEnvironmentType} to Portainer.`,
+                        }
+                      )}
                     </p>
                   )}
 

@@ -1,4 +1,5 @@
 import { useField, Field } from 'formik';
+import { useTranslation } from 'react-i18next';
 
 import { FeatureId } from '@/react/portainer/feature-flags/enums';
 
@@ -9,6 +10,7 @@ import { SwitchField } from '@@/form-components/SwitchField';
 import { useToggledValue } from '../useToggledValue';
 
 export function ScreenBannerFieldset() {
+  const { t } = useTranslation();
   const [{ name }, { error }] = useField<string>('loginBanner');
   const [isEnabled, setIsEnabled] = useToggledValue('loginBanner');
 
@@ -28,8 +30,7 @@ export function ScreenBannerFieldset() {
         </div>
 
         <div className="col-sm-12 text-muted small mt-2">
-          You can set a custom banner that will be shown to all users during
-          login.
+          {t('settings.loginBanner.description')}
         </div>
       </div>
 

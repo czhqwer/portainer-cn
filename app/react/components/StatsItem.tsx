@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { PropsWithChildren } from 'react';
 import { Cpu, Gpu, Hexagon, LaptopMinimal, MemoryStick } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, IconProps } from '@/react/components/Icon';
 
@@ -16,6 +17,12 @@ export function StatsItem({
   children,
   iconClass,
 }: PropsWithChildren<Props>) {
+  const { t } = useTranslation();
+  const translatedTitle =
+    typeof title === 'string'
+      ? t('legacyText.' + title, { defaultValue: title })
+      : title;
+
   return (
     <div
       className={clsx(
@@ -27,7 +34,7 @@ export function StatsItem({
     >
       <div className="flex items-center gap-1 text-[10px]">
         <Icon className={clsx('icon icon-sm', iconClass)} icon={icon} />
-        <span>{title}</span>
+        <span>{translatedTitle}</span>
       </div>
       <div className="flex w-full items-baseline gap-1">{children}</div>
     </div>
@@ -47,12 +54,16 @@ export function NodeStats({ value }: StatsProps) {
 }
 
 export function CPUStats({ value }: StatsProps) {
+  const { t } = useTranslation();
+
   return (
     <StatsItem icon={Cpu} title="CPUS">
       <span className="min-w-[2ch] text-right font-bold tabular-nums leading-none">
         {value}
       </span>
-      <span className="align-baseline text-xs leading-none">cores</span>
+      <span className="align-baseline text-xs leading-none">
+        {t('legacyText.cores', { defaultValue: 'cores' })}
+      </span>
     </StatsItem>
   );
 }
@@ -84,7 +95,17 @@ export function ContainerStats({
   running,
   stopped,
 }: ContainerStatsProps) {
+  const { t } = useTranslation();
   const actualTotal = total || running + stopped;
+  const runningLabel = t(
+    'legacyText.{{running}} of {{total}} containers running',
+    {
+      running,
+      total: actualTotal,
+      defaultValue: `${running} of ${actualTotal} containers running`,
+    }
+  );
+
   return (
     <StatsItem title="CONTAINERS" icon={Hexagon}>
       <div className="flex w-full flex-col">
@@ -96,7 +117,7 @@ export function ContainerStats({
           className="h-[4px] w-auto rounded bg-gray-4 th-dark:bg-white/10"
           value={running}
           max={Math.max(actualTotal, 1)}
-          aria-label={`${running} of ${actualTotal} containers running`}
+          aria-label={runningLabel}
         />
       </div>
     </StatsItem>

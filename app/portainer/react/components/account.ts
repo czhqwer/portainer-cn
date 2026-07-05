@@ -7,6 +7,7 @@ import { withReactQuery } from '@/react-tools/withReactQuery';
 import { HelmRepositoryDatatable } from '@/react/portainer/account/AccountView/HelmRepositoryDatatable';
 import { AccessTokensDatatable } from '@/react/portainer/account/AccountView/AccessTokensDatatable';
 import { ApplicationSettingsWidget } from '@/react/portainer/account/AccountView/ApplicationSettings';
+import { LanguageSettingsWidget } from '@/react/portainer/account/AccountView/LanguageSettings';
 
 export const accountModule = angular
   .module('portainer.app.react.components.account', [])
@@ -17,6 +18,7 @@ export const accountModule = angular
       []
     )
   )
+  .component('languageSettingsWidget', r2a(LanguageSettingsWidget, []))
   .component(
     'helmRepositoryDatatable',
     r2a(

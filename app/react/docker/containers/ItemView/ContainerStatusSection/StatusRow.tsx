@@ -1,5 +1,7 @@
 import { HeartPulseIcon } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
 
 import { ContainerDetailsViewModel } from '@/docker/models/containerDetails';
 
@@ -10,9 +12,13 @@ export function StatusRow({
 }: {
   container: ContainerDetailsViewModel;
 }) {
+  const { i18n, t } = useTranslation();
   const isRunning = container.State?.Running || false;
   const isCreated = container.State?.Status === 'created';
-  const activityTime = calculateActivityTime(container);
+  const activityTime = calculateActivityTime(container, i18n.language);
+  const stateText = t(`legacyText.${getStateText(container.State)}`, {
+    defaultValue: getStateText(container.State),
+  });
 
   return (
     <div className="flex items-center gap-2">
@@ -21,9 +27,19 @@ export function StatusRow({
         mode={getIconColor(container.State)}
         className="lucide mr-1"
       />
-      {getStateText(container.State)} for {activityTime}
+      {stateText}{' '}
+      {t('legacyText.for {{duration}}', {
+        duration: activityTime,
+        defaultValue: `for ${activityTime}`,
+      })}
       {!isRunning && !isCreated && (
-        <span> with exit code {container.State?.ExitCode}</span>
+        <span>
+          {' '}
+          {t('legacyText.with exit code {{code}}', {
+            code: container.State?.ExitCode,
+            defaultValue: `with exit code ${container.State?.ExitCode}`,
+          })}
+        </span>
       )}
     </div>
   );
@@ -75,22 +91,31 @@ function getStateText(state: ContainerDetailsViewModel['State']): string {
   return 'Stopped';
 }
 
-function calculateActivityTime(container: ContainerDetailsViewModel): string {
+function calculateActivityTime(
+  container: ContainerDetailsViewModel,
+  language: string
+): string {
   if (!container.State) {
     return '';
   }
 
   if (container.State.Running && container.State.StartedAt) {
-    return formatDistanceToNow(parseISO(container.State.StartedAt));
+    return formatActivityDistance(container.State.StartedAt, language);
   }
 
   if (container.State.Status === 'created' && container.Created) {
-    return formatDistanceToNow(parseISO(container.Created));
+    return formatActivityDistance(container.Created, language);
   }
 
   if (container.State.FinishedAt) {
-    return formatDistanceToNow(parseISO(container.State.FinishedAt));
+    return formatActivityDistance(container.State.FinishedAt, language);
   }
 
   return '';
+}
+
+function formatActivityDistance(date: string, language: string): string {
+  return formatDistanceToNow(parseISO(date), {
+    locale: language === 'zh-CN' ? zhCN : undefined,
+  });
 }

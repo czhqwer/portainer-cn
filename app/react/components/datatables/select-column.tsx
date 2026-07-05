@@ -1,4 +1,5 @@
 import { ColumnDef, Row, Table } from '@tanstack/react-table';
+import i18n from '@/i18n';
 
 import { Checkbox } from '@@/form-components/Checkbox';
 
@@ -38,8 +39,16 @@ export function createSelectColumn<T>(dataCy: string): ColumnDef<T> {
         onClick={(e) => {
           e.stopPropagation();
         }}
-        aria-label="Select all rows"
-        title="Select all rows. Hold shift key to select across all pages."
+        aria-label={i18n.t('legacyText.Select all rows', {
+          defaultValue: 'Select all rows',
+        })}
+        title={i18n.t(
+          'legacyText.Select all rows. Hold shift key to select across all pages.',
+          {
+            defaultValue:
+              'Select all rows. Hold shift key to select across all pages.',
+          }
+        )}
       />
     ),
     cell: ({ row, table }) => (
@@ -62,7 +71,9 @@ export function createSelectColumn<T>(dataCy: string): ColumnDef<T> {
 
           lastSelectedId = row.id;
         }}
-        aria-label="Select row"
+        aria-label={i18n.t('legacyText.Select row', {
+          defaultValue: 'Select row',
+        })}
       />
     ),
     enableHiding: false,

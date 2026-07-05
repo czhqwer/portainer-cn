@@ -1,5 +1,6 @@
 import { Fragment, PropsWithChildren } from 'react';
 import { Row } from '@tanstack/react-table';
+import { useTranslation } from 'react-i18next';
 
 import { DefaultType } from './types';
 
@@ -16,12 +17,23 @@ export function TableContent<T extends DefaultType = DefaultType>({
   emptyContent = 'No items available.',
   renderRow,
 }: Props<T>) {
+  const { t } = useTranslation();
+  const translatedEmptyContent = t('legacyText.' + emptyContent, {
+    defaultValue: emptyContent,
+  });
+
   if (isLoading) {
-    return <TableContentOneColumn>Loading...</TableContentOneColumn>;
+    return (
+      <TableContentOneColumn>
+        {t('common.Loading...', { defaultValue: 'Loading...' })}
+      </TableContentOneColumn>
+    );
   }
 
   if (!rows.length) {
-    return <TableContentOneColumn>{emptyContent}</TableContentOneColumn>;
+    return (
+      <TableContentOneColumn>{translatedEmptyContent}</TableContentOneColumn>
+    );
   }
 
   return (

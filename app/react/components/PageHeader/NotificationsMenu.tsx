@@ -9,10 +9,12 @@ import { UISrefProps, useSref } from '@uirouter/react';
 import Moment from 'moment';
 import { useStore } from 'zustand';
 import { AlertCircle, Bell, CheckCircle, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { AutomationTestingProps } from '@/types';
 import { useUser } from '@/react/hooks/useUser';
 import { ToastNotification } from '@/react/portainer/notifications/types';
+import { translateNotificationText } from '@/portainer/services/notifications';
 
 import { Icon } from '@@/Icon';
 import { Link } from '@@/Link';
@@ -24,6 +26,7 @@ import headerStyles from './HeaderTitle.module.css';
 import notificationStyles from './NotificationsMenu.module.css';
 
 export function NotificationsMenu() {
+  const { t } = useTranslation();
   const notificationsStoreState = useStore(notificationsStore);
   const { removeNotification } = notificationsStoreState;
   const { clearUserNotifications } = notificationsStoreState;
@@ -43,7 +46,9 @@ export function NotificationsMenu() {
           headerStyles.menuButton
         )}
         data-cy="notificationsMenu-button"
-        aria-label="Notifications menu toggle"
+        aria-label={t('legacyText.Notifications menu toggle', {
+          defaultValue: 'Notifications menu toggle',
+        })}
       >
         <div
           className={clsx(
@@ -64,7 +69,9 @@ export function NotificationsMenu() {
 
       <MenuList
         className={clsx(headerStyles.menuList, notificationStyles.root)}
-        aria-label="Notifications Menu"
+        aria-label={t('legacyText.Notifications Menu', {
+          defaultValue: 'Notifications Menu',
+        })}
         data-cy="notificationsMenu"
       >
         <div>
@@ -75,7 +82,7 @@ export function NotificationsMenu() {
             )}
           >
             <div>
-              <h4>Notifications</h4>
+              <h4>{t('legacyText.Notifications', { defaultValue: 'Notifications' })}</h4>
             </div>
             <div className={notificationStyles.itemLast}>
               {reducedNotifications?.length > 0 && (
@@ -88,7 +95,7 @@ export function NotificationsMenu() {
                   }}
                   data-cy="notification-deleteButton"
                 >
-                  Clear all
+                  {t('legacyText.Clear all', { defaultValue: 'Clear all' })}
                 </Button>
               )}
             </div>
@@ -114,14 +121,20 @@ export function NotificationsMenu() {
                 to="portainer.notifications"
                 data-cy="notifications-see-all-link"
               >
-                View all notifications
+                {t('legacyText.View all notifications', {
+                  defaultValue: 'View all notifications',
+                })}
               </Link>
             </div>
           </>
         ) : (
           <div className="flex flex-col items-center">
             <Icon icon={Bell} size="xl" />
-            <p className="my-5">You have no notifications yet.</p>
+            <p className="my-5">
+              {t('legacyText.You have no notifications yet.', {
+                defaultValue: 'You have no notifications yet.',
+              })}
+            </p>
           </div>
         )}
       </MenuList>
@@ -144,6 +157,7 @@ interface MenuLinkProps extends AutomationTestingProps, UISrefProps {
 
 function MenuLink({ to, params, notification, onDelete }: MenuLinkProps) {
   const anchorProps = useSref(to, params);
+  const { t } = useTranslation();
 
   return (
     <ReachMenuLink
@@ -161,13 +175,13 @@ function MenuLink({ to, params, notification, onDelete }: MenuLinkProps) {
         </div>
         <div className={notificationStyles.notificationBody}>
           <p className={notificationStyles.notificationTitle}>
-            {notification.title}
+            {translateNotificationText(notification.title)}
           </p>
           <p className={notificationStyles.notificationDetails}>
-            {notification.details}
+            {translateNotificationText(notification.details)}
           </p>
           <p className="small text-muted">
-            {formatTime(notification.timeStamp)}
+            {formatTime(notification.timeStamp, t)}
           </p>
         </div>
         <div className={notificationStyles.deleteButton}>
@@ -188,7 +202,10 @@ function MenuLink({ to, params, notification, onDelete }: MenuLinkProps) {
   );
 }
 
-function formatTime(timeCreated: Date) {
+function formatTime(
+  timeCreated: Date,
+  t: (key: string, options?: Record<string, unknown>) => string
+) {
   const timeStamp = new Date(timeCreated).valueOf().toString();
 
   const diff = Math.floor((Date.now() - parseInt(timeStamp, 10)) / 1000);
@@ -196,16 +213,22 @@ function formatTime(timeCreated: Date) {
   if (diff <= 86400) {
     let interval = Math.floor(diff / 3600);
     if (interval >= 1) {
-      return `${interval} hours ago`;
+      return t('legacyText.{{duration}} ago', {
+        duration: t('legacyText.duration.hour', { count: interval }),
+        defaultValue: `${interval} hours ago`,
+      });
     }
     interval = Math.floor(diff / 60);
     if (interval >= 1) {
-      return `${interval} min ago`;
+      return t('legacyText.{{duration}} ago', {
+        duration: t('legacyText.duration.minute', { count: interval }),
+        defaultValue: `${interval} min ago`,
+      });
     }
   }
   if (diff > 86400) {
     const formatDate = Moment(timeCreated).format('YYYY-MM-DD h:mm:ss');
     return formatDate;
   }
-  return 'Just now';
+  return t('legacyText.Just now', { defaultValue: 'Just now' });
 }

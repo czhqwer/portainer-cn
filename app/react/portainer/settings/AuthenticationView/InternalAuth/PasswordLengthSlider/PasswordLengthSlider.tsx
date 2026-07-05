@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import RcSlider from 'rc-slider';
 import clsx from 'clsx';
 import { Lock, XCircle, CheckCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { SliderTooltip } from '@@/Tip/SliderTooltip';
 
@@ -54,6 +55,7 @@ export function PasswordLengthSlider({
   value,
   onChange,
 }: Props) {
+  const { t } = useTranslation();
   const sliderProps = getSliderProps(value);
 
   function getSliderProps(value: number) {
@@ -93,12 +95,15 @@ export function PasswordLengthSlider({
   const sliderTooltip = useCallback(
     (node, handleProps) => (
       <SliderTooltip
-        value={`${handleProps.value} characters`}
+        value={t('legacyText.{{count}} characters', {
+          count: handleProps.value,
+          defaultValue: `${handleProps.value} characters`,
+        })}
         child={node}
         delay={800}
       />
     ),
-    []
+    [t]
   );
 
   return (
@@ -118,7 +123,9 @@ export function PasswordLengthSlider({
       <div className={clsx('col-sm-2', styles.sliderBadge)}>
         <Badge
           icon={getBadgeIcon(sliderProps.strength)}
-          value={sliderProps.text}
+          value={t('legacyText.' + sliderProps.text, {
+            defaultValue: sliderProps.text,
+          })}
           color={sliderProps.color}
         />
       </div>

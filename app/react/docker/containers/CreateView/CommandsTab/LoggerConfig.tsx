@@ -1,6 +1,7 @@
 import { FormikErrors } from 'formik';
 import { array, object, SchemaOf, string } from 'yup';
 import _ from 'lodash';
+import { useTranslation } from 'react-i18next';
 
 import { useLoggingPlugins } from '@/react/docker/proxy/queries/usePlugins';
 import { useEnvironmentId } from '@/react/hooks/useEnvironmentId';
@@ -30,6 +31,7 @@ export function LoggerConfig({
   apiVersion: number;
   errors?: FormikErrors<LogConfig>;
 }) {
+  const { t } = useTranslation();
   const envId = useEnvironmentId();
   const isPodman = useIsPodman(envId);
   const isSystem = apiVersion < 1.25;
@@ -42,9 +44,14 @@ export function LoggerConfig({
   const isDisabled = !value.type || value.type === 'none';
 
   const pluginOptions = [
-    { label: 'Default logging driver', value: '' },
+    {
+      label: t('legacyText.Default logging driver', {
+        defaultValue: 'Default logging driver',
+      }),
+      value: '',
+    },
     ...pluginsQuery.data.map((p) => ({ label: p, value: p })),
-    { label: 'none', value: 'none' },
+    { label: t('legacyText.none', { defaultValue: 'none' }), value: 'none' },
   ];
 
   return (
@@ -59,15 +66,21 @@ export function LoggerConfig({
       </FormControl>
 
       <TextTip color="blue">
-        Logging driver that will override the default docker daemon driver.
-        Select Default logging driver if you don&apos;t want to override it.
-        Supported logging drivers can be found{' '}
+        {t(
+          "legacyText.Logging driver that will override the default docker daemon driver. Select Default logging driver if you don't want to override it. Supported logging drivers can be found",
+          {
+            defaultValue:
+              "Logging driver that will override the default docker daemon driver. Select Default logging driver if you don't want to override it. Supported logging drivers can be found",
+          }
+        )}{' '}
         <a
           href="https://docs.docker.com/engine/admin/logging/overview/#supported-logging-drivers"
           target="_blank"
           rel="noreferrer"
         >
-          in the Docker documentation
+          {t('legacyText.in the Docker documentation', {
+            defaultValue: 'in the Docker documentation',
+          })}
         </a>
         .
       </TextTip>

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import axios, { parseAxiosError } from '@/portainer/services/axios/axios';
 import { useCurrentEnvironment } from '@/react/hooks/useCurrentEnvironment';
@@ -67,6 +68,7 @@ function RateLimitsInner({
 }) {
   const pullRateLimits = useRateLimits(registryId, environment, onRateLimit);
   const { isPureAdmin } = useCurrentUser();
+  const { t } = useTranslation();
 
   if (!pullRateLimits) {
     return null;
@@ -79,9 +81,16 @@ function RateLimitsInner({
           <TextTip color="blue">
             {isAuthenticated ? (
               <>
-                You are currently using a free account to pull images from
-                DockerHub and will be limited to 200 pulls every 6 hours.
-                Remaining pulls:{' '}
+                {t(
+                  'legacyText.You are currently using a free account to pull images from DockerHub and will be limited to 200 pulls every 6 hours.',
+                  {
+                    defaultValue:
+                      'You are currently using a free account to pull images from DockerHub and will be limited to 200 pulls every 6 hours.',
+                  }
+                )}{' '}
+                {t('legacyText.Remaining pulls', {
+                  defaultValue: 'Remaining pulls:',
+                })}{' '}
                 <span className="font-bold">
                   {pullRateLimits.remaining}/{pullRateLimits.limit}
                 </span>
@@ -90,26 +99,43 @@ function RateLimitsInner({
               <>
                 {isPureAdmin ? (
                   <>
-                    You are currently using an anonymous account to pull images
-                    from DockerHub and will be limited to 100 pulls every 6
-                    hours. You can configure DockerHub authentication in the{' '}
+                    {t(
+                      'legacyText.You are currently using an anonymous account to pull images from DockerHub and will be limited to 100 pulls every 6 hours. You can configure DockerHub authentication in the',
+                      {
+                        defaultValue:
+                          'You are currently using an anonymous account to pull images from DockerHub and will be limited to 100 pulls every 6 hours. You can configure DockerHub authentication in the',
+                      }
+                    )}{' '}
                     <Link
                       to="portainer.registries"
                       data-cy="image-registry-rate-limits-registries-view-link"
                     >
-                      Registries View
+                      {t('legacyText.Registries View', {
+                        defaultValue: 'Registries View',
+                      })}
                     </Link>
-                    . Remaining pulls:{' '}
+                    {t('legacyText.configure DockerHub authentication.', {
+                      defaultValue: '.',
+                    })}{' '}
+                    {t('legacyText.Remaining pulls', {
+                      defaultValue: 'Remaining pulls:',
+                    })}{' '}
                     <span className="font-bold">
                       {pullRateLimits.remaining}/{pullRateLimits.limit}
                     </span>
                   </>
                 ) : (
                   <>
-                    You are currently using an anonymous account to pull images
-                    from DockerHub and will be limited to 100 pulls every 6
-                    hours. Contact your administrator to configure DockerHub
-                    authentication. Remaining pulls:{' '}
+                    {t(
+                      'legacyText.You are currently using an anonymous account to pull images from DockerHub and will be limited to 100 pulls every 6 hours. Contact your administrator to configure DockerHub authentication.',
+                      {
+                        defaultValue:
+                          'You are currently using an anonymous account to pull images from DockerHub and will be limited to 100 pulls every 6 hours. Contact your administrator to configure DockerHub authentication.',
+                      }
+                    )}{' '}
+                    {t('legacyText.Remaining pulls', {
+                      defaultValue: 'Remaining pulls:',
+                    })}{' '}
                     <span className="font-bold">
                       {pullRateLimits.remaining}/{pullRateLimits.limit}
                     </span>
@@ -122,15 +148,23 @@ function RateLimitsInner({
           <TextTip>
             {isAuthenticated ? (
               <>
-                Your authorized pull count quota as a free user is now exceeded.
-                You will not be able to pull any image from the DockerHub
-                registry.
+                {t(
+                  'legacyText.Your authorized pull count quota as a free user is now exceeded. You will not be able to pull any image from the DockerHub registry.',
+                  {
+                    defaultValue:
+                      'Your authorized pull count quota as a free user is now exceeded. You will not be able to pull any image from the DockerHub registry.',
+                  }
+                )}
               </>
             ) : (
               <>
-                Your authorized pull count quota as an anonymous user is now
-                exceeded. You will not be able to pull any image from the
-                DockerHub registry.
+                {t(
+                  'legacyText.Your authorized pull count quota as an anonymous user is now exceeded. You will not be able to pull any image from the DockerHub registry.',
+                  {
+                    defaultValue:
+                      'Your authorized pull count quota as an anonymous user is now exceeded. You will not be able to pull any image from the DockerHub registry.',
+                  }
+                )}
               </>
             )}
           </TextTip>
