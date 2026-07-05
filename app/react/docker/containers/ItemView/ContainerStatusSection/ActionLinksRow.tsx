@@ -1,4 +1,11 @@
-import { FileText, Info, BarChart2, Terminal, Paperclip } from 'lucide-react';
+import {
+  Database,
+  FileText,
+  Info,
+  BarChart2,
+  Terminal,
+  Paperclip,
+} from 'lucide-react';
 
 import { ContainerId } from '@/react/docker/containers/types';
 import { useAuthorizations } from '@/react/hooks/useUser';
@@ -79,6 +86,22 @@ export function ActionLinksRow({ containerId }: Props) {
             >
               <Icon icon={BarChart2} className="lucide space-right" />
               Stats
+            </Button>
+          )}
+          {canExec && (
+            <Button
+              as={Link}
+              props={{
+                to: 'docker.containers.container.database',
+                params: {
+                  id: containerId,
+                },
+              }}
+              data-cy="container-database-link"
+              color="link"
+            >
+              <Icon icon={Database} className="lucide space-right" />
+              Database
             </Button>
           )}
           {canExec && (

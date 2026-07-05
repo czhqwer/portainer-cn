@@ -25,6 +25,7 @@ function QuickActionsCell({
 
   const wrapperState = {
     showQuickActionAttach: !hiddenQuickActions.includes('attach'),
+    showQuickActionDatabase: !hiddenQuickActions.includes('database'),
     showQuickActionExec: !hiddenQuickActions.includes('exec'),
     showQuickActionInspect: !hiddenQuickActions.includes('inspect'),
     showQuickActionLogs: !hiddenQuickActions.includes('logs'),
@@ -33,6 +34,7 @@ function QuickActionsCell({
 
   const someOn =
     wrapperState.showQuickActionAttach ||
+    wrapperState.showQuickActionDatabase ||
     wrapperState.showQuickActionExec ||
     wrapperState.showQuickActionInspect ||
     wrapperState.showQuickActionLogs ||

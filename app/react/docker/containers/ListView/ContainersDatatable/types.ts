@@ -5,7 +5,13 @@ import {
   SettableColumnsTableSettings,
 } from '@@/datatables/types';
 
-export type QuickAction = 'attach' | 'exec' | 'inspect' | 'logs' | 'stats';
+export type QuickAction =
+  | 'attach'
+  | 'database'
+  | 'exec'
+  | 'inspect'
+  | 'logs'
+  | 'stats';
 
 export interface SettableQuickActionsTableSettings<TAction> {
   hiddenQuickActions: TAction[];
