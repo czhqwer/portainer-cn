@@ -41,6 +41,18 @@ export function toListViewModel(
         }
     )
   );
+  const exposedPorts = _.uniqBy(
+    _.compact(
+      response.Ports?.map(
+        (p) =>
+          p.PrivatePort && {
+            private: p.PrivatePort,
+            type: p.Type,
+          }
+      )
+    ),
+    (port) => `${port.private}/${port.type || 'tcp'}`
+  );
 
   let names = response.Names?.map((n) => {
     const nameWithoutSlash = n[0] === '/' ? n.slice(1) : n;
@@ -60,6 +72,7 @@ export function toListViewModel(
     StackName: stackName,
     Status: status,
     Ports: ports,
+    ExposedPorts: exposedPorts,
     StatusText: response.Status,
     Gpus: '',
   };

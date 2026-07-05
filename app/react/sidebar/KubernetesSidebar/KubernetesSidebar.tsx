@@ -7,10 +7,11 @@ import {
   Lock,
   Network,
   Server,
+  TableProperties,
 } from 'lucide-react';
 
 import { EnvironmentId } from '@/react/portainer/environments/types';
-import { Authorized } from '@/react/hooks/useUser';
+import { Authorized, useIsPureAdmin } from '@/react/hooks/useUser';
 import { isBE } from '@/react/portainer/feature-flags/feature-flags.service';
 
 import { DashboardLink } from '../items/DashboardLink';
@@ -24,6 +25,8 @@ interface Props {
 }
 
 export function KubernetesSidebar({ environmentId }: Props) {
+  const isPureAdmin = useIsPureAdmin();
+
   return (
     <>
       <div className="-mt-2 mb-2 flex w-full justify-center">
@@ -102,6 +105,17 @@ export function KubernetesSidebar({ environmentId }: Props) {
         label="Volumes"
         data-cy="k8sSidebar-volumes"
       />
+
+      {isPureAdmin && (
+        <SidebarItem
+          to="kubernetes.databases"
+          params={{ endpointId: environmentId }}
+          icon={TableProperties}
+          label="Databases"
+          labelKey="legacyText.Databases"
+          data-cy="k8sSidebar-databases"
+        />
+      )}
 
       <SidebarParent
         label="More Resources"

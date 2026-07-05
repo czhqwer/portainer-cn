@@ -29,6 +29,7 @@ import { HelmInstallView } from '@/react/kubernetes/helm/install/HelmInstallView
 import { NodeView } from '@/react/kubernetes/cluster/NodeView/NodeView';
 import { KubectlShellView } from '@/react/kubernetes/cluster/KubectlShell/KubectlShellView';
 import { ResourceDetailsYAMLView } from '@/react/kubernetes/more-resources/ResourceDetailsYAMLView';
+import { DatabaseView } from '@/react/docker/containers/DatabaseView/DatabaseView';
 
 export const viewsModule = angular
   .module('portainer.kubernetes.react.views', [])
@@ -112,6 +113,10 @@ export const viewsModule = angular
   .component(
     'kubernetesDashboardView',
     r2a(withUIRouter(withReactQuery(withCurrentUser(DashboardView))), [])
+  )
+  .component(
+    'kubernetesDatabaseView',
+    r2a(withUIRouter(withReactQuery(withCurrentUser(DatabaseView))), [])
   )
   .component(
     'kubernetesConsoleView',

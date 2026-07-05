@@ -501,6 +501,16 @@ angular.module('portainer.kubernetes', ['portainer.app', registriesModule, custo
       },
     };
 
+    const databases = {
+      name: 'kubernetes.databases',
+      url: '/databases',
+      views: {
+        'content@': {
+          component: 'kubernetesDatabaseView',
+        },
+      },
+    };
+
     const deploy = {
       name: 'kubernetes.deploy',
       url: '/deploy?templateId&referrer&tab&buildMethod&chartName',
@@ -926,6 +936,7 @@ angular.module('portainer.kubernetes', ['portainer.app', registriesModule, custo
     $stateRegistryProvider.register(secret);
     $stateRegistryProvider.register(cluster);
     $stateRegistryProvider.register(dashboard);
+    $stateRegistryProvider.register(databases);
     $stateRegistryProvider.register(deploy);
     $stateRegistryProvider.register(helmInstall);
     $stateRegistryProvider.register(node);

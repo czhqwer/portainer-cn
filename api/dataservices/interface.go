@@ -77,6 +77,7 @@ type (
 		BaseCRUD[portainer.DatabaseConnection, portainer.DatabaseConnectionID]
 		GetNextIdentifier() int
 		ConnectionsByContainer(userID portainer.UserID, environmentID portainer.EndpointID, containerID string) ([]portainer.DatabaseConnection, error)
+		ConnectionsByEnvironment(userID portainer.UserID, environmentID portainer.EndpointID) ([]portainer.DatabaseConnection, error)
 	}
 
 	// EdgeGroupService represents a service to manage Edge groups

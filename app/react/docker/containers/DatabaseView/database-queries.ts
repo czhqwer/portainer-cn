@@ -5,21 +5,16 @@ import axios from '@/portainer/services/axios/axios';
 import { withError } from '@/react-tools/react-query';
 import { EnvironmentId } from '@/react/portainer/environments/types';
 
-import { buildDockerProxyUrl } from '../../proxy/queries/buildDockerProxyUrl';
 import { withAgentTargetHeader } from '../../proxy/queries/utils';
-import { queryKeys as containerQueryKeys } from '../queries/query-keys';
-import { ContainerId } from '../types';
+import { buildDockerUrl } from '../../queries/utils/buildDockerUrl';
 
-export type DatabaseConnectionType =
-  | 'mysql'
-  | 'mariadb'
-  | 'postgres'
-  | 'redis';
+export type DatabaseConnectionType = 'mysql' | 'mariadb' | 'postgres' | 'redis';
 
 export type DatabaseConnection = {
   Id: number;
   EnvironmentId: number;
-  ContainerId: string;
+  ContainerId?: string;
+  Scope: 'environment' | 'container';
   CreatedByUserId: number;
   Name: string;
   Type: DatabaseConnectionType;
@@ -42,6 +37,7 @@ export type DatabaseConnectionPayload = {
   Username?: string;
   Password?: string;
   QueryTimeout: number;
+  ContainerId?: string;
 };
 
 export type DatabaseQueryResult = {
@@ -49,51 +45,62 @@ export type DatabaseQueryResult = {
   Rows: Array<Record<string, string>>;
   Message: string;
   Duration: number;
+  RowsAffected?: number;
+  StatementType?: string;
+  Preview?: boolean;
+};
+
+export type DatabaseSchema = {
+  Databases: Array<{
+    Name: string;
+    Tables: Array<{
+      Name: string;
+      Type?: string;
+    }>;
+  }>;
+  Message?: string;
+};
+
+export type DatabaseConnectionTestResult = {
+  Message: string;
 };
 
 const databaseQueryKeys = {
-  list: (environmentId: EnvironmentId, containerId: ContainerId) =>
+  list: (environmentId: EnvironmentId) =>
+    ['environments', environmentId, 'database-connections'] as const,
+  schema: (environmentId: EnvironmentId, connectionId?: number) =>
     [
-      ...containerQueryKeys.container(environmentId, containerId),
+      'environments',
+      environmentId,
       'database-connections',
+      connectionId,
+      'schema',
     ] as const,
 };
 
-export function useDatabaseConnections(
-  environmentId: EnvironmentId,
-  containerId: ContainerId,
-  nodeName?: string
-) {
+export function useDatabaseConnections(environmentId: EnvironmentId) {
   return useQuery({
-    queryKey: databaseQueryKeys.list(environmentId, containerId),
-    queryFn: () => getDatabaseConnections(environmentId, containerId, nodeName),
+    queryKey: databaseQueryKeys.list(environmentId),
+    queryFn: () => getDatabaseConnections(environmentId),
     ...withError('Unable to retrieve database connections'),
   });
 }
 
-export function useCreateDatabaseConnection(
-  environmentId: EnvironmentId,
-  containerId: ContainerId,
-  nodeName?: string
-) {
+export function useCreateDatabaseConnection(environmentId: EnvironmentId) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (payload: DatabaseConnectionPayload) =>
-      createDatabaseConnection(environmentId, containerId, payload, nodeName),
+      createDatabaseConnection(environmentId, payload),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: databaseQueryKeys.list(environmentId, containerId),
+        queryKey: databaseQueryKeys.list(environmentId),
       }),
     ...withError('Unable to create database connection'),
   });
 }
 
-export function useUpdateDatabaseConnection(
-  environmentId: EnvironmentId,
-  containerId: ContainerId,
-  nodeName?: string
-) {
+export function useUpdateDatabaseConnection(environmentId: EnvironmentId) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -103,61 +110,85 @@ export function useUpdateDatabaseConnection(
     }: {
       id: number;
       payload: DatabaseConnectionPayload;
-    }) =>
-      updateDatabaseConnection(
-        environmentId,
-        containerId,
-        id,
-        payload,
-        nodeName
-      ),
+    }) => updateDatabaseConnection(environmentId, id, payload),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: databaseQueryKeys.list(environmentId, containerId),
+        queryKey: databaseQueryKeys.list(environmentId),
       }),
     ...withError('Unable to update database connection'),
   });
 }
 
-export function useDeleteDatabaseConnection(
-  environmentId: EnvironmentId,
-  containerId: ContainerId,
-  nodeName?: string
-) {
+export function useDeleteDatabaseConnection(environmentId: EnvironmentId) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: number) =>
-      deleteDatabaseConnection(environmentId, containerId, id, nodeName),
+    mutationFn: (id: number) => deleteDatabaseConnection(environmentId, id),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: databaseQueryKeys.list(environmentId, containerId),
+        queryKey: databaseQueryKeys.list(environmentId),
       }),
     ...withError('Unable to delete database connection'),
   });
 }
 
-export function useRunDatabaseQuery(
-  environmentId: EnvironmentId,
-  containerId: ContainerId,
-  nodeName?: string
-) {
+export function useRunDatabaseQuery(environmentId: EnvironmentId) {
   return useMutation({
-    mutationFn: ({ id, query }: { id: number; query: string }) =>
-      runDatabaseQuery(environmentId, containerId, id, query, nodeName),
+    mutationFn: ({
+      connection,
+      query,
+      database,
+      preview,
+      nodeName,
+    }: {
+      connection: DatabaseConnection;
+      query: string;
+      database?: string;
+      preview?: boolean;
+      nodeName?: string;
+    }) =>
+      runDatabaseQuery(
+        environmentId,
+        connection,
+        query,
+        database,
+        preview,
+        nodeName
+      ),
     ...withError('Unable to execute database query'),
   });
 }
 
-async function getDatabaseConnections(
+export function useDatabaseSchema(
   environmentId: EnvironmentId,
-  containerId: ContainerId,
+  connection?: DatabaseConnection,
   nodeName?: string
 ) {
+  return useQuery({
+    queryKey: databaseQueryKeys.schema(environmentId, connection?.Id),
+    queryFn: () => getDatabaseSchema(environmentId, connection!, nodeName),
+    enabled: !!connection,
+    ...withError('Unable to retrieve database schema'),
+  });
+}
+
+export function useTestDatabaseConnection(environmentId: EnvironmentId) {
+  return useMutation({
+    mutationFn: ({
+      payload,
+      nodeName,
+    }: {
+      payload: DatabaseConnectionPayload;
+      nodeName?: string;
+    }) => testDatabaseConnection(environmentId, payload, nodeName),
+    ...withError('Unable to test database connection'),
+  });
+}
+
+async function getDatabaseConnections(environmentId: EnvironmentId) {
   try {
     const { data } = await axios.get<DatabaseConnection[]>(
-      databaseConnectionsUrl(environmentId, containerId),
-      { headers: { ...withAgentTargetHeader(nodeName) } }
+      databaseConnectionsUrl(environmentId)
     );
 
     return data;
@@ -168,15 +199,12 @@ async function getDatabaseConnections(
 
 async function createDatabaseConnection(
   environmentId: EnvironmentId,
-  containerId: ContainerId,
-  payload: DatabaseConnectionPayload,
-  nodeName?: string
+  payload: DatabaseConnectionPayload
 ) {
   try {
     const { data } = await axios.post<DatabaseConnection>(
-      databaseConnectionsUrl(environmentId, containerId),
-      payload,
-      { headers: { ...withAgentTargetHeader(nodeName) } }
+      databaseConnectionsUrl(environmentId),
+      payload
     );
 
     return data;
@@ -187,16 +215,13 @@ async function createDatabaseConnection(
 
 async function updateDatabaseConnection(
   environmentId: EnvironmentId,
-  containerId: ContainerId,
   id: number,
-  payload: DatabaseConnectionPayload,
-  nodeName?: string
+  payload: DatabaseConnectionPayload
 ) {
   try {
     const { data } = await axios.put<DatabaseConnection>(
-      databaseConnectionUrl(environmentId, containerId, id),
-      payload,
-      { headers: { ...withAgentTargetHeader(nodeName) } }
+      databaseConnectionUrl(environmentId, id),
+      payload
     );
 
     return data;
@@ -207,14 +232,10 @@ async function updateDatabaseConnection(
 
 async function deleteDatabaseConnection(
   environmentId: EnvironmentId,
-  containerId: ContainerId,
-  id: number,
-  nodeName?: string
+  id: number
 ) {
   try {
-    await axios.delete(databaseConnectionUrl(environmentId, containerId, id), {
-      headers: { ...withAgentTargetHeader(nodeName) },
-    });
+    await axios.delete(databaseConnectionUrl(environmentId, id));
   } catch (e) {
     throw parseAxiosError(e, 'Unable to delete database connection');
   }
@@ -222,15 +243,16 @@ async function deleteDatabaseConnection(
 
 async function runDatabaseQuery(
   environmentId: EnvironmentId,
-  containerId: ContainerId,
-  id: number,
+  connection: DatabaseConnection,
   query: string,
+  database?: string,
+  preview = false,
   nodeName?: string
 ) {
   try {
     const { data } = await axios.post<DatabaseQueryResult>(
-      `${databaseConnectionUrl(environmentId, containerId, id)}/query`,
-      { Query: query },
+      `${databaseConnectionUrl(environmentId, connection)}/query`,
+      { Query: query, Database: database, Preview: preview },
       { headers: { ...withAgentTargetHeader(nodeName) } }
     );
 
@@ -240,28 +262,76 @@ async function runDatabaseQuery(
   }
 }
 
-function databaseConnectionsUrl(
+async function getDatabaseSchema(
   environmentId: EnvironmentId,
-  containerId: ContainerId
+  connection: DatabaseConnection,
+  nodeName?: string
 ) {
-  return buildDockerProxyUrl(
-    environmentId,
-    'containers',
-    containerId,
-    'database-connections'
-  );
+  try {
+    const { data } = await axios.get<DatabaseSchema>(
+      `${databaseConnectionUrl(environmentId, connection)}/schema`,
+      { headers: { ...withAgentTargetHeader(nodeName) } }
+    );
+
+    return data;
+  } catch (e) {
+    throw parseAxiosError(e, 'Unable to retrieve database schema');
+  }
+}
+
+async function testDatabaseConnection(
+  environmentId: EnvironmentId,
+  payload: DatabaseConnectionPayload,
+  nodeName?: string
+) {
+  try {
+    const { data } = await axios.post<DatabaseConnectionTestResult>(
+      databaseConnectionTestUrl(environmentId, payload),
+      payload,
+      { headers: { ...withAgentTargetHeader(nodeName) } }
+    );
+
+    return data;
+  } catch (e) {
+    throw parseAxiosError(e, 'Unable to test database connection');
+  }
+}
+
+function databaseConnectionsUrl(environmentId: EnvironmentId) {
+  return `/endpoints/${environmentId}/database-connections`;
+}
+
+function databaseConnectionTestUrl(
+  environmentId: EnvironmentId,
+  payload: DatabaseConnectionPayload
+) {
+  if (payload.ContainerId) {
+    return buildDockerUrl(
+      environmentId,
+      'containers',
+      payload.ContainerId,
+      'database-connections',
+      'test'
+    );
+  }
+
+  return `${databaseConnectionsUrl(environmentId)}/test`;
 }
 
 function databaseConnectionUrl(
   environmentId: EnvironmentId,
-  containerId: ContainerId,
-  id: number
+  connection: number | DatabaseConnection
 ) {
-  return buildDockerProxyUrl(
-    environmentId,
-    'containers',
-    containerId,
-    'database-connections',
-    id
-  );
+  if (typeof connection !== 'number' && connection.ContainerId) {
+    return buildDockerUrl(
+      environmentId,
+      'containers',
+      connection.ContainerId,
+      'database-connections',
+      connection.Id
+    );
+  }
+
+  const id = typeof connection === 'number' ? connection : connection.Id;
+  return `${databaseConnectionsUrl(environmentId)}/${id}`;
 }

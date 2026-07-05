@@ -158,6 +158,16 @@ angular.module('portainer.docker', ['portainer.app', reactModule]).config([
       },
     };
 
+    var databases = {
+      name: 'docker.databases',
+      url: '/databases',
+      views: {
+        'content@': {
+          component: 'dockerDatabaseView',
+        },
+      },
+    };
+
     var host = {
       name: 'docker.host',
       url: '/host',
@@ -646,6 +656,7 @@ angular.module('portainer.docker', ['portainer.app', reactModule]).config([
     $stateRegistryProvider.register(customTemplatesEdit);
     $stateRegistryProvider.register(docker);
     $stateRegistryProvider.register(dashboard);
+    $stateRegistryProvider.register(databases);
     $stateRegistryProvider.register(host);
     $stateRegistryProvider.register(hostBrowser);
     $stateRegistryProvider.register(events);

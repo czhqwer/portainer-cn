@@ -5,6 +5,7 @@ import {
   List,
   Lock,
   Shuffle,
+  TableProperties,
   Trello,
   Clipboard,
   Edit,
@@ -16,7 +17,11 @@ import {
   type Environment,
   type EnvironmentId,
 } from '@/react/portainer/environments/types';
-import { Authorized, useIsEnvironmentAdmin } from '@/react/hooks/useUser';
+import {
+  Authorized,
+  useIsEnvironmentAdmin,
+  useIsPureAdmin,
+} from '@/react/hooks/useUser';
 import { useInfo } from '@/react/docker/proxy/queries/useInfo';
 import { useApiVersion } from '@/react/docker/proxy/queries/useVersion';
 
@@ -30,6 +35,7 @@ interface Props {
 }
 
 export function DockerSidebar({ environmentId, environment }: Props) {
+  const isPureAdmin = useIsPureAdmin();
   const { authorized: isEnvironmentAdmin } = useIsEnvironmentAdmin({
     adminOnlyCE: true,
   });
@@ -150,6 +156,17 @@ export function DockerSidebar({ environmentId, environment }: Props) {
         label="Volumes"
         data-cy="dockerSidebar-volumes"
       />
+
+      {isPureAdmin && (
+        <SidebarItem
+          to="docker.databases"
+          params={{ endpointId: environmentId }}
+          icon={TableProperties}
+          label="Databases"
+          labelKey="legacyText.Databases"
+          data-cy="dockerSidebar-databases"
+        />
+      )}
 
       {apiVersion >= 1.3 && isSwarmManager && (
         <SidebarItem

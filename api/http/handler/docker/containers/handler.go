@@ -37,9 +37,11 @@ func NewHandler(routePrefix string, bouncer security.BouncerService, dataStore d
 	router.Handle("/{containerId}/recreate", httperror.LoggerHandler(h.recreate)).Methods(http.MethodPost)
 	router.Handle("/{containerId}/database-connections", httperror.LoggerHandler(h.databaseConnectionList)).Methods(http.MethodGet)
 	router.Handle("/{containerId}/database-connections", httperror.LoggerHandler(h.databaseConnectionCreate)).Methods(http.MethodPost)
+	router.Handle("/{containerId}/database-connections/test", httperror.LoggerHandler(h.databaseConnectionTest)).Methods(http.MethodPost)
 	router.Handle("/{containerId}/database-connections/{connectionId}", httperror.LoggerHandler(h.databaseConnectionUpdate)).Methods(http.MethodPut)
 	router.Handle("/{containerId}/database-connections/{connectionId}", httperror.LoggerHandler(h.databaseConnectionDelete)).Methods(http.MethodDelete)
 	router.Handle("/{containerId}/database-connections/{connectionId}/query", httperror.LoggerHandler(h.databaseConnectionQuery)).Methods(http.MethodPost)
+	router.Handle("/{containerId}/database-connections/{connectionId}/schema", httperror.LoggerHandler(h.databaseConnectionSchema)).Methods(http.MethodGet)
 
 	return h
 }

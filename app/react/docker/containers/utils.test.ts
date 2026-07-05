@@ -168,7 +168,24 @@ describe('toListViewModel', () => {
       expect(result.StackName).toBe('my-stack');
       expect(result.NodeName).toBe('node1');
       expect(result.Ports).toHaveLength(1);
+      expect(result.ExposedPorts).toEqual([{ private: 80, type: 'tcp' }]);
       expect(result.StatusText).toBe('Up 5 minutes');
+    });
+
+    it('should keep un-published exposed ports for internal consumers', () => {
+      const response = createMockResponse({
+        Ports: [
+          {
+            PrivatePort: 3306,
+            Type: 'tcp',
+          },
+        ],
+      });
+
+      const result = toListViewModel(response);
+
+      expect(result.Ports).toHaveLength(0);
+      expect(result.ExposedPorts).toEqual([{ private: 3306, type: 'tcp' }]);
     });
   });
 });

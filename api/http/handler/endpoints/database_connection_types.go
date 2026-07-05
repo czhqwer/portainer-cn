@@ -1,4 +1,4 @@
-package containers
+package endpoints
 
 import (
 	"errors"
@@ -9,6 +9,8 @@ import (
 )
 
 const (
+	databaseConnectionScopeEnvironment = portainer.DatabaseConnectionScope("environment")
+
 	defaultQueryTimeout = 30
 	minQueryTimeout     = 5
 	maxQueryTimeout     = 120
@@ -23,6 +25,7 @@ type databaseConnectionPayload struct {
 	Username     string                           `json:"Username"`
 	Password     *string                          `json:"Password"`
 	QueryTimeout int                              `json:"QueryTimeout"`
+	ContainerID  string                           `json:"ContainerId"`
 }
 
 func (payload *databaseConnectionPayload) Validate(r *http.Request) error {
@@ -30,6 +33,7 @@ func (payload *databaseConnectionPayload) Validate(r *http.Request) error {
 	payload.Host = strings.TrimSpace(payload.Host)
 	payload.Database = strings.TrimSpace(payload.Database)
 	payload.Username = strings.TrimSpace(payload.Username)
+	payload.ContainerID = strings.TrimSpace(payload.ContainerID)
 
 	if payload.Name == "" {
 		return errors.New("name is required")
@@ -67,7 +71,7 @@ func (payload *databaseConnectionPayload) Validate(r *http.Request) error {
 type databaseConnectionResponse struct {
 	ID              portainer.DatabaseConnectionID    `json:"Id"`
 	EnvironmentID   portainer.EndpointID              `json:"EnvironmentId"`
-	ContainerID     string                            `json:"ContainerId"`
+	ContainerID     string                            `json:"ContainerId,omitempty"`
 	Scope           portainer.DatabaseConnectionScope `json:"Scope"`
 	CreatedByUserID portainer.UserID                  `json:"CreatedByUserId"`
 	Name            string                            `json:"Name"`
@@ -86,6 +90,9 @@ func newDatabaseConnectionResponse(connection portainer.DatabaseConnection) data
 	scope := connection.Scope
 	if scope == "" {
 		scope = portainer.DatabaseConnectionScope("container")
+		if connection.ContainerID == "" {
+			scope = databaseConnectionScopeEnvironment
+		}
 	}
 
 	return databaseConnectionResponse{

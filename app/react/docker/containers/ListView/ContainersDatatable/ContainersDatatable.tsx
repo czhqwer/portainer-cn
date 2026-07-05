@@ -34,7 +34,6 @@ const actions = [
   buildAction('inspect', 'Inspect'),
   buildAction('stats', 'Stats'),
   buildAction('exec', 'Console'),
-  buildAction('database', 'Database'),
   buildAction('attach', 'Attach'),
 ];
 

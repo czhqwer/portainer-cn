@@ -178,20 +178,21 @@ type (
 
 	// DatabaseConnection represents a saved database connection scoped to a Docker container and owner.
 	DatabaseConnection struct {
-		ID              DatabaseConnectionID   `json:"Id" example:"1"`
-		EnvironmentID   EndpointID             `json:"EnvironmentId" example:"1"`
-		ContainerID     string                 `json:"ContainerId" example:"e90e34656806"`
-		CreatedByUserID UserID                 `json:"CreatedByUserId" example:"1"`
-		Name            string                 `json:"Name" example:"Production database"`
-		Type            DatabaseConnectionType `json:"Type" example:"mysql"`
-		Host            string                 `json:"Host" example:"127.0.0.1"`
-		Port            int                    `json:"Port" example:"3306"`
-		Database        string                 `json:"Database,omitempty" example:"app"`
-		Username        string                 `json:"Username,omitempty" example:"app_user"`
-		Password        string                 `json:"Password,omitempty" swaggerignore:"true"`
-		QueryTimeout    int                    `json:"QueryTimeout" example:"30"`
-		CreatedAt       int64                  `json:"CreatedAt" example:"1697205408"`
-		UpdatedAt       int64                  `json:"UpdatedAt" example:"1697205408"`
+		ID              DatabaseConnectionID    `json:"Id" example:"1"`
+		EnvironmentID   EndpointID              `json:"EnvironmentId" example:"1"`
+		ContainerID     string                  `json:"ContainerId" example:"e90e34656806"`
+		Scope           DatabaseConnectionScope `json:"Scope" example:"environment"`
+		CreatedByUserID UserID                  `json:"CreatedByUserId" example:"1"`
+		Name            string                  `json:"Name" example:"Production database"`
+		Type            DatabaseConnectionType  `json:"Type" example:"mysql"`
+		Host            string                  `json:"Host" example:"127.0.0.1"`
+		Port            int                     `json:"Port" example:"3306"`
+		Database        string                  `json:"Database,omitempty" example:"app"`
+		Username        string                  `json:"Username,omitempty" example:"app_user"`
+		Password        string                  `json:"Password,omitempty" swaggerignore:"true"`
+		QueryTimeout    int                     `json:"QueryTimeout" example:"30"`
+		CreatedAt       int64                   `json:"CreatedAt" example:"1697205408"`
+		UpdatedAt       int64                   `json:"UpdatedAt" example:"1697205408"`
 	}
 
 	// DatabaseConnectionID represents a database connection identifier.
@@ -199,6 +200,9 @@ type (
 
 	// DatabaseConnectionType represents a supported database connection type.
 	DatabaseConnectionType string
+
+	// DatabaseConnectionScope represents the owner scope of a saved database connection.
+	DatabaseConnectionScope string
 
 	// DockerHub represents all the required information to connect and use the
 	// Docker Hub

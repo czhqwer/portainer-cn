@@ -30,6 +30,11 @@ export interface Port {
   private: number;
 }
 
+export interface ExposedPort {
+  private: number;
+  type?: string;
+}
+
 export type ContainerId = string;
 
 /**
@@ -42,6 +47,7 @@ type DecoratedDockerContainer = {
   StackName?: string;
   Status: ContainerStatus;
   Ports: Port[];
+  ExposedPorts: ExposedPort[];
   StatusText: string;
   Gpus: string;
 };

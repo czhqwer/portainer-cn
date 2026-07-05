@@ -1,9 +1,7 @@
 import clsx from 'clsx';
-import { useTranslation } from 'react-i18next';
 
 import { Link } from '@@/Link';
 
-import fullLogoCE from './portainer_logo-CE.svg';
 import portainerIcon from './portainer-p-icon-white.svg';
 import { useSidebarState } from './useSidebarState';
 import styles from './Header.module.css';
@@ -14,7 +12,6 @@ interface Props {
 
 export function Header({ logo: customLogo }: Props) {
   const { isOpen } = useSidebarState();
-  const { t } = useTranslation();
 
   return (
     <div
@@ -29,20 +26,6 @@ export function Header({ logo: customLogo }: Props) {
       >
         <Logo customLogo={customLogo} isOpen={isOpen} />
       </Link>
-      {isOpen && customLogo && (
-        <div
-          className={clsx(
-            'space-x-1 pt-3 text-[9.4px] uppercase tracking-[.28em]',
-            'text-gray-3',
-            'th-dark:text-gray-warm-6'
-          )}
-        >
-          <span className="font-medium">
-            {t('legacyText.Powered by', { defaultValue: 'Powered by' })}
-          </span>
-          <span className="font-semibold">portainer community</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -56,7 +39,7 @@ function getLogo(isOpen: boolean, customLogo?: string) {
     return portainerIcon;
   }
 
-  return fullLogoCE;
+  return undefined;
 }
 
 function Logo({
@@ -67,6 +50,20 @@ function Logo({
   isOpen: boolean;
 }) {
   const logo = getLogo(isOpen, customLogo);
+
+  if (isOpen && !logo) {
+    return (
+      <div className="leading-none">
+        <div className="text-[31px] font-black tracking-normal text-white">
+          PORTAINER.CN
+        </div>
+        <div className="mt-1 flex items-center gap-1 text-[12px] font-bold uppercase tracking-normal text-white">
+          <span className="h-2 w-2 bg-pink-5" />
+          DEPLOY
+        </div>
+      </div>
+    );
+  }
 
   return (
     <img

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,18 +17,20 @@ import (
 	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	portainer "github.com/portainer/portainer/api"
-	"github.com/portainer/portainer/api/logs"
 	httperror "github.com/portainer/portainer/pkg/libhttp/error"
 	"github.com/portainer/portainer/pkg/libhttp/request"
 	"github.com/portainer/portainer/pkg/libhttp/response"
 )
 
 type databaseQueryPayload struct {
-	Query string `json:"Query"`
+	Query    string `json:"Query"`
+	Database string `json:"Database"`
+	Preview  bool   `json:"Preview"`
 }
 
 func (payload *databaseQueryPayload) Validate(r *http.Request) error {
 	payload.Query = strings.TrimSpace(payload.Query)
+	payload.Database = strings.TrimSpace(payload.Database)
 	if payload.Query == "" {
 		return errors.New("query is required")
 	}
@@ -36,11 +39,14 @@ func (payload *databaseQueryPayload) Validate(r *http.Request) error {
 }
 
 type databaseQueryResult struct {
-	Columns  []string            `json:"Columns"`
-	Rows     []map[string]string `json:"Rows"`
-	Message  string              `json:"Message"`
-	Duration float64             `json:"Duration"`
-	Stderr   string              `json:"Stderr,omitempty"`
+	Columns       []string            `json:"Columns"`
+	Rows          []map[string]string `json:"Rows"`
+	Message       string              `json:"Message"`
+	Duration      float64             `json:"Duration"`
+	RowsAffected  int64               `json:"RowsAffected,omitempty"`
+	StatementType string              `json:"StatementType,omitempty"`
+	Preview       bool                `json:"Preview,omitempty"`
+	Stderr        string              `json:"Stderr,omitempty"`
 }
 
 func (handler *Handler) databaseConnectionQuery(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
@@ -65,7 +71,12 @@ func (handler *Handler) databaseConnectionQuery(w http.ResponseWriter, r *http.R
 	}
 	defer client.Close()
 
-	result, err := executeDatabaseQuery(r.Context(), client, containerID, *connection, payload.Query)
+	queryConnection := *connection
+	if payload.Database != "" {
+		queryConnection.Database = payload.Database
+	}
+
+	result, err := executeDatabaseQuery(r.Context(), client, containerID, queryConnection, payload.Query, payload.Preview)
 	if err != nil {
 		return httperror.InternalServerError("Unable to execute database query", err)
 	}
@@ -73,7 +84,7 @@ func (handler *Handler) databaseConnectionQuery(w http.ResponseWriter, r *http.R
 	return response.JSON(w, result)
 }
 
-func executeDatabaseQuery(parentCtx context.Context, client *dockerclient.Client, containerID string, connection portainer.DatabaseConnection, query string) (*databaseQueryResult, error) {
+func executeDatabaseQuery(parentCtx context.Context, client *dockerclient.Client, containerID string, connection portainer.DatabaseConnection, query string, preview bool) (*databaseQueryResult, error) {
 	timeout := connection.QueryTimeout
 	if timeout < minQueryTimeout {
 		timeout = defaultQueryTimeout
@@ -85,7 +96,22 @@ func executeDatabaseQuery(parentCtx context.Context, client *dockerclient.Client
 	ctx, cancel := context.WithTimeout(parentCtx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	cmd, env, err := databaseExecCommand(connection, query)
+	statementType := databaseStatementType(query)
+	if preview {
+		if connection.Type == "redis" {
+			return nil, errors.New("preview is not supported for Redis commands")
+		}
+		if statementType != "update" && statementType != "delete" {
+			return nil, errors.New("preview is only supported for update and delete statements")
+		}
+	}
+
+	commandQuery := query
+	if preview {
+		commandQuery = previewDatabaseQuery(connection.Type, query)
+	}
+
+	cmd, env, err := databaseExecCommand(connection, commandQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +132,7 @@ func executeDatabaseQuery(parentCtx context.Context, client *dockerclient.Client
 	if err != nil {
 		return nil, err
 	}
-	defer logs.CloseAndLogErr(attach)
+	defer attach.Close()
 
 	var stdout, stderr bytes.Buffer
 	if _, err := stdcopy.StdCopy(&stdout, &stderr, attach.Reader); err != nil && !errors.Is(err, io.EOF) {
@@ -127,9 +153,16 @@ func executeDatabaseQuery(parentCtx context.Context, client *dockerclient.Client
 	}
 
 	result := parseDatabaseOutput(connection.Type, stdout.String())
+	if preview {
+		result = previewDatabaseResult(connection.Type, statementType, stdout.String(), result)
+	} else {
+		result.StatementType = statementType
+	}
 	result.Stderr = strings.TrimSpace(stderr.String())
 	result.Duration = time.Since(start).Seconds()
-	result.Message = fmt.Sprintf("%d row(s)", len(result.Rows))
+	if result.Message == "" {
+		result.Message = fmt.Sprintf("%d row(s)", len(result.Rows))
+	}
 
 	return result, nil
 }
@@ -187,6 +220,52 @@ func databaseExecCommand(connection portainer.DatabaseConnection, query string) 
 	}
 
 	return []string{}, env, nil
+}
+
+func previewDatabaseQuery(connectionType portainer.DatabaseConnectionType, query string) string {
+	statement := strings.TrimRight(strings.TrimSpace(query), ";")
+	switch connectionType {
+	case "mysql", "mariadb":
+		return fmt.Sprintf("START TRANSACTION; %s; SELECT ROW_COUNT() AS RowsAffected; ROLLBACK;", statement)
+	case "postgres":
+		return fmt.Sprintf("BEGIN; %s; ROLLBACK;", statement)
+	default:
+		return query
+	}
+}
+
+func previewDatabaseResult(connectionType portainer.DatabaseConnectionType, statementType string, output string, parsed *databaseQueryResult) *databaseQueryResult {
+	rowsAffected := int64(0)
+
+	switch connectionType {
+	case "mysql", "mariadb":
+		if len(parsed.Rows) > 0 {
+			if value, ok := parsed.Rows[0]["RowsAffected"]; ok {
+				rowsAffected, _ = strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+			}
+		}
+	case "postgres":
+		rowsAffected = postgresRowsAffected(output)
+	}
+
+	return &databaseQueryResult{
+		Columns:       []string{},
+		Rows:          []map[string]string{},
+		RowsAffected:  rowsAffected,
+		StatementType: statementType,
+		Preview:       true,
+		Message:       fmt.Sprintf("%d row(s) affected", rowsAffected),
+	}
+}
+
+func postgresRowsAffected(output string) int64 {
+	matches := regexp.MustCompile(`(?m)^(?:UPDATE|DELETE)\s+(\d+)\s*$`).FindStringSubmatch(output)
+	if len(matches) != 2 {
+		return 0
+	}
+
+	rowsAffected, _ := strconv.ParseInt(matches[1], 10, 64)
+	return rowsAffected
 }
 
 func splitRedisCommand(command string) ([]string, error) {
@@ -329,4 +408,22 @@ func normalizedOutputLines(output string) []string {
 	}
 
 	return strings.Split(output, "\n")
+}
+
+func databaseStatementType(query string) string {
+	for _, line := range strings.Split(query, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "--") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+
+		return strings.ToLower(fields[0])
+	}
+
+	return ""
 }

@@ -7,7 +7,6 @@ import {
 
 export type QuickAction =
   | 'attach'
-  | 'database'
   | 'exec'
   | 'inspect'
   | 'logs'

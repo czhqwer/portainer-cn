@@ -1,12 +1,5 @@
 import clsx from 'clsx';
-import {
-  BarChart,
-  Database,
-  FileText,
-  Info,
-  Paperclip,
-  Terminal,
-} from 'lucide-react';
+import { BarChart, FileText, Info, Paperclip, Terminal } from 'lucide-react';
 
 import { ContainerStatus } from '@/react/docker/containers/types';
 import { Authorized } from '@/react/hooks/useUser';
@@ -19,7 +12,6 @@ import styles from './ContainerQuickActions.module.css';
 export interface QuickActionsState {
   showQuickActionAttach: boolean;
   showQuickActionExec: boolean;
-  showQuickActionDatabase: boolean;
   showQuickActionInspect: boolean;
   showQuickActionLogs: boolean;
   showQuickActionStats: boolean;
@@ -95,19 +87,6 @@ export function ContainerQuickActions({
             data-cy={`container-exec-${containerId}`}
           >
             <Icon icon={Terminal} className="space-right" />
-          </Link>
-        </Authorized>
-      )}
-
-      {state.showQuickActionDatabase && isActive && (
-        <Authorized authorizations="DockerExecStart">
-          <Link
-            to="docker.containers.container.database"
-            params={{ id: containerId, nodeName }}
-            title="Database"
-            data-cy={`container-database-${containerId}`}
-          >
-            <Icon icon={Database} className="space-right" />
           </Link>
         </Authorized>
       )}

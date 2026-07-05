@@ -56,6 +56,13 @@ func (service *Service) ConnectionsByContainer(userID portainer.UserID, environm
 	})
 }
 
+func (service *Service) ConnectionsByEnvironment(userID portainer.UserID, environmentID portainer.EndpointID) ([]portainer.DatabaseConnection, error) {
+	return service.ReadAll(func(connection portainer.DatabaseConnection) bool {
+		return connection.CreatedByUserID == userID &&
+			connection.EnvironmentID == environmentID
+	})
+}
+
 type ServiceTx struct {
 	dataservices.BaseDataServiceTx[portainer.DatabaseConnection, portainer.DatabaseConnectionID]
 }
@@ -79,5 +86,12 @@ func (service ServiceTx) ConnectionsByContainer(userID portainer.UserID, environ
 		return connection.CreatedByUserID == userID &&
 			connection.EnvironmentID == environmentID &&
 			connection.ContainerID == containerID
+	})
+}
+
+func (service ServiceTx) ConnectionsByEnvironment(userID portainer.UserID, environmentID portainer.EndpointID) ([]portainer.DatabaseConnection, error) {
+	return service.ReadAll(func(connection portainer.DatabaseConnection) bool {
+		return connection.CreatedByUserID == userID &&
+			connection.EnvironmentID == environmentID
 	})
 }

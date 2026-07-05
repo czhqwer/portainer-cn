@@ -81,6 +81,20 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.AuthenticatedAccess(httperror.LoggerHandler(h.endpointRegistriesList))).Methods(http.MethodGet)
 	h.Handle("/endpoints/{id}/registries/{registryId}",
 		bouncer.AuthenticatedAccess(httperror.LoggerHandler(h.endpointRegistryAccess))).Methods(http.MethodPut)
+	h.Handle("/endpoints/{id}/database-connections",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionList))).Methods(http.MethodGet)
+	h.Handle("/endpoints/{id}/database-connections",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionCreate))).Methods(http.MethodPost)
+	h.Handle("/endpoints/{id}/database-connections/test",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionTest))).Methods(http.MethodPost)
+	h.Handle("/endpoints/{id}/database-connections/{connectionId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionUpdate))).Methods(http.MethodPut)
+	h.Handle("/endpoints/{id}/database-connections/{connectionId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionDelete))).Methods(http.MethodDelete)
+	h.Handle("/endpoints/{id}/database-connections/{connectionId}/query",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionQuery))).Methods(http.MethodPost)
+	h.Handle("/endpoints/{id}/database-connections/{connectionId}/schema",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionSchema))).Methods(http.MethodGet)
 
 	h.Handle("/endpoints/global-key", bouncer.PublicAccess(httperror.LoggerHandler(h.endpointCreateGlobalKey))).Methods(http.MethodPost)
 	h.Handle("/endpoints/{id}/forceupdateservice",

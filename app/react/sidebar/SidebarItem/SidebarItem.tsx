@@ -19,6 +19,7 @@ interface Props extends AutomationTestingProps {
   to: string;
   params?: object;
   label: string;
+  labelKey?: string;
   isSubMenu?: boolean;
   ignorePaths?: string[];
   /** When a create or detail path id differs from the list path, includePaths can be used to specify which paths should also mark the item as active.
@@ -33,6 +34,7 @@ export function SidebarItem({
   to,
   params,
   label,
+  labelKey,
   isSubMenu = false,
   ignorePaths = [],
   includePaths = [],
@@ -41,7 +43,9 @@ export function SidebarItem({
 }: Props) {
   const { isOpen } = useSidebarState();
   const { t } = useTranslation();
-  const translatedLabel = t(`legacyText.${label}`, { defaultValue: label });
+  const translatedLabel = t(labelKey || `legacyText.${label}`, {
+    defaultValue: label,
+  });
   const anchorProps = useSidebarSrefActive(to, undefined, params, undefined, {
     ignorePaths,
     includePaths,
