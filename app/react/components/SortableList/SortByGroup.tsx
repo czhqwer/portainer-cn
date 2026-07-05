@@ -122,19 +122,24 @@ function SortOptionItem<TSortKey extends string>({
   );
 
   if (option.grouped) {
+    const options = translateDropdownOptions(
+      groupOptions?.[option.key],
+      translate
+    );
+
     return (
       <DropdownMenu
         label={translate(`legacyText.${option.label}`, {
           defaultValue: option.label,
         })}
-        options={groupOptions?.[option.key]}
+        options={options}
         selected={isActive ? (value.groupValue ?? null) : null}
         onSelect={(selected) => {
           onChange({ group: option.key, groupValue: selected });
         }}
         badge={
           isActive
-            ? getFilterBadge(groupOptions, option.key, value.groupValue ?? null)
+            ? getFilterBadge(options, value.groupValue ?? null)
             : undefined
         }
         className={className}
@@ -176,16 +181,28 @@ function SortOptionItem<TSortKey extends string>({
   );
 }
 
+function translateDropdownOptions(
+  options: DropdownOption[] | undefined,
+  translate: TFunction
+) {
+  return options?.map((option) => {
+    const label = option.label ?? option.key;
+    return {
+      ...option,
+      label: translate(`legacyText.${label}`, { defaultValue: label }),
+    };
+  });
+}
+
 function getFilterBadge(
-  groupOptions: Record<string, DropdownOption[]> | undefined,
-  groupKey: string,
+  options: DropdownOption[] | undefined,
   filter: string | null
 ): string | null {
   if (!filter) {
     return null;
   }
 
-  const option = groupOptions?.[groupKey]?.find((o) => o.key === filter);
+  const option = options?.find((o) => o.key === filter);
   if (!option) return null;
   return option.label ?? option.key;
 }

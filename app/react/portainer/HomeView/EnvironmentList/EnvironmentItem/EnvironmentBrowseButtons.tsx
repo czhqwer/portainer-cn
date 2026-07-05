@@ -1,5 +1,6 @@
 import { History, Wifi, WifiOff, X } from 'lucide-react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import { Environment } from '@/react/portainer/environments/types';
 import {
@@ -25,6 +26,7 @@ export function EnvironmentBrowseButtons({
   onClickDisconnect(): void;
   isActive: boolean;
 }) {
+  const { t } = useTranslation();
   const isEdgeAsync = checkEdgeAsync(environment);
   const browseStatus = getStatus(isActive, isEdgeAsync);
 
@@ -45,12 +47,20 @@ export function EnvironmentBrowseButtons({
             className="!m-0 w-full !py-0"
             title={
               !isEdgeAsync
-                ? 'Browse snapshot is only available for async environments'
+                ? t(
+                    'legacyText.Browse snapshot is only available for async environments',
+                    {
+                      defaultValue:
+                        'Browse snapshot is only available for async environments',
+                    }
+                  )
                 : ''
             }
             data-cy={`browse-snapshot-link-${environment.Name}`}
           >
-            Browse snapshot
+            {t('legacyText.Browse snapshot', {
+              defaultValue: 'Browse snapshot',
+            })}
           </LinkButton>
         ) : (
           <Button
@@ -61,7 +71,9 @@ export function EnvironmentBrowseButtons({
             size="medium"
             color="light"
           >
-            Close snapshot
+            {t('legacyText.Close snapshot', {
+              defaultValue: 'Close snapshot',
+            })}
           </Button>
         ))}
 
@@ -69,7 +81,13 @@ export function EnvironmentBrowseButtons({
         <LinkButton
           title={
             isEdgeAsync
-              ? 'Live connection is not available for async environments'
+              ? t(
+                  'legacyText.Live connection is not available for async environments',
+                  {
+                    defaultValue:
+                      'Live connection is not available for async environments',
+                  }
+                )
               : ''
           }
           icon={Wifi}
@@ -82,7 +100,7 @@ export function EnvironmentBrowseButtons({
           className="!m-0 w-full !py-0"
           data-cy={`live-connect-link-${environment.Name}`}
         >
-          Live connect
+          {t('legacyText.Live connect', { defaultValue: 'Live connect' })}
         </LinkButton>
       ) : (
         <Button
@@ -93,7 +111,7 @@ export function EnvironmentBrowseButtons({
           size="medium"
           color="primary"
         >
-          Disconnect
+          {t('legacyText.Disconnect', { defaultValue: 'Disconnect' })}
         </Button>
       )}
 
@@ -128,15 +146,19 @@ function BrowseStatusTag({ status }: { status: BrowseStatus }) {
 }
 
 function Disconnected() {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center justify-center gap-2">
       <Icon icon={WifiOff} />
-      Disconnected
+      {t('legacyText.Disconnected', { defaultValue: 'Disconnected' })}
     </div>
   );
 }
 
 function Connected() {
+  const { t } = useTranslation();
+
   return (
     <div
       className={clsx(
@@ -146,12 +168,14 @@ function Connected() {
       )}
     >
       <div className="h-2 w-2 rounded-full bg-green-8 th-dark:bg-green-4" />
-      Connected
+      {t('legacyText.Connected', { defaultValue: 'Connected' })}
     </div>
   );
 }
 
 function Snapshot() {
+  const { t } = useTranslation();
+
   return (
     <div
       className={clsx(
@@ -161,7 +185,9 @@ function Snapshot() {
       )}
     >
       <div className="h-2 w-2 rounded-full bg-warning-7" />
-      Browsing Snapshot
+      {t('legacyText.Browsing Snapshot', {
+        defaultValue: 'Browsing Snapshot',
+      })}
     </div>
   );
 }

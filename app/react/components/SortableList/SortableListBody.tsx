@@ -1,5 +1,6 @@
 import { Loader2, Search } from 'lucide-react';
 import { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '@@/Icon';
 
@@ -27,6 +28,11 @@ export function SortableListBody<T>({
   emptyMessage,
   'data-cy': dataCy,
 }: Props<T>) {
+  const { t } = useTranslation();
+  const translatedEmptyMessage = t(`legacyText.${emptyMessage}`, {
+    defaultValue: emptyMessage,
+  });
+
   if (isLoading) {
     if (groups.length === 0) {
       return <SortableListSkeleton />;
@@ -69,7 +75,7 @@ export function SortableListBody<T>({
   return (
     <div className="flex flex-col items-center gap-3 py-12 text-gray-6">
       <Search className="h-8 w-8" />
-      <p className="text-sm">{emptyMessage}</p>
+      <p className="text-sm">{translatedEmptyMessage}</p>
     </div>
   );
 }

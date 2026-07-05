@@ -1,4 +1,5 @@
 import { Clock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { isoDateFromTimestamp } from '@/portainer/filters/filters';
 import {
@@ -39,6 +40,7 @@ export function EnvironmentCard({
   groupName,
   onClickBrowse,
 }: Props) {
+  const { t } = useTranslation();
   const isEdge = isEdgeEnvironment(environment.Type);
 
   const snapshotTime = getSnapshotTime(environment);
@@ -86,7 +88,9 @@ export function EnvironmentCard({
                   {snapshotTime && (
                     <span
                       className="small text-muted vertical-center gap-1"
-                      title="Last snapshot time"
+                      title={t('legacyText.Last snapshot time', {
+                        defaultValue: 'Last snapshot time',
+                      })}
                     >
                       <Clock className="icon icon-sm" aria-hidden="true" />
                       {snapshotTime} •

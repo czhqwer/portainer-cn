@@ -1,5 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 export interface SortableGroup<T> {
   key: string;
@@ -48,10 +49,19 @@ interface HeaderProps<T> {
 }
 
 function SortableListGroupHeader<T>({ group }: HeaderProps<T>) {
+  const { t } = useTranslation();
   const groupName = group.label ? group.label : group.key;
   const groupIcon = group.icon;
   const count = group.items.length;
   const groupDescription = group.description;
+  const translatedGroupName = t(`legacyText.${groupName}`, {
+    defaultValue: groupName,
+  });
+  const translatedGroupDescription = groupDescription
+    ? t(`legacyText.${groupDescription}`, {
+        defaultValue: groupDescription,
+      })
+    : undefined;
 
   return (
     <div
@@ -68,7 +78,7 @@ function SortableListGroupHeader<T>({ group }: HeaderProps<T>) {
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-semibold text-gray-11 th-highcontrast:text-white th-dark:text-white">
-            {groupName}
+            {translatedGroupName}
           </span>
           {count !== undefined && (
             <span className="inline-flex items-center justify-center rounded-full bg-gray-4 px-2 py-0.5 text-xs font-medium text-gray-9 th-highcontrast:bg-black th-highcontrast:text-white th-dark:bg-gray-7 th-dark:text-gray-3">
@@ -76,9 +86,9 @@ function SortableListGroupHeader<T>({ group }: HeaderProps<T>) {
             </span>
           )}
         </div>
-        {groupDescription && (
+        {translatedGroupDescription && (
           <span className="truncate text-xs text-gray-7 th-highcontrast:text-white th-dark:text-gray-5">
-            {groupDescription}
+            {translatedGroupDescription}
           </span>
         )}
       </div>
