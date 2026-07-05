@@ -95,7 +95,7 @@ func (handler *Handler) authenticate(rw http.ResponseWriter, r *http.Request) *h
 	}
 
 	if user != nil && isUserInitialAdmin(user) || settings.AuthenticationMethod == portainer.AuthenticationInternal {
-		return handler.authenticateInternal(rw, r, user, payload.Password, settings.ForceSecureCookies)
+		return handler.authenticateInternal(rw, r, user, payload.Username, payload.Password, settings.ForceSecureCookies)
 	}
 
 	if settings.AuthenticationMethod == portainer.AuthenticationOAuth {
@@ -113,18 +113,25 @@ func isUserInitialAdmin(user *portainer.User) bool {
 	return int(user.ID) == 1
 }
 
-func (handler *Handler) authenticateInternal(w http.ResponseWriter, r *http.Request, user *portainer.User, password string, forceSecureCookies bool) *httperror.HandlerError {
+func (handler *Handler) authenticateInternal(w http.ResponseWriter, r *http.Request, user *portainer.User, username string, password string, forceSecureCookies bool) *httperror.HandlerError {
 	if err := handler.CryptoService.CompareHashAndData(user.Password, password); err != nil {
+		handler.logAuthentication(r, username, portainer.AuthenticationInternal, portainer.AuthLogTypeFailure)
 		return httperror.NewError(http.StatusUnprocessableEntity, "Invalid credentials", httperrors.ErrUnauthorized)
 	}
 
 	forceChangePassword := !handler.passwordStrengthChecker.Check(password)
 
-	return handler.writeToken(w, r, user, forceChangePassword, forceSecureCookies)
+	if httpErr := handler.writeToken(w, r, user, forceChangePassword, forceSecureCookies); httpErr != nil {
+		return httpErr
+	}
+
+	handler.logAuthentication(r, user.Username, portainer.AuthenticationInternal, portainer.AuthLogTypeSuccess)
+	return nil
 }
 
 func (handler *Handler) authenticateLDAP(w http.ResponseWriter, r *http.Request, user *portainer.User, username, password string, ldapSettings *portainer.LDAPSettings, forceSecureCookies bool) *httperror.HandlerError {
 	if err := handler.LDAPService.AuthenticateUser(username, password, ldapSettings); err != nil {
+		handler.logAuthentication(r, username, portainer.AuthenticationLDAP, portainer.AuthLogTypeFailure)
 		if errors.Is(err, httperrors.ErrUnauthorized) {
 			return httperror.NewError(http.StatusUnprocessableEntity, "Invalid credentials", httperrors.ErrUnauthorized)
 		}
@@ -148,7 +155,12 @@ func (handler *Handler) authenticateLDAP(w http.ResponseWriter, r *http.Request,
 		log.Warn().Err(err).Msg("unable to automatically sync user teams with ldap")
 	}
 
-	return handler.writeToken(w, r, user, false, forceSecureCookies)
+	if httpErr := handler.writeToken(w, r, user, false, forceSecureCookies); httpErr != nil {
+		return httpErr
+	}
+
+	handler.logAuthentication(r, user.Username, portainer.AuthenticationLDAP, portainer.AuthLogTypeSuccess)
+	return nil
 }
 
 func (handler *Handler) writeToken(w http.ResponseWriter, r *http.Request, user *portainer.User, forceChangePassword bool, forceSecureCookies bool) *httperror.HandlerError {

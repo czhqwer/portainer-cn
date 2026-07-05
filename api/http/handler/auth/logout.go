@@ -40,6 +40,10 @@ func (handler *Handler) logout(w http.ResponseWriter, r *http.Request) *httperro
 		return httperror.InternalServerError("Unable to retrieve settings from the database", err)
 	}
 
+	if tokenData != nil {
+		handler.logAuthentication(r, tokenData.Username, settings.AuthenticationMethod, portainer.AuthLogTypeLogout)
+	}
+
 	security.RemoveAuthCookie(w, handler.isSecureCookie(r, settings.ForceSecureCookies))
 
 	return response.Empty(w)

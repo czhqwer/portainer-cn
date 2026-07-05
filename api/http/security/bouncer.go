@@ -103,6 +103,7 @@ func (bouncer *RequestBouncer) PublicAccess(h http.Handler) http.Handler {
 // that might be used later to inside the API operation for extra authorization validation
 // and resource filtering.
 func (bouncer *RequestBouncer) AdminAccess(h http.Handler) http.Handler {
+	h = bouncer.mwAuditActivity(h)
 	h = bouncer.mwUpgradeToRestrictedRequest(h)
 	h = bouncer.mwCheckPortainerAuthorizations(h, true)
 	h = bouncer.mwAuthenticatedUser(h)
@@ -116,6 +117,7 @@ func (bouncer *RequestBouncer) AdminAccess(h http.Handler) http.Handler {
 // that might be used later to inside the API operation for extra authorization validation
 // and resource filtering.
 func (bouncer *RequestBouncer) RestrictedAccess(h http.Handler) http.Handler {
+	h = bouncer.mwAuditActivity(h)
 	h = bouncer.mwUpgradeToRestrictedRequest(h)
 	h = bouncer.mwCheckPortainerAuthorizations(h, false)
 	h = bouncer.mwAuthenticatedUser(h)
@@ -130,6 +132,7 @@ func (bouncer *RequestBouncer) RestrictedAccess(h http.Handler) http.Handler {
 //   - Upgrade to the restricted request
 //   - User is admin or team leader
 func (bouncer *RequestBouncer) TeamLeaderAccess(h http.Handler) http.Handler {
+	h = bouncer.mwAuditActivity(h)
 	h = bouncer.mwIsTeamLeader(h)
 	h = bouncer.mwUpgradeToRestrictedRequest(h)
 	h = bouncer.mwAuthenticatedUser(h)
@@ -143,6 +146,7 @@ func (bouncer *RequestBouncer) TeamLeaderAccess(h http.Handler) http.Handler {
 // that might be used later to inside the API operation for extra authorization validation
 // and resource filtering.
 func (bouncer *RequestBouncer) AuthenticatedAccess(h http.Handler) http.Handler {
+	h = bouncer.mwAuditActivity(h)
 	h = bouncer.mwUpgradeToRestrictedRequest(h)
 	h = bouncer.mwAuthenticatedUser(h)
 

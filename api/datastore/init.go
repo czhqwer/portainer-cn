@@ -55,6 +55,7 @@ func (store *Store) checkOrCreateDefaultSettings() error {
 			TemplatesURL:             "",
 			HelmRepositoryURL:        portainer.DefaultHelmRepositoryURL,
 			UserSessionTimeout:       portainer.DefaultUserSessionTimeout,
+			AuditLogRetentionDays:    portainer.DefaultAuditLogRetentionDays,
 			KubeconfigExpiry:         portainer.DefaultKubeconfigExpiry,
 			KubectlShellImage:        *store.flags.KubectlShellImage,
 
@@ -70,6 +71,11 @@ func (store *Store) checkOrCreateDefaultSettings() error {
 
 	if settings.UserSessionTimeout == "" {
 		settings.UserSessionTimeout = portainer.DefaultUserSessionTimeout
+		return store.Settings().UpdateSettings(settings)
+	}
+
+	if settings.AuditLogRetentionDays == 0 {
+		settings.AuditLogRetentionDays = portainer.DefaultAuditLogRetentionDays
 		return store.Settings().UpdateSettings(settings)
 	}
 

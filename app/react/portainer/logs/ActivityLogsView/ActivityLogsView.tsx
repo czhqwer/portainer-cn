@@ -2,9 +2,8 @@ import { useState } from 'react';
 
 import { PageHeader } from '@@/PageHeader';
 import { useTableStateWithoutStorage } from '@@/datatables/useTableState';
-import { BEOverlay } from '@@/BEFeatureIndicator/BEOverlay';
 
-import { FeatureId } from '../../feature-flags/enums';
+import { useSettings } from '../../settings/queries';
 
 import { ActivityLogsTable } from './ActivityLogsTable';
 import { useActivityLogs, getSortType } from './useActivityLogs';
@@ -13,6 +12,7 @@ import { FilterBar } from './FilterBar';
 
 export function ActivityLogsView() {
   const exportMutation = useExportMutation();
+  const settingsQuery = useSettings();
   const [range, setRange] = useState<
     { start: Date; end: Date | null } | undefined
   >(undefined);
@@ -45,31 +45,30 @@ export function ActivityLogsView() {
       />
 
       <div className="mx-4">
-        <BEOverlay variant="multi-widget" featureId={FeatureId.ACTIVITY_AUDIT}>
-          <div className="row">
-            <div className="col-sm-12">
-              <FilterBar
-                value={range}
-                onChange={setRange}
-                onExport={handleExport}
-              />
-            </div>
+        <div className="row">
+          <div className="col-sm-12">
+            <FilterBar
+              value={range}
+              onChange={setRange}
+              onExport={handleExport}
+              retentionDays={settingsQuery.data?.AuditLogRetentionDays || 7}
+            />
           </div>
-          <ActivityLogsTable
-            sort={tableState.sortBy}
-            onChangeSort={(value) =>
-              tableState.setSortBy(value?.id, value?.desc || false)
-            }
-            limit={tableState.pageSize}
-            onChangeLimit={tableState.setPageSize}
-            keyword={tableState.search}
-            onChangeKeyword={tableState.setSearch}
-            currentPage={page}
-            onChangePage={setPage}
-            totalItems={logsQuery.data?.totalCount || 0}
-            dataset={logsQuery.data?.logs}
-          />
-        </BEOverlay>
+        </div>
+        <ActivityLogsTable
+          sort={tableState.sortBy}
+          onChangeSort={(value) =>
+            tableState.setSortBy(value?.id, value?.desc || false)
+          }
+          limit={tableState.pageSize}
+          onChangeLimit={tableState.setPageSize}
+          keyword={tableState.search}
+          onChangeKeyword={tableState.setSearch}
+          currentPage={page}
+          onChangePage={setPage}
+          totalItems={logsQuery.data?.totalCount || 0}
+          dataset={logsQuery.data?.logs}
+        />
       </div>
     </>
   );

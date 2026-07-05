@@ -6,4 +6,5 @@ export interface Values {
   logo: string;
   logoEnabled: boolean;
   templatesUrl: string;
+  auditLogRetentionDays: number;
 }

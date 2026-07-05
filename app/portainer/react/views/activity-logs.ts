@@ -4,10 +4,11 @@ import { r2a } from '@/react-tools/react2angular';
 import { withUIRouter } from '@/react-tools/withUIRouter';
 import { ActivityLogsView } from '@/react/portainer/logs/ActivityLogsView/ActivityLogsView';
 import { withCurrentUser } from '@/react-tools/withCurrentUser';
+import { withReactQuery } from '@/react-tools/withReactQuery';
 
 export const activityLogsModule = angular
   .module('portainer.app.react.views.activity-logs', [])
   .component(
     'activityLogsView',
-    r2a(withUIRouter(withCurrentUser(ActivityLogsView)), [])
+    r2a(withUIRouter(withReactQuery(withCurrentUser(ActivityLogsView))), [])
   ).name;

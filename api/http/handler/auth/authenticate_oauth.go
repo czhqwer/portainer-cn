@@ -79,6 +79,7 @@ func (handler *Handler) validateOAuth(w http.ResponseWriter, r *http.Request) *h
 	username, err := handler.authenticateOAuth(r.Context(), payload.Code, &settings.OAuthSettings)
 	if err != nil {
 		log.Debug().Err(err).Msg("OAuth authentication error")
+		handler.logAuthentication(r, "", portainer.AuthenticationOAuth, portainer.AuthLogTypeFailure)
 
 		return httperror.InternalServerError("Unable to authenticate through OAuth", httperrors.ErrUnauthorized)
 	}
@@ -89,6 +90,7 @@ func (handler *Handler) validateOAuth(w http.ResponseWriter, r *http.Request) *h
 	}
 
 	if user == nil && !settings.OAuthSettings.OAuthAutoCreateUsers {
+		handler.logAuthentication(r, username, portainer.AuthenticationOAuth, portainer.AuthLogTypeFailure)
 		return httperror.Forbidden("Account not created beforehand in Portainer and automatic user provisioning not enabled", httperrors.ErrUnauthorized)
 	}
 
@@ -118,5 +120,10 @@ func (handler *Handler) validateOAuth(w http.ResponseWriter, r *http.Request) *h
 
 	}
 
-	return handler.writeToken(w, r, user, false, settings.ForceSecureCookies)
+	if httpErr := handler.writeToken(w, r, user, false, settings.ForceSecureCookies); httpErr != nil {
+		return httpErr
+	}
+
+	handler.logAuthentication(r, user.Username, portainer.AuthenticationOAuth, portainer.AuthLogTypeSuccess)
+	return nil
 }

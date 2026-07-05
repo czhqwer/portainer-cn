@@ -126,6 +126,7 @@ export interface Settings {
   AllowDeviceMappingForRegularUsers: boolean;
   AllowContainerCapabilitiesForRegularUsers: boolean;
   ForceSecureCookies: boolean;
+  AuditLogRetentionDays: number;
   GlobalDeploymentOptions?: GlobalDeploymentOptions;
   Edge: {
     PingInterval: number;

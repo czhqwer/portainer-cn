@@ -35,6 +35,7 @@ export function ApplicationSettingsPanel({
     logo: settings.LogoURL,
     snapshotInterval: settings.SnapshotInterval,
     templatesUrl: settings.TemplatesURL,
+    auditLogRetentionDays: settings.AuditLogRetentionDays || 7,
   };
 
   return (
@@ -61,6 +62,7 @@ export function ApplicationSettingsPanel({
         CustomLoginBanner: values.loginBanner,
         TemplatesURL: values.templatesUrl,
         EdgeAgentCheckinInterval: values.edgeAgentCheckinInterval,
+        AuditLogRetentionDays: values.auditLogRetentionDays,
       },
       {
         onSuccess(settings) {
@@ -97,6 +99,22 @@ function InnerForm({ isLoading }: { isLoading: boolean }) {
         isDefaultHidden
         onChange={(value) => setFieldValue('edgeAgentCheckinInterval', value)}
       />
+
+      <FormControl
+        label="Audit log retention"
+        inputId="audit_log_retention_days"
+        errors={errors.auditLogRetentionDays}
+        required
+      >
+        <Field
+          as={Input}
+          id="audit_log_retention_days"
+          name="auditLogRetentionDays"
+          type="number"
+          min="1"
+          max="90"
+        />
+      </FormControl>
 
       <LogoFieldset />
 

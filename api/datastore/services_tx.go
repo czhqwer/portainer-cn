@@ -108,6 +108,14 @@ func (tx *StoreTx) User() dataservices.UserService {
 	return tx.store.UserService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) UserActivityLog() dataservices.UserActivityLogService {
+	return tx.store.UserActivityLogService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) UserAuthenticationLog() dataservices.UserAuthenticationLogService {
+	return tx.store.UserAuthenticationLogService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) Version() dataservices.VersionService { return nil }
 func (tx *StoreTx) Webhook() dataservices.WebhookService { return nil }
 

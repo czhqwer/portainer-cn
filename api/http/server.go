@@ -47,6 +47,7 @@ import (
 	"github.com/portainer/portainer/api/http/handler/teams"
 	"github.com/portainer/portainer/api/http/handler/templates"
 	"github.com/portainer/portainer/api/http/handler/upload"
+	"github.com/portainer/portainer/api/http/handler/useractivity"
 	"github.com/portainer/portainer/api/http/handler/users"
 	"github.com/portainer/portainer/api/http/handler/webhooks"
 	"github.com/portainer/portainer/api/http/handler/websocket"
@@ -280,6 +281,9 @@ func (server *Server) Start(ctx context.Context) error {
 	var uploadHandler = upload.NewHandler(requestBouncer)
 	uploadHandler.FileService = server.FileService
 
+	var userActivityHandler = useractivity.NewHandler(requestBouncer)
+	userActivityHandler.DataStore = server.DataStore
+
 	var userHandler = users.NewHandler(requestBouncer, rateLimiter, server.APIKeyService, passwordStrengthChecker)
 	userHandler.DataStore = server.DataStore
 	userHandler.CryptoService = server.CryptoService
@@ -329,6 +333,7 @@ func (server *Server) Start(ctx context.Context) error {
 		TeamMembershipHandler:  teamMembershipHandler,
 		TemplatesHandler:       templatesHandler,
 		UploadHandler:          uploadHandler,
+		UserActivityHandler:    userActivityHandler,
 		UserHandler:            userHandler,
 		WebSocketHandler:       websocketHandler,
 		WebhookHandler:         webhookHandler,

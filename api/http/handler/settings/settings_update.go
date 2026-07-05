@@ -56,6 +56,8 @@ type settingsUpdatePayload struct {
 	EdgePortainerURL *string `json:"EdgePortainerURL"`
 	// ForceSecureCookies forces the Secure attribute on auth cookies regardless of the detected scheme
 	ForceSecureCookies *bool `example:"false"`
+	// AuditLogRetentionDays is the number of days to keep authentication and activity logs.
+	AuditLogRetentionDays *int `example:"7"`
 }
 
 func (payload *settingsUpdatePayload) Validate(r *http.Request) error {
@@ -103,6 +105,10 @@ func (payload *settingsUpdatePayload) Validate(r *http.Request) error {
 		if payload.OAuthSettings.AuthStyle < oauth2.AuthStyleAutoDetect || payload.OAuthSettings.AuthStyle > oauth2.AuthStyleInHeader {
 			return errors.New("Invalid OAuth AuthStyle")
 		}
+	}
+
+	if payload.AuditLogRetentionDays != nil && (*payload.AuditLogRetentionDays < portainer.MinAuditLogRetentionDays || *payload.AuditLogRetentionDays > portainer.MaxAuditLogRetentionDays) {
+		return errors.Errorf("Invalid audit log retention days. Value must be between %d and %d", portainer.MinAuditLogRetentionDays, portainer.MaxAuditLogRetentionDays)
 	}
 
 	return nil
@@ -212,6 +218,7 @@ func (handler *Handler) updateSettings(tx dataservices.DataStoreTx, payload sett
 	settings.EnforceEdgeID = *cmp.Or(payload.EnforceEdgeID, &settings.EnforceEdgeID)
 	settings.EdgePortainerURL = *cmp.Or(payload.EdgePortainerURL, &settings.EdgePortainerURL)
 	settings.ForceSecureCookies = *cmp.Or(payload.ForceSecureCookies, &settings.ForceSecureCookies)
+	settings.AuditLogRetentionDays = *cmp.Or(payload.AuditLogRetentionDays, &settings.AuditLogRetentionDays)
 
 	if payload.SnapshotInterval != nil && *payload.SnapshotInterval != settings.SnapshotInterval {
 		if err := handler.updateSnapshotInterval(settings, *payload.SnapshotInterval); err != nil {

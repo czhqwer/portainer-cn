@@ -1211,6 +1211,37 @@ type (
 		// ForceSecureCookies forces the Secure attribute on auth cookies regardless of detected scheme.
 		// Enable when Portainer runs behind a TLS-terminating proxy.
 		ForceSecureCookies bool `json:"ForceSecureCookies" example:"false"`
+		// AuditLogRetentionDays is the number of days to keep authentication and activity logs.
+		AuditLogRetentionDays int `json:"AuditLogRetentionDays" example:"7"`
+	}
+
+	// UserAuthenticationLogID represents an authentication log identifier.
+	UserAuthenticationLogID int
+
+	// UserAuthenticationLogType represents the type of authentication event.
+	UserAuthenticationLogType int
+
+	// UserAuthenticationLog represents a user authentication event.
+	UserAuthenticationLog struct {
+		ID        UserAuthenticationLogID   `json:"id"`
+		Timestamp int64                     `json:"timestamp"`
+		Context   AuthenticationMethod      `json:"context"`
+		Type      UserAuthenticationLogType `json:"type"`
+		Username  string                    `json:"username"`
+		Origin    string                    `json:"origin"`
+	}
+
+	// UserActivityLogID represents an activity log identifier.
+	UserActivityLogID int
+
+	// UserActivityLog represents a user activity event.
+	UserActivityLog struct {
+		ID        UserActivityLogID `json:"id"`
+		Timestamp int64             `json:"timestamp"`
+		Context   string            `json:"context"`
+		Action    string            `json:"action"`
+		Username  string            `json:"username"`
+		Payload   string            `json:"payload"`
 	}
 
 	// SnapshotJob represents a scheduled job that can create environment(endpoint) snapshots
@@ -2104,6 +2135,12 @@ const (
 	DefaultUserSessionTimeout = "8h"
 	// DefaultUserSessionTimeout represents the default timeout after which the user session is cleared
 	DefaultKubeconfigExpiry = "0"
+	// DefaultAuditLogRetentionDays represents the default retention for user audit logs.
+	DefaultAuditLogRetentionDays = 7
+	// MinAuditLogRetentionDays represents the minimum retention for user audit logs.
+	MinAuditLogRetentionDays = 1
+	// MaxAuditLogRetentionDays represents the maximum retention for user audit logs.
+	MaxAuditLogRetentionDays = 90
 	// DefaultKubectlShellImage represents the default image and tag for the kubectl shell
 	DefaultKubectlShellImage = "portainer/kubectl-shell:" + APIVersion
 	// WebSocketKeepAlive web socket keep alive for edge environments
@@ -2639,6 +2676,12 @@ func (e SoftwareEdition) GetEditionLabel() string {
 
 	return "CE"
 }
+
+const (
+	AuthLogTypeSuccess UserAuthenticationLogType = 1
+	AuthLogTypeFailure UserAuthenticationLogType = 2
+	AuthLogTypeLogout  UserAuthenticationLogType = 3
+)
 
 const (
 	AzurePathContainerGroups = "/subscriptions/*/providers/Microsoft.ContainerInstance/containerGroups"

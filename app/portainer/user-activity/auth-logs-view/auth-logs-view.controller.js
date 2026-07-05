@@ -1,14 +1,14 @@
 import moment from 'moment';
 
-import { FeatureId } from '@/react/portainer/feature-flags/enums';
-
 export default class AuthLogsViewController {
   /* @ngInject */
-  constructor($async, Notifications) {
+  constructor($async, Notifications, UserActivityService, SettingsService) {
     this.$async = $async;
     this.Notifications = Notifications;
+    this.UserActivityService = UserActivityService;
+    this.SettingsService = SettingsService;
 
-    this.limitedFeature = FeatureId.ACTIVITY_AUDIT;
+    this.retentionDays = 7;
     this.state = {
       keyword: '',
       date: {
@@ -36,6 +36,7 @@ export default class AuthLogsViewController {
     this.onChangeContextFilter = this.onChangeContextFilter.bind(this);
     this.onChangeTypeFilter = this.onChangeTypeFilter.bind(this);
     this.loadLogs = this.loadLogs.bind(this);
+    this.saveLogsAsCSV = this.saveLogsAsCSV.bind(this);
     this.onChangePage = this.onChangePage.bind(this);
     this.onChangeLimit = this.onChangeLimit.bind(this);
   }
@@ -85,7 +86,15 @@ export default class AuthLogsViewController {
     return this.$async(async () => {
       this.state.logs = null;
       try {
-        const { logs, totalCount } = { logs: [], totalCount: 0 };
+        const { logs, totalCount } = await this.UserActivityService.authLogs(
+          (this.state.page - 1) * this.state.limit,
+          this.state.limit,
+          this.state.sort,
+          this.state.keyword,
+          this.state.date,
+          this.state.contextFilter,
+          this.state.typeFilter
+        );
         this.state.logs = decorateLogs(logs);
         this.state.totalItems = totalCount;
       } catch (err) {
@@ -94,8 +103,24 @@ export default class AuthLogsViewController {
     });
   }
 
+  async saveLogsAsCSV() {
+    return this.$async(async () => {
+      try {
+        await this.UserActivityService.saveAuthLogsAsCSV(this.state.sort, this.state.keyword, this.state.date, this.state.contextFilter, this.state.typeFilter);
+      } catch (err) {
+        this.Notifications.error('Failure', err, 'Failed exporting auth activity logs');
+      }
+    });
+  }
+
   $onInit() {
     return this.$async(async () => {
+      try {
+        const settings = await this.SettingsService.settings();
+        this.retentionDays = settings.AuditLogRetentionDays || 7;
+      } catch (err) {
+        this.Notifications.error('Failure', err, 'Unable to retrieve application settings');
+      }
       this.loadLogs();
     });
   }
