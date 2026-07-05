@@ -10,6 +10,7 @@ import { LogView } from '@/react/docker/containers/LogView';
 import { CreateView } from '@/react/docker/containers/CreateView';
 import { InspectView } from '@/react/docker/containers/InspectView/InspectView';
 import { ItemView } from '@/react/docker/containers/ItemView/ItemView';
+import { DatabaseView } from '@/react/docker/containers/DatabaseView/DatabaseView';
 
 export const containersModule = angular
   .module('portainer.docker.react.views.containers', [])
@@ -35,6 +36,10 @@ export const containersModule = angular
   .component(
     'dockerContainerInspectView',
     r2a(withUIRouter(withReactQuery(withCurrentUser(InspectView))), [])
+  )
+  .component(
+    'dockerContainerDatabaseView',
+    r2a(withUIRouter(withReactQuery(withCurrentUser(DatabaseView))), [])
   )
   .config(config).name;
 
@@ -104,6 +109,16 @@ function config($stateRegistryProvider: StateRegistry) {
     views: {
       'content@': {
         component: 'dockerContainerInspectView',
+      },
+    },
+  });
+
+  $stateRegistryProvider.register({
+    name: 'docker.containers.container.database',
+    url: '/database',
+    views: {
+      'content@': {
+        component: 'dockerContainerDatabaseView',
       },
     },
   });

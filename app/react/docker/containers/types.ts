@@ -16,7 +16,13 @@ export enum ContainerStatus {
   Removing = 'removing',
 }
 
-export type QuickAction = 'attach' | 'exec' | 'inspect' | 'logs' | 'stats';
+export type QuickAction =
+  | 'attach'
+  | 'database'
+  | 'exec'
+  | 'inspect'
+  | 'logs'
+  | 'stats';
 
 export interface Port {
   host?: string;

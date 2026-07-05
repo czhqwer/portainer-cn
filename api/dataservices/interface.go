@@ -10,6 +10,7 @@ type (
 		IsErrObjectNotFound(err error) bool
 		AllowList() AllowListService
 		CustomTemplate() CustomTemplateService
+		DatabaseConnection() DatabaseConnectionService
 		EdgeGroup() EdgeGroupService
 		EdgeJob() EdgeJobService
 		EdgeStack() EdgeStackService
@@ -69,6 +70,13 @@ type (
 	CustomTemplateService interface {
 		BaseCRUD[portainer.CustomTemplate, portainer.CustomTemplateID]
 		GetNextIdentifier() int
+	}
+
+	// DatabaseConnectionService represents a service to manage saved database connections.
+	DatabaseConnectionService interface {
+		BaseCRUD[portainer.DatabaseConnection, portainer.DatabaseConnectionID]
+		GetNextIdentifier() int
+		ConnectionsByContainer(userID portainer.UserID, environmentID portainer.EndpointID, containerID string) ([]portainer.DatabaseConnection, error)
 	}
 
 	// EdgeGroupService represents a service to manage Edge groups

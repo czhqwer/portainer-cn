@@ -10,6 +10,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/allowlist"
 	"github.com/portainer/portainer/api/dataservices/apikeyrepository"
 	"github.com/portainer/portainer/api/dataservices/customtemplate"
+	"github.com/portainer/portainer/api/dataservices/databaseconnection"
 	"github.com/portainer/portainer/api/dataservices/dockerhub"
 	"github.com/portainer/portainer/api/dataservices/edgegroup"
 	"github.com/portainer/portainer/api/dataservices/edgejob"
@@ -55,6 +56,7 @@ type Store struct {
 	fileService               portainer.FileService
 	AllowListService          *allowlist.Service
 	CustomTemplateService     *customtemplate.Service
+	DatabaseConnectionService *databaseconnection.Service
 	DockerHubService          *dockerhub.Service
 	EdgeGroupService          *edgegroup.Service
 	EdgeJobService            *edgejob.Service
@@ -106,6 +108,12 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.CustomTemplateService = customTemplateService
+
+	databaseConnectionService, err := databaseconnection.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.DatabaseConnectionService = databaseConnectionService
 
 	dockerhubService, err := dockerhub.NewService(store.connection)
 	if err != nil {
@@ -306,6 +314,11 @@ func (store *Store) AllowList() dataservices.AllowListService {
 // CustomTemplate gives access to the CustomTemplate data management layer
 func (store *Store) CustomTemplate() dataservices.CustomTemplateService {
 	return store.CustomTemplateService
+}
+
+// DatabaseConnection gives access to the DatabaseConnection data management layer
+func (store *Store) DatabaseConnection() dataservices.DatabaseConnectionService {
+	return store.DatabaseConnectionService
 }
 
 // EdgeGroup gives access to the EdgeGroup data management layer

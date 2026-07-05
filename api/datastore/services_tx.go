@@ -22,6 +22,10 @@ func (tx *StoreTx) CustomTemplate() dataservices.CustomTemplateService {
 	return tx.store.CustomTemplateService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) DatabaseConnection() dataservices.DatabaseConnectionService {
+	return tx.store.DatabaseConnectionService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PendingActions() dataservices.PendingActionsService {
 	return tx.store.PendingActionsService.Tx(tx.tx)
 }
