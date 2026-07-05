@@ -35,6 +35,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/teammembership"
 	"github.com/portainer/portainer/api/dataservices/tunnelserver"
 	"github.com/portainer/portainer/api/dataservices/user"
+	"github.com/portainer/portainer/api/dataservices/useractivity"
 	"github.com/portainer/portainer/api/dataservices/version"
 	"github.com/portainer/portainer/api/dataservices/webhook"
 	"github.com/portainer/portainer/api/dataservices/workflow"
@@ -78,11 +79,13 @@ type Store struct {
 	TeamMembershipService     *teammembership.Service
 	TeamService               *team.Service
 	TunnelServerService       *tunnelserver.Service
-	UserService               *user.Service
-	VersionService            *version.Service
-	WebhookService            *webhook.Service
-	WorkflowService           *workflow.Service
-	PendingActionsService     *pendingactions.Service
+	UserService                  *user.Service
+	UserActivityLogService       *useractivity.ActivityLogService
+	UserAuthenticationLogService *useractivity.AuthenticationLogService
+	VersionService               *version.Service
+	WebhookService               *webhook.Service
+	WorkflowService              *workflow.Service
+	PendingActionsService        *pendingactions.Service
 }
 
 func (store *Store) initServices() error {
@@ -238,6 +241,18 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.UserService = userService
+
+	userActivityLogService, err := useractivity.NewActivityLogService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.UserActivityLogService = userActivityLogService
+
+	userAuthenticationLogService, err := useractivity.NewAuthenticationLogService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.UserAuthenticationLogService = userAuthenticationLogService
 
 	apiKeyService, err := apikeyrepository.NewService(store.connection)
 	if err != nil {
@@ -399,6 +414,14 @@ func (store *Store) TunnelServer() dataservices.TunnelServerService {
 // User gives access to the User data management layer
 func (store *Store) User() dataservices.UserService {
 	return store.UserService
+}
+
+func (store *Store) UserActivityLog() dataservices.UserActivityLogService {
+	return store.UserActivityLogService
+}
+
+func (store *Store) UserAuthenticationLog() dataservices.UserAuthenticationLogService {
+	return store.UserAuthenticationLogService
 }
 
 // Version gives access to the Version data management layer

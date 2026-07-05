@@ -11,6 +11,7 @@ export function SettingsViewModel(data) {
   this.EnableEdgeComputeFeatures = data.EnableEdgeComputeFeatures;
   this.FeatureFlagSettings = data.FeatureFlagSettings;
   this.UserSessionTimeout = data.UserSessionTimeout;
+  this.AuditLogRetentionDays = data.AuditLogRetentionDays;
   this.KubeconfigExpiry = data.KubeconfigExpiry;
   this.HelmRepositoryURL = data.HelmRepositoryURL;
   this.TrustOnFirstConnect = data.TrustOnFirstConnect;

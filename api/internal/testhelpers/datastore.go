@@ -37,6 +37,8 @@ type testDatastore struct {
 	team                    dataservices.TeamService
 	tunnelServer            dataservices.TunnelServerService
 	user                    dataservices.UserService
+	userActivityLog         dataservices.UserActivityLogService
+	userAuthenticationLog   dataservices.UserAuthenticationLogService
 	version                 dataservices.VersionService
 	webhook                 dataservices.WebhookService
 	pendingActionsService   dataservices.PendingActionsService
@@ -90,6 +92,12 @@ func (d *testDatastore) TeamMembership() dataservices.TeamMembershipService { re
 func (d *testDatastore) Team() dataservices.TeamService                     { return d.team }
 func (d *testDatastore) TunnelServer() dataservices.TunnelServerService     { return d.tunnelServer }
 func (d *testDatastore) User() dataservices.UserService                     { return d.user }
+func (d *testDatastore) UserActivityLog() dataservices.UserActivityLogService {
+	return d.userActivityLog
+}
+func (d *testDatastore) UserAuthenticationLog() dataservices.UserAuthenticationLogService {
+	return d.userAuthenticationLog
+}
 func (d *testDatastore) Version() dataservices.VersionService               { return d.version }
 func (d *testDatastore) Webhook() dataservices.WebhookService               { return d.webhook }
 func (d *testDatastore) Workflow() dataservices.WorkflowService             { return d.workflow }

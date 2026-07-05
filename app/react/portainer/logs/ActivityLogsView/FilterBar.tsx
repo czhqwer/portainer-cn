@@ -10,10 +10,12 @@ export function FilterBar({
   value,
   onChange,
   onExport,
+  retentionDays,
 }: {
   value: { start: Date; end: Date | null } | undefined;
   onChange: (value?: { start: Date; end: Date | null }) => void;
   onExport: () => void;
+  retentionDays: number;
 }) {
   return (
     <Widget>
@@ -22,7 +24,8 @@ export function FilterBar({
           <DateRangePicker value={value} onChange={onChange} />
 
           <TextTip color="blue">
-            Portainer user activity logs have a maximum retention of 7 days.
+            Portainer user activity logs have a maximum retention of{' '}
+            {retentionDays} days.
           </TextTip>
 
           <div className="mt-4">

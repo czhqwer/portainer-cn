@@ -28,6 +28,10 @@ export function validation(): SchemaOf<Values> {
             ),
       }),
     snapshotInterval: string().required('Snapshot interval is required'),
+    auditLogRetentionDays: number()
+      .required('Audit log retention is required')
+      .min(1, 'Audit log retention must be at least 1 day')
+      .max(90, 'Audit log retention must be at most 90 days'),
     templatesUrl: string()
       .default('')
       .test(

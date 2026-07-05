@@ -32,6 +32,8 @@ type (
 		Team() TeamService
 		TunnelServer() TunnelServerService
 		User() UserService
+		UserActivityLog() UserActivityLogService
+		UserAuthenticationLog() UserAuthenticationLogService
 		Version() VersionService
 		Webhook() WebhookService
 		Workflow() WorkflowService
@@ -257,6 +259,16 @@ type (
 		UserByUsername(username string) (*portainer.User, error)
 		UserIDByUsername(username string) (portainer.UserID, error)
 		UsersByRole(role portainer.UserRole) ([]portainer.User, error)
+	}
+
+	UserActivityLogService interface {
+		BaseCRUD[portainer.UserActivityLog, portainer.UserActivityLogID]
+		GetNextIdentifier() int
+	}
+
+	UserAuthenticationLogService interface {
+		BaseCRUD[portainer.UserAuthenticationLog, portainer.UserAuthenticationLogID]
+		GetNextIdentifier() int
 	}
 
 	// VersionService represents a service for managing version data
