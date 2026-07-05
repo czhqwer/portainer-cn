@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { useCurrentStateAndParams } from '@uirouter/react';
+import { useTranslation } from 'react-i18next';
 import {
   Database,
   Pencil,
@@ -66,6 +67,7 @@ const portByType: Record<DatabaseConnectionType, number> = {
 };
 
 export function DatabaseView() {
+  const { t } = useTranslation();
   const {
     params: { endpointId, id: containerId, nodeName },
   } = useCurrentStateAndParams();
@@ -155,7 +157,14 @@ export function DatabaseView() {
   }
 
   async function handleDelete(connection: DatabaseConnection) {
-    if (!window.confirm(`Delete database connection "${connection.Name}"?`)) {
+    if (
+      !window.confirm(
+        t('legacyText.Delete database connection "{{name}}"?', {
+          name: connection.Name,
+          defaultValue: `Delete database connection "${connection.Name}"?`,
+        })
+      )
+    ) {
       return;
     }
 
@@ -193,12 +202,20 @@ export function DatabaseView() {
           <section className="mb-4">
             <div className="form-section-title">
               <Icon icon={Database} className="lucide space-right" />
-              Connections
+              {t('panelTitles.Connections', { defaultValue: 'Connections' })}
             </div>
             <div className="vertical-center mb-2">
-              {connectionsQuery.isLoading && <span>Loading...</span>}
+              {connectionsQuery.isLoading && (
+                <span>
+                  {t('common.Loading...', { defaultValue: 'Loading...' })}
+                </span>
+              )}
               {!connectionsQuery.isLoading && connections.length === 0 && (
-                <span className="text-muted">No saved connections</span>
+                <span className="text-muted">
+                  {t('legacyText.No saved connections', {
+                    defaultValue: 'No saved connections',
+                  })}
+                </span>
               )}
             </div>
             <div className="list-group">
@@ -240,7 +257,7 @@ export function DatabaseView() {
           <section>
             <div className="form-section-title">
               <Icon icon={Search} className="lucide space-right" />
-              Query
+              {t('panelTitles.Query', { defaultValue: 'Query' })}
             </div>
 
             <div className="mb-3">
@@ -312,7 +329,7 @@ export function DatabaseView() {
                 data-cy="database-run-query-button"
               >
                 <Icon icon={Play} className="lucide space-right" />
-                Run
+                {t('buttons.Run', { defaultValue: 'Run' })}
               </LoadingButton>
               {activeConnection && (
                 <ButtonGroup>
@@ -323,7 +340,7 @@ export function DatabaseView() {
                     onClick={() => editConnection(activeConnection)}
                   >
                     <Icon icon={Pencil} className="lucide space-right" />
-                    Edit
+                    {t('buttons.Edit', { defaultValue: 'Edit' })}
                   </Button>
                   <Button
                     type="button"
@@ -332,7 +349,7 @@ export function DatabaseView() {
                     onClick={() => handleDelete(activeConnection)}
                   >
                     <Icon icon={Trash2} className="lucide space-right" />
-                    Delete
+                    {t('buttons.Delete', { defaultValue: 'Delete' })}
                   </Button>
                 </ButtonGroup>
               )}
@@ -361,6 +378,8 @@ function ConnectionForm({
   onSave: (event: FormEvent) => void;
   onChange: (values: ConnectionFormValues) => void;
 }) {
+  const { t } = useTranslation();
+
   function updateValue<T extends keyof ConnectionFormValues>(
     key: T,
     value: ConnectionFormValues[T]
@@ -381,7 +400,13 @@ function ConnectionForm({
     <form onSubmit={onSave}>
       <div className="form-section-title">
         <Icon icon={isEditing ? Pencil : Plus} className="lucide space-right" />
-        {isEditing ? 'Edit connection' : 'Add connection'}
+        {isEditing
+          ? t('panelTitles.Edit connection', {
+              defaultValue: 'Edit connection',
+            })
+          : t('panelTitles.Add connection', {
+              defaultValue: 'Add connection',
+            })}
       </div>
 
       <FormControl label="Name" inputId="database-connection-name">
@@ -462,7 +487,13 @@ function ConnectionForm({
           type="password"
           value={values.Password}
           onChange={(event) => updateValue('Password', event.target.value)}
-          placeholder={isEditing ? 'Leave blank to keep current password' : ''}
+          placeholder={
+            isEditing
+              ? t('placeholders.Leave blank to keep current password', {
+                  defaultValue: 'Leave blank to keep current password',
+                })
+              : ''
+          }
         />
       </FormControl>
 
@@ -490,7 +521,7 @@ function ConnectionForm({
           data-cy="database-save-connection-button"
         >
           <Icon icon={Save} className="lucide space-right" />
-          Save
+          {t('buttons.Save', { defaultValue: 'Save' })}
         </LoadingButton>
         {isEditing && (
           <Button
@@ -500,7 +531,7 @@ function ConnectionForm({
             onClick={onCancel}
           >
             <Icon icon={X} className="lucide space-right" />
-            Cancel
+            {t('buttons.Cancel', { defaultValue: 'Cancel' })}
           </Button>
         )}
       </div>
@@ -518,6 +549,8 @@ function QueryResult({
     Duration: number;
   };
 }) {
+  const { t } = useTranslation();
+
   if (!result) {
     return null;
   }
@@ -541,7 +574,9 @@ function QueryResult({
         <tbody>
           {result.Rows.length === 0 && (
             <tr>
-              <td colSpan={Math.max(result.Columns.length, 1)}>No rows</td>
+              <td colSpan={Math.max(result.Columns.length, 1)}>
+                {t('legacyText.No rows', { defaultValue: 'No rows' })}
+              </td>
             </tr>
           )}
           {result.Rows.map((row, rowIndex) => (
