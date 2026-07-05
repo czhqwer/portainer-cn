@@ -60,3 +60,9 @@ div.limited-be {
 .form-control.limited-be[disabled] {
   background-color: transparent !important;
 }
+
+.limited-be,
+.be-indicator,
+.be-indicator-container {
+  display: none !important;
+}

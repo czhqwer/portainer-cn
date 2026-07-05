@@ -42,6 +42,10 @@ export function DnEntriesField({
     movable: true,
   });
 
+  if (isLimited) {
+    return null;
+  }
+
   return (
     <>
       <div>

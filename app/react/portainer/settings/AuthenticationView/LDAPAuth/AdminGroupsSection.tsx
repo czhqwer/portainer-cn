@@ -92,6 +92,10 @@ export function AdminGroupsSection({
   const enableAssignAdminGroup = groups !== null && groups.length > 0;
   const groupOptions = (groups ?? []).map((g) => ({ label: g, value: g }));
 
+  if (isLimited) {
+    return null;
+  }
+
   return (
     <FormSection
       title={

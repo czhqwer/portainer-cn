@@ -69,15 +69,7 @@ class PorAccessManagementController {
   }
 
   roleLabel(role) {
-    if (!this.limitedToBE) {
-      return role.Name;
-    }
-
-    if (this.isRoleLimitedToBE(role)) {
-      return `${role.Name} (Business Feature)`;
-    }
-
-    return `${role.Name} (Default)`;
+    return role.Name;
   }
 
   async $onInit() {
@@ -90,7 +82,7 @@ class PorAccessManagementController {
       const parent = this.inheritFrom;
 
       const roles = await this.RoleService.roles();
-      this.roles = _.orderBy(roles, 'Priority', 'asc');
+      this.roles = _.orderBy(roles, 'Priority', 'asc').filter((role) => !this.isRoleLimitedToBE(role));
       this.formValues = {
         multiselectOutput: [],
         selectedRole: this.roles.find((role) => !this.isRoleLimitedToBE(role)),

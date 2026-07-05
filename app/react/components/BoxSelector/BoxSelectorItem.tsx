@@ -10,7 +10,6 @@ import { getFeatureDetails } from '@@/BEFeatureIndicator/utils';
 
 import styles from './BoxSelectorItem.module.css';
 import { BoxSelectorOption, Value } from './types';
-import { LimitedToBeBoxSelectorIndicator } from './LimitedToBeBoxSelectorIndicator';
 import { BoxOption } from './BoxOption';
 import { LogoIcon } from './LogoIcon';
 
@@ -38,9 +37,11 @@ export function BoxSelectorItem<T extends Value>({
   checkIcon = Check,
 }: Props<T>) {
   const { t } = useTranslation();
-  const { limitedToBE = false, url: featureUrl } = getFeatureDetails(
-    option.feature
-  );
+  const { limitedToBE = false } = getFeatureDetails(option.feature);
+  if (limitedToBE) {
+    return null;
+  }
+
   const label = t(`legacyText.${option.label}`, {
     defaultValue: option.label,
   });
@@ -68,13 +69,6 @@ export function BoxSelectorItem<T extends Value>({
       type={type}
       checkIcon={checkIcon}
     >
-      {limitedToBE && (
-        <LimitedToBeBoxSelectorIndicator
-          url={featureUrl}
-          // show tooltip only for radio type options because be-only checkbox options can't be selected
-          showTooltip={type === 'radio'}
-        />
-      )}
       <div
         className={clsx('flex min-w-[140px] gap-2', {
           'opacity-30': limitedToBE,

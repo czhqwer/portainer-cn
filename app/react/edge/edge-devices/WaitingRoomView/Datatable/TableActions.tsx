@@ -11,17 +11,10 @@ import { openModal } from '@@/modals';
 import { TooltipWithChildren } from '@@/Tip/TooltipWithChildren';
 import { DeleteButton } from '@@/buttons/DeleteButton';
 
-import { useAssociateDeviceMutation, useLicenseOverused } from '../queries';
+import { useAssociateDeviceMutation } from '../queries';
 import { WaitingRoomEnvironment } from '../types';
 
 import { AssignmentDialog } from './AssignmentDialog/AssignmentDialog';
-
-const overusedTooltip = (
-  <>
-    Associating devices is disabled as your node count exceeds your license
-    limit
-  </>
-);
 
 export function TableActions({
   selectedRows,
@@ -31,7 +24,6 @@ export function TableActions({
   const isPureAdmin = useIsPureAdmin();
   const associateMutation = useAssociateDeviceMutation();
   const removeMutation = useDeleteEnvironmentsMutation();
-  const licenseOverused = useLicenseOverused(selectedRows.length);
 
   return (
     <>
@@ -46,23 +38,17 @@ export function TableActions({
 
       <TooltipWithChildren
         message={
-          licenseOverused ? (
-            overusedTooltip
-          ) : (
-            <>
-              Associate device(s) and assigning edge groups, group and tags with
-              overriding options
-            </>
-          )
+          <>
+            Associate device(s) and assigning edge groups, group and tags with
+            overriding options
+          </>
         }
       >
         <span>
           <Button
             onClick={() => handleAssociateAndAssign(selectedRows)}
             data-cy="associate-and-assign-button"
-            disabled={
-              selectedRows.length === 0 || licenseOverused || !isPureAdmin
-            }
+            disabled={selectedRows.length === 0 || !isPureAdmin}
             color="secondary"
             icon={CheckCircle}
           >
@@ -73,21 +59,17 @@ export function TableActions({
 
       <TooltipWithChildren
         message={
-          licenseOverused ? (
-            overusedTooltip
-          ) : (
-            <>
-              Associate device(s) based on their pre-assigned edge groups, group
-              and tags
-            </>
-          )
+          <>
+            Associate device(s) based on their pre-assigned edge groups, group
+            and tags
+          </>
         }
       >
         <span>
           <Button
             onClick={() => handleAssociateDevice(selectedRows)}
             data-cy="associate-device-button"
-            disabled={selectedRows.length === 0 || licenseOverused}
+            disabled={selectedRows.length === 0}
             icon={Check}
           >
             Associate Device

@@ -4,6 +4,7 @@ import { ComponentProps, PropsWithChildren, ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { FeatureId } from '@/react/portainer/feature-flags/enums';
+import { isLimitedToBE } from '@/react/portainer/feature-flags/feature-flags.service';
 import { AutomationTestingProps } from '@/types';
 
 import { Tooltip } from '@@/Tip/Tooltip';
@@ -45,6 +46,7 @@ export function SwitchField({
   setTooltipHtmlMessage,
   valueExplanation,
 }: PropsWithChildren<Props>) {
+  const limitedToBE = isLimitedToBE(featureId);
   const [toggleId] = useState(() => `toggle_${uuid()}`);
   const toggleName = name ? `toggle_${name}` : '';
 
@@ -54,6 +56,10 @@ export function SwitchField({
     typeof tooltip === 'string'
       ? t('formLabels.' + tooltip, { defaultValue: tooltip })
       : tooltip;
+
+  if (limitedToBE) {
+    return null;
+  }
 
   return (
     <div className={clsx(styles.root, fieldClass)}>

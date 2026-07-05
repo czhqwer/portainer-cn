@@ -8,9 +8,7 @@ import {
   useUpdateDefaultRegistrySettingsMutation,
 } from '@/react/portainer/settings/queries';
 
-import { Tooltip } from '@@/Tip/Tooltip';
 import { Button } from '@@/buttons';
-import { BEFeatureIndicator } from '@@/BEFeatureIndicator';
 
 export function DefaultRegistryAction() {
   const settingsQuery = usePublicSettings({
@@ -24,6 +22,9 @@ export function DefaultRegistryAction() {
   const hideDefaultRegistry = settingsQuery.data;
 
   const isLimited = isLimitedToBE(FeatureId.HIDE_DOCKER_HUB_ANONYMOUS);
+  if (isLimited) {
+    return null;
+  }
 
   return (
     <>
@@ -34,17 +35,9 @@ export function DefaultRegistryAction() {
             data-cy="hide-default-registry-button"
             icon={EyeOff}
             onClick={() => handleShowOrHide(true)}
-            disabled={isLimited}
           >
             Hide for all users
           </Button>
-          <BEFeatureIndicator featureId={FeatureId.HIDE_DOCKER_HUB_ANONYMOUS} />
-          {isLimited && (
-            <Tooltip
-              message="This hides the option in any registry dropdown prompts but does not prevent a user from deploying anonymously from Docker Hub directly via YAML.
-            Note: Docker Hub (anonymous) will continue to show as the ONLY option if there are NO other registries available to the user."
-            />
-          )}
         </div>
       ) : (
         <div className="vertical-center">
@@ -55,10 +48,6 @@ export function DefaultRegistryAction() {
           >
             Show for all users
           </Button>
-          <Tooltip
-            message="This reveals the option in any registry dropdown prompts.
-                    (but note that the Docker Hub (anonymous) option only shows if there is no credentialled Docker Hub option available to the user)."
-          />
         </div>
       )}
     </>

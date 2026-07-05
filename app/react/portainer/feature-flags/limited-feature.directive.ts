@@ -1,11 +1,8 @@
-import _ from 'lodash';
 import { IAttributes, IDirective, IScope } from 'angular';
 
 import { FeatureState } from '@/react/portainer/feature-flags/enums';
 
 import { selectShow } from './feature-flags.service';
-
-const BASENAME = 'limitedFeature';
 
 /* @ngInject */
 export function limitedFeatureDirective(): IDirective {
@@ -21,10 +18,6 @@ export function limitedFeatureDirective(): IDirective {
       return;
     }
 
-    const limitedFeatureAttrs = Object.keys(attrs)
-      .filter((attr) => attr.startsWith(BASENAME) && attr !== `${BASENAME}Dir`)
-      .map((attr) => [_.kebabCase(attr.replace(BASENAME, '')), attrs[attr]]);
-
     const state = selectShow(featureId);
 
     if (state === FeatureState.HIDDEN) {
@@ -36,9 +29,6 @@ export function limitedFeatureDirective(): IDirective {
       return;
     }
 
-    limitedFeatureAttrs.forEach(([attr, value = attr]) => {
-      const currentValue = elem.attr(attr) || '';
-      elem.attr(attr, `${currentValue} ${value}`.trim());
-    });
+    elem.hide();
   }
 }

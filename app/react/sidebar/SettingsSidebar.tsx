@@ -1,6 +1,5 @@
 import {
   Users,
-  Award,
   Settings,
   HardDrive,
   Radio,
@@ -113,15 +112,6 @@ export function SettingsSidebar({
             icon={Radio}
             data-cy="portainerSidebar-registries"
           />
-
-          {isBE && (
-            <SidebarItem
-              to="portainer.licenses"
-              label="Licenses"
-              icon={Award}
-              data-cy="portainerSidebar-licenses"
-            />
-          )}
 
           <SidebarParent
             label="Logs"

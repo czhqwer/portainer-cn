@@ -43,6 +43,10 @@ export function GroupDnBuilder({
     }
   }, [index, onChange, suffix, value]);
 
+  if (isLimited) {
+    return null;
+  }
+
   return (
     <>
       <GroupNameField
