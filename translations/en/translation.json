@@ -4082,7 +4082,23 @@
     "Enter a note about this application...": "Enter a note about this application...",
     "Filter or add expression, e.g. *.yml, src/**/*.ts": "Filter or add expression, e.g. *.yml, src/**/*.ts",
     "confirm prune images modal": "confirm prune images modal",
-    "confirm recreate container modal": "confirm recreate container modal"
+    "confirm recreate container modal": "confirm recreate container modal",
+    "Are you sure that you want to remove the selected stack(s) ? This will remove all the applications associated to the stack(s).": "Are you sure that you want to remove the selected stack(s) ? This will remove all the applications associated to the stack(s).",
+    "Are you sure you want to delete the selected job(s)?": "Are you sure you want to delete the selected job(s)?",
+    "Do you want to remove the selected application(s)?": "Do you want to remove the selected application(s)?",
+    "Do you want to remove the selected storage class(es)?": "Do you want to remove the selected storage class(es)?",
+    "Do you want to remove the selected volume claim(s)?": "Do you want to remove the selected volume claim(s)?",
+    "Do you want to remove the selected volume(s)?": "Do you want to remove the selected volume(s)?",
+    "Omit": "Omit",
+    "Role binding(s) successfully removed": "Role binding(s) successfully removed",
+    "Service account(s) successfully removed": "Service account(s) successfully removed",
+    "Unable to delete role bindings(s)": "Unable to delete role bindings(s)",
+    "Unable to delete service account(s)": "Unable to delete service account(s)",
+    "Unable to delete service(s)": "Unable to delete service(s)",
+    "Unable to remove applications": "Unable to remove applications",
+    "Unable to save configuration: environment not found": "Unable to save configuration: environment not found",
+    "Unable to update namespace": "Unable to update namespace",
+    "URL:": "URL:"
   },
   "settings": {
     "applicationTemplates": {

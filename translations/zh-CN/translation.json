@@ -4142,7 +4142,23 @@
     "Enter a note about this application...": "输入该应用的备注...",
     "Filter or add expression, e.g. *.yml, src/**/*.ts": "筛选或添加表达式，例如 *.yml、src/**/*.ts",
     "confirm prune images modal": "确认清理镜像",
-    "confirm recreate container modal": "确认重建容器"
+    "confirm recreate container modal": "确认重建容器",
+    "Are you sure that you want to remove the selected stack(s) ? This will remove all the applications associated to the stack(s).": "确定要移除所选堆栈吗？这将移除与这些堆栈关联的所有应用。",
+    "Are you sure you want to delete the selected job(s)?": "确定要删除所选任务吗？",
+    "Do you want to remove the selected application(s)?": "确定要移除所选应用吗？",
+    "Do you want to remove the selected storage class(es)?": "确定要移除所选存储类吗？",
+    "Do you want to remove the selected volume claim(s)?": "确定要移除所选持久卷声明吗？",
+    "Do you want to remove the selected volume(s)?": "确定要移除所选数据卷吗？",
+    "Omit": "省略",
+    "Role binding(s) successfully removed": "角色绑定移除成功",
+    "Service account(s) successfully removed": "服务账号移除成功",
+    "Unable to delete role bindings(s)": "无法删除角色绑定",
+    "Unable to delete service account(s)": "无法删除服务账号",
+    "Unable to delete service(s)": "无法删除服务",
+    "Unable to remove applications": "无法移除应用",
+    "Unable to save configuration: environment not found": "无法保存配置：未找到环境",
+    "Unable to update namespace": "无法更新命名空间",
+    "URL:": "URL："
   },
   "settings": {
     "applicationTemplates": {
