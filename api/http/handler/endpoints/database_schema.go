@@ -37,13 +37,10 @@ func (handler *Handler) databaseConnectionSchema(w http.ResponseWriter, r *http.
 	if httpErr != nil {
 		return httpErr
 	}
-	if connection.ContainerID != "" {
-		return httperror.BadRequest("Container database connections must be inspected through the Docker endpoint", errors.New("container database connection"))
-	}
 
 	result, err := executeDirectDatabaseSchema(r.Context(), *connection)
 	if err != nil {
-		return httperror.InternalServerError("Unable to retrieve database schema", err)
+		return writeDatabaseError(w, "Unable to retrieve database schema", err)
 	}
 
 	return response.JSON(w, result)

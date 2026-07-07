@@ -1,7 +1,6 @@
 package endpoints
 
 import (
-	"errors"
 	"net/http"
 
 	portainer "github.com/portainer/portainer/api"
@@ -25,14 +24,19 @@ func (handler *Handler) databaseConnectionTest(w http.ResponseWriter, r *http.Re
 		return httperror.BadRequest("Invalid request payload", err)
 	}
 
-	if payload.ContainerID != "" {
-		return httperror.BadRequest("Container database connections must be tested through the Docker endpoint", errors.New("container database connection"))
+	connection := databaseConnectionFromPayload(endpointID, payload)
+	if payload.ID != 0 && connection.Password == "" {
+		// 编辑连接测试时，空密码沿用已保存密码，确保“留空保留当前密码”的提示与测试行为一致。
+		storedConnection, httpErr := handler.databaseConnectionByID(r, endpointID, payload.ID)
+		if httpErr != nil {
+			return httpErr
+		}
+
+		connection.Password = storedConnection.Password
 	}
 
-	connection := databaseConnectionFromPayload(endpointID, payload)
-
 	if _, err := executeDirectDatabaseQuery(r.Context(), connection, databaseTestQuery(connection.Type), false); err != nil {
-		return httperror.InternalServerError("Unable to test database connection", err)
+		return writeDatabaseError(w, "Unable to test database connection", err)
 	}
 
 	return response.JSON(w, databaseConnectionTestResponse{Message: "Connection successful"})

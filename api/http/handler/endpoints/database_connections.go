@@ -53,15 +53,11 @@ func (handler *Handler) databaseConnectionCreate(w http.ResponseWriter, r *http.
 	}
 
 	now := time.Now().Unix()
-	scope := databaseConnectionScopeEnvironment
-	if payload.ContainerID != "" {
-		scope = portainer.DatabaseConnectionScope("container")
-	}
 
 	connection := &portainer.DatabaseConnection{
 		EnvironmentID:   endpointID,
 		ContainerID:     payload.ContainerID,
-		Scope:           scope,
+		Scope:           databaseConnectionScopeEnvironment,
 		CreatedByUserID: securityContext.UserID,
 		Name:            payload.Name,
 		Type:            payload.Type,
@@ -107,11 +103,9 @@ func (handler *Handler) databaseConnectionUpdate(w http.ResponseWriter, r *http.
 	connection.QueryTimeout = payload.QueryTimeout
 	connection.ContainerID = payload.ContainerID
 	connection.Scope = databaseConnectionScopeEnvironment
-	if payload.ContainerID != "" {
-		connection.Scope = portainer.DatabaseConnectionScope("container")
-	}
 	connection.UpdatedAt = time.Now().Unix()
-	if payload.Password != nil {
+	// 编辑连接时空密码表示保留旧密码，避免前端占位输入框把已保存密码误清空。
+	if payload.Password != nil && *payload.Password != "" {
 		connection.Password = *payload.Password
 	}
 
@@ -163,12 +157,17 @@ func (handler *Handler) databaseConnectionFromRequest(r *http.Request, endpointI
 		return nil, httperror.BadRequest("Invalid database connection identifier route variable", err)
 	}
 
+	return handler.databaseConnectionByID(r, endpointID, portainer.DatabaseConnectionID(connectionID))
+}
+
+func (handler *Handler) databaseConnectionByID(r *http.Request, endpointID portainer.EndpointID, connectionID portainer.DatabaseConnectionID) (*portainer.DatabaseConnection, *httperror.HandlerError) {
+	// 通过连接 ID 读取时统一校验环境和用户归属，避免测试连接等非 REST 路由绕过隔离。
 	securityContext, err := security.RetrieveRestrictedRequestContext(r)
 	if err != nil {
 		return nil, httperror.InternalServerError("Unable to retrieve restricted request context", err)
 	}
 
-	connection, err := handler.DataStore.DatabaseConnection().Read(portainer.DatabaseConnectionID(connectionID))
+	connection, err := handler.DataStore.DatabaseConnection().Read(connectionID)
 	if err != nil {
 		if handler.DataStore.IsErrObjectNotFound(err) {
 			return nil, httperror.NotFound("Unable to find database connection", err)

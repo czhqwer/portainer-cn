@@ -17,6 +17,7 @@ const (
 )
 
 type databaseConnectionPayload struct {
+	ID           portainer.DatabaseConnectionID   `json:"Id,omitempty"`
 	Name         string                           `json:"Name"`
 	Type         portainer.DatabaseConnectionType `json:"Type"`
 	Host         string                           `json:"Host"`

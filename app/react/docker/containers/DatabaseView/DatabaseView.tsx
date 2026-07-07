@@ -1,27 +1,37 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useCurrentStateAndParams } from '@uirouter/react';
 import { useTranslation } from 'react-i18next';
+import { saveAs } from 'file-saver';
+import { format as formatSql } from 'sql-formatter';
 import {
   ChevronDown,
   ChevronRight,
   Check,
   Copy,
   Database,
+  Download,
   Eye,
+  FileJson,
+  FileSpreadsheet,
   FolderTree,
   FlaskConical,
   History,
+  KeyRound,
   ListTree,
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   Save,
+  Square,
   Table2,
   Trash2,
+  Wand2,
   X,
 } from 'lucide-react';
 
 import { EnvironmentId } from '@/react/portainer/environments/types';
+import { useEnvironment } from '@/react/portainer/environments/queries/useEnvironment';
 import { useCurrentUser, useIsPureAdmin } from '@/react/hooks/useUser';
 import { useContainers } from '@/react/docker/containers/queries/useContainers';
 import {
@@ -31,6 +41,7 @@ import {
 
 import { PageHeader } from '@@/PageHeader';
 import { Icon } from '@@/Icon';
+import { Alert } from '@@/Alert';
 import { Button, LoadingButton } from '@@/buttons';
 import { FormControl } from '@@/form-components/FormControl';
 
@@ -40,14 +51,21 @@ import {
   DatabaseConnectionType,
   DatabaseQueryResult,
   DatabaseSchema,
+  DatabaseTableDetails,
+  RedisKeyDetails,
+  RedisKeyScanResponse,
   useCreateDatabaseConnection,
   useDatabaseConnections,
   useDatabaseSchema,
+  useDatabaseTableDetails,
   useDeleteDatabaseConnection,
+  useRedisKeyDetails,
+  useRedisKeys,
   useRunDatabaseQuery,
   useTestDatabaseConnection,
   useUpdateDatabaseConnection,
 } from './database-queries';
+import styles from './DatabaseView.module.css';
 
 type ConnectionFormValues = DatabaseConnectionPayload;
 type FormMode = 'create' | 'edit';
@@ -74,6 +92,32 @@ type QueryHistoryItem = {
   query: string;
   executedAt: number;
 };
+
+type QueryTab = {
+  id: string;
+  name: string;
+  query: string;
+  database: string;
+  result?: DatabaseQueryResult;
+  error?: DatabaseViewError;
+};
+
+type PersistedQueryTabs = {
+  activeTabId: string;
+  tabs: QueryTab[];
+};
+
+type SelectedTable = {
+  database: string;
+  table: string;
+};
+
+type DatabaseViewError = Error & {
+  ErrorCode?: string;
+  Details?: string;
+};
+
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 const portByType: Record<DatabaseConnectionType, number> = {
   mysql: 3306,
@@ -111,6 +155,9 @@ export function DatabaseView() {
   const deleteConnection = useDeleteDatabaseConnection(environmentId);
   const runQuery = useRunDatabaseQuery(environmentId);
   const testConnection = useTestDatabaseConnection(environmentId);
+  const environmentQuery = useEnvironment(environmentId, (environment) => ({
+    url: environment.URL,
+  }));
 
   const connections = connectionsQuery.data || [];
   const [selectedId, setSelectedId] = useState<number>();
@@ -118,8 +165,13 @@ export function DatabaseView() {
   const [formMode, setFormMode] = useState<FormMode>();
   const [formValues, setFormValues] =
     useState<ConnectionFormValues>(defaultFormValues);
-  const [query, setQuery] = useState(defaultSqlTemplate);
-  const [selectedDatabase, setSelectedDatabase] = useState('');
+  const [queryTabs, setQueryTabs] = useState<QueryTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState('');
+  const [selectedTable, setSelectedTable] = useState<SelectedTable>();
+  const [redisPattern, setRedisPattern] = useState('*');
+  const [redisCursor, setRedisCursor] = useState('0');
+  const [redisDatabase, setRedisDatabase] = useState('0');
+  const [selectedRedisKey, setSelectedRedisKey] = useState('');
   const [history, setHistory] = useState<QueryHistoryItem[]>([]);
   const [expandedDatabases, setExpandedDatabases] = useState<
     Record<string, boolean>
@@ -143,24 +195,64 @@ export function DatabaseView() {
     () => schemaQuery.data?.Databases.map((database) => database.Name) || [],
     [schemaQuery.data]
   );
+  const activeTab =
+    queryTabs.find((tab) => tab.id === activeTabId) || queryTabs[0];
   const activeDatabase =
-    selectedDatabase || activeConnection?.Database || databaseOptions[0] || '';
+    activeTab?.database ||
+    activeConnection?.Database ||
+    preferredDatabaseOption(databaseOptions, activeConnection?.Type) ||
+    '';
   const historyStorageKey = `portainer.databaseHistory.${user.Id}.${environmentId}.${activeConnection?.Id || 'none'}`;
+  const tabsStorageKey = `portainer.databaseTabs.${user.Id}.${environmentId}.${activeConnection?.Id || 'none'}`;
+  const preferPublishedContainerPorts = isLocalAgentUrl(
+    environmentQuery.data?.url
+  );
+  const tableDetailsQuery = useDatabaseTableDetails(
+    environmentId,
+    activeConnection,
+    selectedTable?.database,
+    selectedTable?.table,
+    activeContainer?.NodeName
+  );
+  const redisKeysQuery = useRedisKeys(
+    environmentId,
+    activeConnection,
+    redisDatabase,
+    redisPattern,
+    redisCursor,
+    activeContainer?.NodeName
+  );
+  const redisKeyDetailsQuery = useRedisKeyDetails(
+    environmentId,
+    activeConnection,
+    redisDatabase,
+    selectedRedisKey,
+    activeContainer?.NodeName
+  );
+  const abortControllerRef = useRef<AbortController>();
 
   useEffect(() => {
     if (!activeConnection) {
-      setSelectedDatabase('');
+      setQueryTabs([]);
+      setActiveTabId('');
       return;
     }
 
-    const preferredDatabase =
-      activeConnection.Database &&
-      databaseOptions.includes(activeConnection.Database)
-        ? activeConnection.Database
-        : databaseOptions[0] || activeConnection.Database || '';
-
-    setSelectedDatabase(preferredDatabase);
-  }, [activeConnection?.Id, activeConnection?.Database, databaseOptions]);
+    const loadedTabs = loadQueryTabs(
+      tabsStorageKey,
+      activeConnection,
+      databaseOptions,
+      t
+    );
+    setQueryTabs(loadedTabs.tabs);
+    setActiveTabId(loadedTabs.activeTabId);
+  }, [
+    activeConnection?.Id,
+    activeConnection?.Database,
+    databaseOptions,
+    tabsStorageKey,
+    t,
+  ]);
 
   useEffect(() => {
     const nextHistory = loadQueryHistory(historyStorageKey);
@@ -168,9 +260,23 @@ export function DatabaseView() {
     saveQueryHistory(historyStorageKey, nextHistory);
   }, [historyStorageKey]);
 
+  useEffect(() => {
+    if (!activeConnection || queryTabs.length === 0) {
+      return;
+    }
+
+    saveQueryTabs(tabsStorageKey, activeTabId, queryTabs);
+  }, [activeConnection?.Id, activeTabId, queryTabs, tabsStorageKey]);
+
+  useEffect(() => {
+    setSelectedTable(undefined);
+    setSelectedRedisKey('');
+    setRedisCursor('0');
+    setRedisDatabase(activeConnection?.Database || '0');
+  }, [activeConnection?.Id]);
+
   function selectConnection(connection: DatabaseConnection) {
     setSelectedId(connection.Id);
-    setQuery(connection.Type === 'redis' ? 'PING' : defaultSqlTemplate);
   }
 
   function openCreateForm() {
@@ -205,7 +311,9 @@ export function DatabaseView() {
   async function handleSave(event: FormEvent) {
     event.preventDefault();
 
-    const payload = normalizePayload(formValues);
+    const payload = normalizePayload(formValues, {
+      preserveBlankPassword: !!editingId,
+    });
 
     if (editingId) {
       const updated = await updateConnection.mutateAsync({
@@ -244,44 +352,173 @@ export function DatabaseView() {
   }
 
   async function handleRunQuery(queryToRun?: string) {
-    const statement = prepareQueryForExecution(queryToRun || query);
-    if (!activeConnection || !statement) {
+    const statement = prepareQueryForExecution(
+      queryToRun || activeTab?.query || ''
+    );
+    if (!activeConnection || !activeTab || !statement) {
       return;
     }
 
     const isWriteStatement = isUpdateOrDeleteStatement(statement);
+    const unsafeWrite = isUnsafeWriteStatement(statement);
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    updateActiveTab({ error: undefined });
 
-    if (isWriteStatement) {
-      const preview = await runQuery.mutateAsync({
+    try {
+      if (isWriteStatement) {
+        const preview = await runQuery.mutateAsync({
+          connection: activeConnection,
+          query: statement,
+          database: activeDatabase,
+          preview: true,
+          nodeName: activeContainer?.NodeName,
+          signal: abortController.signal,
+        });
+
+        const confirmMessage = unsafeWrite
+          ? t(
+              'legacyText.This statement has no WHERE clause and will affect {{count}} row(s). Execute it?',
+              {
+                count: preview.RowsAffected || 0,
+                defaultValue: `This statement has no WHERE clause and will affect ${
+                  preview.RowsAffected || 0
+                } row(s). Execute it?`,
+              }
+            )
+          : t(
+              'legacyText.This statement will affect {{count}} row(s). Execute it?',
+              {
+                count: preview.RowsAffected || 0,
+                defaultValue: `This statement will affect ${
+                  preview.RowsAffected || 0
+                } row(s). Execute it?`,
+              }
+            );
+
+        const confirmed = window.confirm(confirmMessage);
+
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      const result = await runQuery.mutateAsync({
         connection: activeConnection,
         query: statement,
         database: activeDatabase,
-        preview: true,
+        confirmUnsafeWrite: unsafeWrite,
         nodeName: activeContainer?.NodeName,
+        signal: abortController.signal,
       });
 
-      const confirmed = window.confirm(
-        t(
-          'legacyText.This statement will affect {{count}} row(s). Execute it?',
-          {
-            count: preview.RowsAffected || 0,
-            defaultValue: `This statement will affect ${preview.RowsAffected || 0} row(s). Execute it?`,
-          }
-        )
-      );
-
-      if (!confirmed) {
+      if (result.RequiresConfirmation) {
+        updateActiveTab({
+          result,
+          error: databaseResultError(result),
+        });
         return;
       }
+
+      updateActiveTab({ result, error: undefined });
+      appendQueryHistory(historyStorageKey, statement, setHistory);
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        updateActiveTab({
+          error: databaseCanceledError(),
+        });
+        return;
+      }
+
+      updateActiveTab({
+        error: error as DatabaseViewError,
+      });
+    } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = undefined;
+      }
+    }
+  }
+
+  function cancelRunningQuery() {
+    abortControllerRef.current?.abort();
+  }
+
+  function updateActiveTab(patch: Partial<QueryTab>) {
+    if (!activeTab) {
+      return;
     }
 
-    await runQuery.mutateAsync({
-      connection: activeConnection,
-      query: statement,
-      database: activeDatabase,
-      nodeName: activeContainer?.NodeName,
+    setQueryTabs((tabs) =>
+      tabs.map((tab) => (tab.id === activeTab.id ? { ...tab, ...patch } : tab))
+    );
+  }
+
+  function updateActiveTabQuery(query: string) {
+    updateActiveTab({ query });
+  }
+
+  function updateActiveTabDatabase(database: string) {
+    updateActiveTab({ database });
+  }
+
+  function addQueryTab() {
+    if (!activeConnection) {
+      return;
+    }
+
+    const nextTab = createDefaultQueryTab(
+      activeConnection,
+      databaseOptions,
+      queryTabs.length + 1,
+      t
+    );
+
+    setQueryTabs((tabs) => [...tabs, nextTab]);
+    setActiveTabId(nextTab.id);
+  }
+
+  function closeQueryTab(tabId: string) {
+    setQueryTabs((tabs) => {
+      if (tabs.length <= 1) {
+        return tabs;
+      }
+
+      const nextTabs = tabs.filter((tab) => tab.id !== tabId);
+      if (activeTabId === tabId) {
+        setActiveTabId(nextTabs[0]?.id || '');
+      }
+
+      return nextTabs;
     });
-    appendQueryHistory(historyStorageKey, statement, setHistory);
+  }
+
+  function formatActiveTabQuery(selectionStart: number, selectionEnd: number) {
+    if (!activeConnection || !activeTab || activeConnection.Type === 'redis') {
+      return;
+    }
+
+    const targetSql =
+      selectionStart !== selectionEnd
+        ? activeTab.query.slice(selectionStart, selectionEnd)
+        : activeTab.query;
+
+    try {
+      const formatted = formatSql(targetSql, {
+        language: activeConnection.Type === 'postgres' ? 'postgresql' : 'mysql',
+      });
+
+      if (selectionStart !== selectionEnd) {
+        updateActiveTabQuery(
+          `${activeTab.query.slice(0, selectionStart)}${formatted}${activeTab.query.slice(selectionEnd)}`
+        );
+        return;
+      }
+
+      updateActiveTabQuery(formatted);
+    } catch (error) {
+      updateActiveTab({ error: error as DatabaseViewError });
+    }
   }
 
   function toggleDatabase(name: string) {
@@ -291,14 +528,23 @@ export function DatabaseView() {
     }));
   }
 
+  // 单击表名负责展开/收起结构，双击表名才生成 SELECT，避免误改 SQL 编辑区。
   function selectTable(database: string, table: string) {
-    if (!activeConnection) {
+    setSelectedTable((current) =>
+      current?.database === database && current.table === table
+        ? undefined
+        : { database, table }
+    );
+  }
+
+  function insertTableSelect(database: string, table: string) {
+    if (!activeConnection || !activeTab) {
       return;
     }
 
-    setQuery((current) =>
+    updateActiveTabQuery(
       appendSqlStatement(
-        current,
+        activeTab.query,
         tableSelectStatement(activeConnection.Type, database, table)
       )
     );
@@ -318,70 +564,116 @@ export function DatabaseView() {
         reload
       />
 
-      <div className="flex h-[calc(100vh-170px)] max-h-[calc(100vh-170px)] min-h-[560px] gap-4 overflow-hidden">
-        <aside className="flex h-full w-[300px] shrink-0 flex-col overflow-hidden border-r border-gray-5 pr-4">
-          <ConnectionSidebar
-            connections={connections}
-            activeConnection={activeConnection}
-            isLoading={connectionsQuery.isLoading}
-            schema={schemaQuery.data}
-            isSchemaLoading={schemaQuery.isLoading}
-            databaseFilter={activeDatabase}
-            expandedDatabases={expandedDatabases}
-            onSelectConnection={selectConnection}
-            onCreate={openCreateForm}
-            onEdit={openEditForm}
-            onDelete={handleDelete}
-            onToggleDatabase={toggleDatabase}
-            onSelectTable={selectTable}
-          />
-        </aside>
+      <div className={styles.root}>
+        <div className="flex h-[calc(100vh-170px)] max-h-[calc(100vh-170px)] min-h-[560px] gap-4 overflow-hidden">
+          <aside className="flex h-full w-[300px] shrink-0 flex-col overflow-hidden border-r border-gray-5 pr-4">
+            <ConnectionSidebar
+              connections={connections}
+              activeConnection={activeConnection}
+              isLoading={connectionsQuery.isLoading}
+              schema={schemaQuery.data}
+              isSchemaLoading={schemaQuery.isLoading}
+              schemaError={schemaQuery.error as DatabaseViewError | undefined}
+              databaseFilter={activeDatabase}
+              selectedTable={selectedTable}
+              tableDetails={tableDetailsQuery.data}
+              isTableDetailsLoading={tableDetailsQuery.isLoading}
+              expandedDatabases={expandedDatabases}
+              onSelectConnection={selectConnection}
+              onCreate={openCreateForm}
+              onEdit={openEditForm}
+              onDelete={handleDelete}
+              onToggleDatabase={toggleDatabase}
+              onSelectTable={selectTable}
+              onInsertTableSelect={insertTableSelect}
+            />
+          </aside>
 
-        <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-          <QueryWorkspace
-            activeConnection={activeConnection}
-            databases={databaseOptions}
-            selectedDatabase={activeDatabase}
-            query={query}
-            result={runQuery.data}
-            history={history}
-            isRunning={runQuery.isLoading}
-            onSelectDatabase={setSelectedDatabase}
-            onQueryChange={setQuery}
-            onRun={handleRunQuery}
-          />
-        </main>
-      </div>
-
-      {formMode && (
-        <div className="fixed inset-y-0 right-0 z-50 flex w-[420px] max-w-full flex-col border-l border-gray-5 bg-gray-10 p-5 shadow-2xl">
-          <ConnectionForm
-            values={formValues}
-            isEditing={formMode === 'edit'}
-            isLoading={createConnection.isLoading || updateConnection.isLoading}
-            isTesting={testConnection.isLoading}
-            onCancel={closeForm}
-            onTest={async (values) => {
-              const payload = normalizePayload({
-                ...values,
-                Name: values.Name || 'test',
-              });
-              const container = containersQuery.data?.find(
-                (container) => container.Id === payload.ContainerId
-              );
-
-              await testConnection.mutateAsync({
-                payload,
-                nodeName: container?.NodeName,
-              });
-            }}
-            onSave={handleSave}
-            onChange={setFormValues}
-            containers={containersQuery.data || []}
-            isContainerTargetVisible={isDockerEnvironment}
-          />
+          <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+            <QueryWorkspace
+              activeConnection={activeConnection}
+              databases={databaseOptions}
+              tabs={queryTabs}
+              activeTabId={activeTabId}
+              selectedDatabase={activeDatabase}
+              history={history}
+              isRunning={runQuery.isLoading}
+              redisKeys={redisKeysQuery.data}
+              isRedisKeysLoading={redisKeysQuery.isLoading}
+              redisKeyDetails={redisKeyDetailsQuery.data}
+              isRedisKeyDetailsLoading={redisKeyDetailsQuery.isLoading}
+              redisPattern={redisPattern}
+              redisDatabase={redisDatabase}
+              selectedRedisKey={selectedRedisKey}
+              onSelectTab={setActiveTabId}
+              onAddTab={addQueryTab}
+              onCloseTab={closeQueryTab}
+              onSelectDatabase={updateActiveTabDatabase}
+              onQueryChange={updateActiveTabQuery}
+              onFormat={formatActiveTabQuery}
+              onRun={handleRunQuery}
+              onCancel={cancelRunningQuery}
+              onRedisPatternChange={(pattern) => {
+                setRedisPattern(pattern || '*');
+                setRedisCursor('0');
+              }}
+              onRedisDatabaseChange={(database) => {
+                setRedisDatabase(database);
+                setRedisCursor('0');
+              }}
+              onRedisNextPage={() =>
+                setRedisCursor(redisKeysQuery.data?.Cursor || '0')
+              }
+              onRedisRefresh={() => redisKeysQuery.refetch()}
+              onSelectRedisKey={setSelectedRedisKey}
+            />
+          </main>
         </div>
-      )}
+
+        {formMode && (
+          <div className="fixed inset-y-0 right-0 z-50 flex w-[420px] max-w-full flex-col border-l border-gray-5 bg-gray-10 p-5 shadow-2xl">
+            <ConnectionForm
+              values={formValues}
+              isEditing={formMode === 'edit'}
+              hasSavedPassword={
+                !!editingId &&
+                !!connections.find((connection) => connection.Id === editingId)
+                  ?.HasPassword
+              }
+              isLoading={
+                createConnection.isLoading || updateConnection.isLoading
+              }
+              isTesting={testConnection.isLoading}
+              onCancel={closeForm}
+              onTest={async (values) => {
+                const payload = normalizePayload(
+                  {
+                    ...values,
+                    Name: values.Name || 'test',
+                  },
+                  {
+                    connectionId: editingId,
+                    preserveBlankPassword: !!editingId,
+                  }
+                );
+                const container = containersQuery.data?.find(
+                  (container) => container.Id === payload.ContainerId
+                );
+
+                await testConnection.mutateAsync({
+                  payload,
+                  nodeName: container?.NodeName,
+                });
+              }}
+              onSave={handleSave}
+              onChange={setFormValues}
+              containers={containersQuery.data || []}
+              isContainerTargetVisible={isDockerEnvironment}
+              preferPublishedContainerPorts={preferPublishedContainerPorts}
+            />
+          </div>
+        )}
+      </div>
     </>
   );
 }
@@ -392,7 +684,11 @@ function ConnectionSidebar({
   isLoading,
   schema,
   isSchemaLoading,
+  schemaError,
   databaseFilter,
+  selectedTable,
+  tableDetails,
+  isTableDetailsLoading,
   expandedDatabases,
   onSelectConnection,
   onCreate,
@@ -400,13 +696,18 @@ function ConnectionSidebar({
   onDelete,
   onToggleDatabase,
   onSelectTable,
+  onInsertTableSelect,
 }: {
   connections: DatabaseConnection[];
   activeConnection?: DatabaseConnection;
   isLoading: boolean;
   schema?: DatabaseSchema;
   isSchemaLoading: boolean;
+  schemaError?: DatabaseViewError;
   databaseFilter?: string;
+  selectedTable?: SelectedTable;
+  tableDetails?: DatabaseTableDetails;
+  isTableDetailsLoading: boolean;
   expandedDatabases: Record<string, boolean>;
   onSelectConnection: (connection: DatabaseConnection) => void;
   onCreate: () => void;
@@ -414,6 +715,7 @@ function ConnectionSidebar({
   onDelete: (connection: DatabaseConnection) => void;
   onToggleDatabase: (name: string) => void;
   onSelectTable: (database: string, table: string) => void;
+  onInsertTableSelect: (database: string, table: string) => void;
 }) {
   const { t } = useTranslation();
   const [isConnectionListOpen, setIsConnectionListOpen] = useState(true);
@@ -464,13 +766,13 @@ function ConnectionSidebar({
               })}
             </span>
           )}
-          <div className="space-y-2">
+          <div className="space-y-1">
             {connections.map((connection) => (
               <div
                 key={connection.Id}
                 role="button"
                 tabIndex={0}
-                className={`w-full rounded border p-3 text-left transition ${
+                className={`w-full rounded border px-2 py-2 text-left transition ${
                   activeConnection?.Id === connection.Id
                     ? 'border-blue-8 bg-blue-8 text-white'
                     : 'border-gray-5 bg-white text-gray-10 hover:bg-gray-2 th-dark:bg-gray-iron-11 th-dark:text-white th-dark:hover:bg-gray-iron-10'
@@ -484,53 +786,57 @@ function ConnectionSidebar({
                 }}
               >
                 <div className="flex items-center gap-2">
-                  <span className="truncate font-semibold">
-                    {connection.Name}
-                  </span>
-                  <span className="label label-default ml-auto">
-                    {connection.Type}
-                  </span>
-                </div>
-                <div className="mt-1 truncate text-xs opacity-80">
-                  {connection.ContainerId
-                    ? t('legacyText.Container', {
-                        defaultValue: 'Container',
-                      })
-                    : t('legacyText.Custom address', {
-                        defaultValue: 'Custom address',
-                      })}
-                  {' - '}
-                  {connection.Host}:{connection.Port}
-                  {connection.Database ? ` / ${connection.Database}` : ''}
-                </div>
-                {activeConnection?.Id === connection.Id && (
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      color="default"
-                      size="small"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onEdit(connection);
-                      }}
-                      data-cy="database-edit-connection-button"
-                    >
-                      <Icon icon={Pencil} className="lucide" />
-                    </Button>
-                    <Button
-                      type="button"
-                      color="dangerlight"
-                      size="small"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDelete(connection);
-                      }}
-                      data-cy="database-delete-connection-button"
-                    >
-                      <Icon icon={Trash2} className="lucide" />
-                    </Button>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold">
+                        {connection.Name}
+                      </span>
+                      <span className="label label-default shrink-0">
+                        {connection.Type}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] opacity-80">
+                      {connection.ContainerId
+                        ? t('legacyText.Container', {
+                            defaultValue: 'Container',
+                          })
+                        : t('legacyText.Custom address', {
+                            defaultValue: 'Custom address',
+                          })}
+                      {' - '}
+                      {connection.Host}:{connection.Port}
+                      {connection.Database ? ` / ${connection.Database}` : ''}
+                    </div>
                   </div>
-                )}
+                  {activeConnection?.Id === connection.Id && (
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        type="button"
+                        color="default"
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(connection);
+                        }}
+                        data-cy="database-edit-connection-button"
+                      >
+                        <Icon icon={Pencil} className="lucide" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="dangerlight"
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete(connection);
+                        }}
+                        data-cy="database-delete-connection-button"
+                      >
+                        <Icon icon={Trash2} className="lucide" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -549,10 +855,15 @@ function ConnectionSidebar({
       <SchemaTree
         schema={schema}
         isLoading={isSchemaLoading}
+        error={schemaError}
         databaseFilter={databaseFilter}
+        selectedTable={selectedTable}
+        tableDetails={tableDetails}
+        isTableDetailsLoading={isTableDetailsLoading}
         expandedDatabases={expandedDatabases}
         onToggleDatabase={onToggleDatabase}
         onSelectTable={onSelectTable}
+        onInsertTableSelect={onInsertTableSelect}
       />
     </>
   );
@@ -561,17 +872,27 @@ function ConnectionSidebar({
 function SchemaTree({
   schema,
   isLoading,
+  error,
   databaseFilter,
+  selectedTable,
+  tableDetails,
+  isTableDetailsLoading,
   expandedDatabases,
   onToggleDatabase,
   onSelectTable,
+  onInsertTableSelect,
 }: {
   schema?: DatabaseSchema;
   isLoading: boolean;
+  error?: DatabaseViewError;
   databaseFilter?: string;
+  selectedTable?: SelectedTable;
+  tableDetails?: DatabaseTableDetails;
+  isTableDetailsLoading: boolean;
   expandedDatabases: Record<string, boolean>;
   onToggleDatabase: (name: string) => void;
   onSelectTable: (database: string, table: string) => void;
+  onInsertTableSelect: (database: string, table: string) => void;
 }) {
   const { t } = useTranslation();
 
@@ -583,6 +904,10 @@ function SchemaTree({
         })}
       </span>
     );
+  }
+
+  if (error) {
+    return <span className="text-warning">{databaseErrorLabel(error, t)}</span>;
   }
 
   if (schema?.Message) {
@@ -615,7 +940,7 @@ function SchemaTree({
           <div key={database.Name}>
             <button
               type="button"
-              className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-gray-10 hover:bg-gray-2 th-dark:text-white th-dark:hover:bg-gray-iron-9"
+              className="flex w-full items-center gap-1 rounded border-0 bg-transparent px-1.5 py-1 text-left text-gray-10 hover:bg-gray-2 th-dark:text-gray-2 th-dark:hover:bg-gray-iron-10"
               onClick={() => onToggleDatabase(database.Name)}
             >
               <Icon
@@ -631,17 +956,38 @@ function SchemaTree({
                     {t('legacyText.No tables', { defaultValue: 'No tables' })}
                   </div>
                 )}
-                {database.Tables.map((table) => (
-                  <button
-                    key={`${database.Name}.${table.Name}`}
-                    type="button"
-                    className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs text-gray-9 hover:bg-blue-2 hover:text-blue-9 th-dark:text-gray-2 th-dark:hover:bg-gray-iron-9 th-dark:hover:text-white"
-                    onClick={() => onSelectTable(database.Name, table.Name)}
-                  >
-                    <Icon icon={Table2} className="lucide" />
-                    <span className="truncate">{table.Name}</span>
-                  </button>
-                ))}
+                {database.Tables.map((table) => {
+                  const isSelected =
+                    selectedTable?.database === database.Name &&
+                    selectedTable?.table === table.Name;
+
+                  return (
+                    <div key={`${database.Name}.${table.Name}`}>
+                      <button
+                        type="button"
+                        className={`flex w-full items-center gap-1.5 rounded border-0 px-1.5 py-1 text-left text-xs transition-colors ${
+                          isSelected
+                            ? 'bg-blue-2 text-blue-9 th-dark:bg-gray-iron-10 th-dark:text-gray-1'
+                            : 'bg-transparent text-gray-9 hover:bg-gray-2 hover:text-gray-10 th-dark:text-gray-4 th-dark:hover:bg-gray-iron-10 th-dark:hover:text-gray-1'
+                        }`}
+                        onClick={() => onSelectTable(database.Name, table.Name)}
+                        onDoubleClick={() =>
+                          onInsertTableSelect(database.Name, table.Name)
+                        }
+                      >
+                        <Icon icon={Table2} className="lucide" />
+                        <span className="truncate">{table.Name}</span>
+                      </button>
+                      {isSelected && (
+                        <InlineTableStructure
+                          details={tableDetails}
+                          isLoading={isTableDetailsLoading}
+                          tableName={table.Name}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -654,34 +1000,138 @@ function SchemaTree({
 function QueryWorkspace({
   activeConnection,
   databases,
+  tabs,
+  activeTabId,
   selectedDatabase,
-  query,
-  result,
   history,
   isRunning,
+  redisKeys,
+  isRedisKeysLoading,
+  redisKeyDetails,
+  isRedisKeyDetailsLoading,
+  redisPattern,
+  redisDatabase,
+  selectedRedisKey,
+  onSelectTab,
+  onAddTab,
+  onCloseTab,
   onSelectDatabase,
   onQueryChange,
+  onFormat,
   onRun,
+  onCancel,
+  onRedisPatternChange,
+  onRedisDatabaseChange,
+  onRedisNextPage,
+  onRedisRefresh,
+  onSelectRedisKey,
 }: {
   activeConnection?: DatabaseConnection;
   databases: string[];
+  tabs: QueryTab[];
+  activeTabId: string;
   selectedDatabase: string;
-  query: string;
-  result?: DatabaseQueryResult;
   history: QueryHistoryItem[];
   isRunning: boolean;
+  redisKeys?: RedisKeyScanResponse;
+  isRedisKeysLoading: boolean;
+  redisKeyDetails?: RedisKeyDetails;
+  isRedisKeyDetailsLoading: boolean;
+  redisPattern: string;
+  redisDatabase: string;
+  selectedRedisKey: string;
+  onSelectTab: (tabId: string) => void;
+  onAddTab: () => void;
+  onCloseTab: (tabId: string) => void;
   onSelectDatabase: (database: string) => void;
   onQueryChange: (query: string) => void;
+  onFormat: (selectionStart: number, selectionEnd: number) => void;
   onRun: (queryToRun?: string) => void;
+  onCancel: () => void;
+  onRedisPatternChange: (pattern: string) => void;
+  onRedisDatabaseChange: (database: string) => void;
+  onRedisNextPage: () => void;
+  onRedisRefresh: () => void;
+  onSelectRedisKey: (key: string) => void;
 }) {
   const { t } = useTranslation();
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const editorPanelRef = useRef<HTMLDivElement>(null);
+  const resizeStartRef = useRef<{ y: number; height: number }>();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [editorScrollTop, setEditorScrollTop] = useState(0);
+  const [editorHeight, setEditorHeight] = useState(280);
+  const [isResizingEditor, setIsResizingEditor] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0];
+  const query = activeTab?.query || '';
+  const isRedisConnection = activeConnection?.Type === 'redis';
   const lineNumbers = useMemo(
     () => Array.from({ length: Math.max(query.split('\n').length, 1) }),
     [query]
   );
+
+  useEffect(() => {
+    if (!isResizingEditor) {
+      return undefined;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    function handleMouseMove(event: MouseEvent) {
+      const start = resizeStartRef.current;
+      if (!start) {
+        return;
+      }
+
+      const workspaceHeight = workspaceRef.current?.clientHeight || 720;
+      const maxHeight = Math.max(220, workspaceHeight - 260);
+      const nextHeight = start.height + event.clientY - start.y;
+      setEditorHeight(Math.min(maxHeight, Math.max(160, nextHeight)));
+    }
+
+    function handleMouseUp() {
+      resizeStartRef.current = undefined;
+      setIsResizingEditor(false);
+    }
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [isResizingEditor]);
+
+  // 拖动分隔条时只调整 SQL 编辑区高度，结果区保持 flex 占用剩余空间。
+  function startEditorResize(event: {
+    preventDefault(): void;
+    clientY: number;
+  }) {
+    event.preventDefault();
+    resizeStartRef.current = {
+      y: event.clientY,
+      height:
+        editorPanelRef.current?.getBoundingClientRect().height || editorHeight,
+    };
+    setIsResizingEditor(true);
+  }
+
+  function formatSelectedOrAllQuery() {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      onFormat(0, query.length);
+      return;
+    }
+
+    onFormat(textarea.selectionStart, textarea.selectionEnd);
+  }
 
   function selectedOrAllQuery() {
     const textarea = textareaRef.current;
@@ -698,84 +1148,201 @@ function QueryWorkspace({
 
   return (
     <>
-      <div className="flex items-center gap-3 pb-3">
-        <button
-          type="button"
-          className="flex items-center border-0 bg-transparent p-0 font-semibold"
-          onClick={() => setIsHistoryOpen(true)}
-          data-cy="database-query-history-button"
-        >
-          <Icon icon={History} className="lucide space-right" />
-          {t('panelTitles.Execution history', {
-            defaultValue: 'Execution history',
-          })}
-        </button>
-        <select
-          className="form-control ml-auto max-w-[280px]"
-          value={selectedDatabase}
-          onChange={(event) => onSelectDatabase(event.target.value)}
-          disabled={
-            databases.length === 0 || activeConnection?.Type === 'redis'
-          }
-          aria-label={t('legacyText.Database', {
-            defaultValue: 'Database',
-          })}
-        >
-          {databases.map((database) => (
-            <option key={database} value={database}>
-              {database}
-            </option>
+      <div
+        ref={workspaceRef}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        <div className="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-5 pb-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`flex max-w-[180px] shrink-0 items-center gap-2 rounded-t border border-b-0 px-3 py-1.5 text-sm ${
+                tab.id === activeTab?.id
+                  ? 'border-blue-8 bg-white text-blue-9 th-dark:bg-gray-iron-11 th-dark:text-white'
+                  : 'border-gray-5 bg-gray-1 text-gray-8 hover:bg-gray-2 th-dark:bg-gray-iron-10 th-dark:text-gray-3 th-dark:hover:bg-gray-iron-9'
+              }`}
+              onClick={() => onSelectTab(tab.id)}
+            >
+              <span className="truncate">{tab.name}</span>
+              {tabs.length > 1 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="rounded p-0.5 hover:bg-black/10 th-dark:hover:bg-white/10"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onCloseTab(tab.id);
+                    }
+                  }}
+                >
+                  <Icon icon={X} className="lucide" />
+                </span>
+              )}
+            </button>
           ))}
-        </select>
-        <LoadingButton
-          type="button"
-          color="primary"
-          onClick={() => onRun(selectedOrAllQuery())}
-          disabled={!activeConnection || !query.trim()}
-          isLoading={isRunning}
-          loadingText={t('buttons.Running...', {
-            defaultValue: 'Running...',
-          })}
-          data-cy="database-run-query-button"
-        >
-          <Icon icon={Play} className="lucide space-right" />
-          {t('buttons.Run', { defaultValue: 'Run' })}
-        </LoadingButton>
-      </div>
-
-      <div className="flex min-h-[260px] flex-1 overflow-hidden rounded border border-gray-5 bg-white text-gray-10 th-dark:bg-gray-iron-11 th-dark:text-white">
-        <div className="w-12 shrink-0 overflow-hidden border-r border-gray-5 bg-gray-2 text-right font-mono text-xs leading-5 text-gray-6 th-dark:bg-gray-iron-10 th-dark:text-gray-5">
-          <div
-            className="px-2 py-2"
-            style={{ transform: `translateY(-${editorScrollTop}px)` }}
+          <Button
+            type="button"
+            color="default"
+            size="small"
+            onClick={onAddTab}
+            data-cy="database-add-query-tab-button"
           >
-            {lineNumbers.map((_, index) => (
-              <div key={index}>{index + 1}</div>
-            ))}
-          </div>
+            <Icon icon={Plus} className="lucide" />
+          </Button>
         </div>
-        <textarea
-          ref={textareaRef}
-          className="min-h-full flex-1 resize-none border-0 bg-transparent p-2 font-mono leading-5 text-gray-10 outline-none placeholder:text-gray-6 th-dark:text-white th-dark:placeholder:text-gray-6"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onScroll={(event) =>
-            setEditorScrollTop(event.currentTarget.scrollTop)
-          }
-          onKeyDown={(event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-              event.preventDefault();
-              onRun(selectedOrAllQuery());
-            }
-          }}
-          placeholder={
-            activeConnection?.Type === 'redis' ? 'PING' : defaultSqlTemplate
-          }
-          aria-label={activeConnection?.Type === 'redis' ? 'Command' : 'SQL'}
-        />
-      </div>
 
-      <QueryResult result={result} />
+        <div className="flex shrink-0 items-center gap-3 pb-3">
+          <button
+            type="button"
+            className="flex items-center border-0 bg-transparent p-0 font-semibold"
+            onClick={() => setIsHistoryOpen(true)}
+            data-cy="database-query-history-button"
+          >
+            <Icon icon={History} className="lucide space-right" />
+            {t('panelTitles.Execution history', {
+              defaultValue: 'Execution history',
+            })}
+          </button>
+          {!isRedisConnection && (
+            <select
+              className="form-control ml-auto max-w-[280px]"
+              value={selectedDatabase}
+              onChange={(event) => onSelectDatabase(event.target.value)}
+              disabled={databases.length === 0}
+              aria-label={t('legacyText.Database', {
+                defaultValue: 'Database',
+              })}
+            >
+              {!selectedDatabase && (
+                <option value="">
+                  {t('placeholders.Select...', { defaultValue: 'Select...' })}
+                </option>
+              )}
+              {databases.map((database) => (
+                <option key={database} value={database}>
+                  {database}
+                </option>
+              ))}
+            </select>
+          )}
+          <Button
+            type="button"
+            color="default"
+            disabled={!query.trim() || isRedisConnection}
+            onClick={formatSelectedOrAllQuery}
+            data-cy="database-format-query-button"
+          >
+            <Icon icon={Wand2} className="lucide space-right" />
+            {t('buttons.Format', { defaultValue: 'Format' })}
+          </Button>
+          {isRunning ? (
+            <Button
+              type="button"
+              color="dangerlight"
+              onClick={onCancel}
+              data-cy="database-cancel-query-button"
+            >
+              <Icon icon={Square} className="lucide space-right" />
+              {t('buttons.Cancel', { defaultValue: 'Cancel' })}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              color="primary"
+              onClick={() => onRun(selectedOrAllQuery())}
+              disabled={!activeConnection || !query.trim()}
+              data-cy="database-run-query-button"
+            >
+              <Icon icon={Play} className="lucide space-right" />
+              {t('buttons.Run', { defaultValue: 'Run' })}
+            </Button>
+          )}
+        </div>
+
+        <div
+          ref={editorPanelRef}
+          className="flex min-h-[160px] shrink-0 overflow-hidden rounded border border-gray-5 bg-white text-gray-10 th-dark:bg-gray-iron-11 th-dark:text-white"
+          style={{ height: editorHeight }}
+        >
+          <div className="w-12 shrink-0 overflow-hidden border-r border-gray-5 bg-gray-2 text-right font-mono text-xs leading-5 text-gray-6 th-dark:bg-gray-iron-10 th-dark:text-gray-5">
+            <div
+              className="px-2 py-2"
+              style={{ transform: `translateY(-${editorScrollTop}px)` }}
+            >
+              {lineNumbers.map((_, index) => (
+                <div key={index}>{index + 1}</div>
+              ))}
+            </div>
+          </div>
+          <textarea
+            ref={textareaRef}
+            className="min-h-full flex-1 resize-none border-0 bg-transparent p-2 font-mono leading-5 text-gray-10 outline-none placeholder:text-gray-6 th-dark:text-white th-dark:placeholder:text-gray-6"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            onScroll={(event) =>
+              setEditorScrollTop(event.currentTarget.scrollTop)
+            }
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                event.preventDefault();
+                onRun(selectedOrAllQuery());
+              }
+            }}
+            placeholder={isRedisConnection ? 'PING' : defaultSqlTemplate}
+            aria-label={isRedisConnection ? 'Command' : 'SQL'}
+          />
+        </div>
+
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          className="my-1 flex h-4 shrink-0 cursor-row-resize items-center justify-center"
+          title={t('buttonTitles.Drag to resize editor and results', {
+            defaultValue: 'Drag to resize editor and results',
+          })}
+          onMouseDown={startEditorResize}
+        >
+          <div
+            className={`h-1 w-16 rounded-full transition ${
+              isResizingEditor
+                ? 'bg-blue-7'
+                : 'bg-gray-5 hover:bg-gray-6 th-dark:bg-gray-iron-8 th-dark:hover:bg-gray-iron-7'
+            }`}
+          />
+        </div>
+
+        {activeTab?.error && (
+          <Alert color="error" className="mt-3 shrink-0 py-2">
+            {databaseErrorLabel(activeTab.error, t)}
+          </Alert>
+        )}
+
+        {isRedisConnection ? (
+          <RedisKeyBrowser
+            keys={redisKeys}
+            isKeysLoading={isRedisKeysLoading}
+            details={redisKeyDetails}
+            isDetailsLoading={isRedisKeyDetailsLoading}
+            pattern={redisPattern}
+            database={redisDatabase}
+            selectedKey={selectedRedisKey}
+            onPatternChange={onRedisPatternChange}
+            onDatabaseChange={onRedisDatabaseChange}
+            onRefresh={onRedisRefresh}
+            onNextPage={onRedisNextPage}
+            onSelectKey={onSelectRedisKey}
+          />
+        ) : null}
+
+        <QueryResult result={activeTab?.result} />
+      </div>
 
       {isHistoryOpen && (
         <QueryHistoryModal
@@ -787,13 +1354,276 @@ function QueryWorkspace({
   );
 }
 
+// 表结构直接嵌在左侧库表树中；字段行只展示字段和类型，索引统一在底部区域查看。
+function InlineTableStructure({
+  details,
+  isLoading,
+  tableName,
+}: {
+  details?: DatabaseTableDetails;
+  isLoading: boolean;
+  tableName: string;
+}) {
+  const { t } = useTranslation();
+
+  if (isLoading) {
+    return (
+      <div className="text-muted mb-2 ml-5 rounded border border-gray-4 bg-gray-1 px-2 py-2 text-xs th-dark:border-gray-iron-8 th-dark:bg-gray-iron-11">
+        {t('legacyText.Loading table structure...', {
+          defaultValue: 'Loading table structure...',
+        })}
+      </div>
+    );
+  }
+
+  if (!details) {
+    return null;
+  }
+
+  return (
+    <div className="mb-2 ml-5 rounded border border-gray-4 bg-gray-1 px-2 py-2 text-xs text-gray-10 th-dark:border-gray-iron-8 th-dark:bg-gray-iron-11 th-dark:text-gray-3">
+      <div className="truncate font-mono font-semibold" title={tableName}>
+        {tableName}
+      </div>
+      <div className="my-1 border-t border-gray-4 th-dark:border-gray-iron-8" />
+      <div className="space-y-1">
+        {details.Columns.map((column) => {
+          const flags = [
+            column.Nullable ? '' : 'NOT NULL',
+            column.Default ? `DEFAULT ${column.Default}` : '',
+            column.Extra || '',
+          ].filter(Boolean);
+          const tooltip = [
+            `${column.Name} ${column.Type}`,
+            flags.join(' '),
+            column.Comment || '',
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          return (
+            <div
+              key={column.Name}
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2"
+              title={tooltip}
+            >
+              <span className="truncate font-mono">{column.Name}</span>
+              <span className="truncate font-mono text-gray-8 th-dark:text-gray-5">
+                {column.Type}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {details.Indexes.length > 0 && (
+        <div className="mt-3 border-t border-gray-4 pt-2 th-dark:border-gray-iron-8">
+          <div className="mb-1 font-semibold">
+            {t('panelTitles.Indexes', { defaultValue: 'Indexes' })}
+          </div>
+          <div className="space-y-1">
+            {details.Indexes.map((index) => {
+              const indexType = index.Primary
+                ? 'PK'
+                : index.Unique
+                  ? 'UNIQUE'
+                  : '';
+              const tooltip = [
+                index.Name,
+                index.Columns.join(', '),
+                indexType,
+              ]
+                .filter(Boolean)
+                .join('\n');
+
+              return (
+                <div
+                  key={index.Name}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_48px] gap-2"
+                  title={tooltip}
+                >
+                  <span className="truncate font-mono">{index.Name}</span>
+                  <span className="truncate font-mono text-gray-8 th-dark:text-gray-5">
+                    {index.Columns.join(', ')}
+                  </span>
+                  <span className="text-right font-mono text-gray-7 th-dark:text-gray-6">
+                    {indexType}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RedisKeyBrowser({
+  keys,
+  isKeysLoading,
+  details,
+  isDetailsLoading,
+  pattern,
+  database,
+  selectedKey,
+  onPatternChange,
+  onDatabaseChange,
+  onRefresh,
+  onNextPage,
+  onSelectKey,
+}: {
+  keys?: RedisKeyScanResponse;
+  isKeysLoading: boolean;
+  details?: RedisKeyDetails;
+  isDetailsLoading: boolean;
+  pattern: string;
+  database: string;
+  selectedKey: string;
+  onPatternChange: (pattern: string) => void;
+  onDatabaseChange: (database: string) => void;
+  onRefresh: () => void;
+  onNextPage: () => void;
+  onSelectKey: (key: string) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="mt-3 h-[190px] shrink-0 overflow-hidden rounded border border-gray-5 bg-white text-gray-10 th-dark:bg-gray-iron-11 th-dark:text-white">
+      <div className="flex items-center gap-2 border-b border-gray-5 px-3 py-2">
+        <Icon icon={KeyRound} className="lucide" />
+        <span className="font-semibold">
+          {t('panelTitles.Redis key browser', {
+            defaultValue: 'Redis key browser',
+          })}
+        </span>
+        <input
+          className="form-control ml-auto h-8 max-w-[220px]"
+          value={pattern}
+          onChange={(event) => onPatternChange(event.target.value)}
+          placeholder={t('placeholders.Redis key pattern', {
+            defaultValue: 'Redis key pattern',
+          })}
+        />
+        <input
+          className="form-control h-8 w-[80px]"
+          type="number"
+          min={0}
+          value={database}
+          onChange={(event) => onDatabaseChange(event.target.value)}
+          aria-label={t('legacyText.Redis database', {
+            defaultValue: 'Redis database',
+          })}
+        />
+        <Button
+          type="button"
+          color="default"
+          size="small"
+          onClick={onRefresh}
+          data-cy="database-redis-refresh-button"
+        >
+          <Icon icon={RefreshCw} className="lucide" />
+        </Button>
+      </div>
+      <div className="grid h-[calc(100%-41px)] min-h-0 grid-cols-[320px_1fr]">
+        <div className="border-r border-gray-5 p-2">
+          {isKeysLoading && (
+            <div className="text-muted p-2">
+              {t('common.Loading...', { defaultValue: 'Loading...' })}
+            </div>
+          )}
+          {!isKeysLoading && keys?.Keys.length === 0 && (
+            <div className="text-muted p-2">
+              {t('legacyText.No keys found', { defaultValue: 'No keys found' })}
+            </div>
+          )}
+          <div className="h-[calc(100%-38px)] overflow-auto">
+            {keys?.Keys.map((key) => (
+              <button
+                key={key.Name}
+                type="button"
+                className={`mb-1 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${
+                  selectedKey === key.Name
+                    ? 'bg-blue-8 text-white'
+                    : 'hover:bg-gray-2 th-dark:hover:bg-gray-iron-9'
+                }`}
+                onClick={() => onSelectKey(key.Name)}
+              >
+                <span className="min-w-0 flex-1 truncate font-mono">
+                  {key.Name}
+                </span>
+                <span className="label label-default">{key.Type}</span>
+              </button>
+            ))}
+          </div>
+          <Button
+            type="button"
+            color="default"
+            size="small"
+            disabled={!keys || keys.Cursor === '0'}
+            onClick={onNextPage}
+            data-cy="database-redis-next-page-button"
+          >
+            {t('buttons.Next', { defaultValue: 'Next' })}
+          </Button>
+        </div>
+        <div className="min-w-0 overflow-auto p-3">
+          {isDetailsLoading && (
+            <div className="text-muted">
+              {t('legacyText.Loading key details...', {
+                defaultValue: 'Loading key details...',
+              })}
+            </div>
+          )}
+          {!isDetailsLoading && !details && (
+            <div className="text-muted">
+              {t('legacyText.Select a Redis key to preview.', {
+                defaultValue: 'Select a Redis key to preview.',
+              })}
+            </div>
+          )}
+          {details && (
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-mono font-semibold">{details.Name}</span>
+                <span className="label label-default">{details.Type}</span>
+                <span className="text-muted">TTL: {details.TTL}</span>
+              </div>
+              {details.Value ? (
+                <pre className="m-0 whitespace-pre-wrap break-words rounded bg-gray-2 p-2 font-mono text-xs th-dark:bg-gray-iron-10">
+                  {details.Value}
+                </pre>
+              ) : (
+                <table className="table-hover nowrap-cells mb-0 table text-xs">
+                  <tbody>
+                    {details.Rows.map((row, index) => (
+                      <tr key={index}>
+                        {Object.entries(row).map(([column, value]) => (
+                          <td key={column} className="font-mono">
+                            {value}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConnectionForm({
   values,
   isEditing,
+  hasSavedPassword,
   isLoading,
   isTesting,
   containers,
   isContainerTargetVisible,
+  preferPublishedContainerPorts,
   onCancel,
   onTest,
   onSave,
@@ -801,10 +1631,12 @@ function ConnectionForm({
 }: {
   values: ConnectionFormValues;
   isEditing: boolean;
+  hasSavedPassword: boolean;
   isLoading: boolean;
   isTesting: boolean;
   containers: ContainerListViewModel[];
   isContainerTargetVisible: boolean;
+  preferPublishedContainerPorts: boolean;
   onCancel: () => void;
   onTest: (values: ConnectionFormValues) => Promise<void>;
   onSave: (event: FormEvent) => void;
@@ -816,6 +1648,7 @@ function ConnectionForm({
   );
   const showContainerIpWarning = !!values.ContainerId && !selectedContainer?.IP;
   const [testStatus, setTestStatus] = useState<'success' | 'error'>();
+  const [testError, setTestError] = useState<DatabaseViewError>();
 
   function updateValue<T extends keyof ConnectionFormValues>(
     key: T,
@@ -825,12 +1658,26 @@ function ConnectionForm({
   }
 
   function updateType(type: DatabaseConnectionType) {
+    if (values.ContainerId) {
+      onChange(
+        applyContainerSuggestion(
+          {
+            ...values,
+            Type: type,
+            Database: type === 'redis' ? '' : values.Database,
+          },
+          selectedContainer,
+          type,
+          preferPublishedContainerPorts
+        )
+      );
+      return;
+    }
+
     onChange({
       ...values,
       Type: type,
-      Port: values.ContainerId
-        ? suggestedPortForType(selectedContainer, type)
-        : portByType[type],
+      Port: portByType[type],
       Database: type === 'redis' ? '' : values.Database,
     });
   }
@@ -842,7 +1689,14 @@ function ConnectionForm({
     }
 
     const container = containers[0];
-    onChange(applyContainerSuggestion(values, container, values.Type));
+    onChange(
+      applyContainerSuggestion(
+        values,
+        container,
+        values.Type,
+        preferPublishedContainerPorts
+      )
+    );
   }
 
   function updateContainer(containerId: string) {
@@ -853,7 +1707,8 @@ function ConnectionForm({
       applyContainerSuggestion(
         { ...values, ContainerId: containerId },
         container,
-        values.Type
+        values.Type,
+        preferPublishedContainerPorts
       )
     );
   }
@@ -1055,6 +1910,23 @@ function ConnectionForm({
           />
         </FormControl>
 
+        {isEditing && (
+          <div
+            className={`small mb-3 ${
+              hasSavedPassword ? 'text-success' : 'text-warning'
+            }`}
+          >
+            {hasSavedPassword
+              ? t('legacyText.Saved password exists. Leave blank to keep it.', {
+                  defaultValue:
+                    'Saved password exists. Leave blank to keep it.',
+                })
+              : t('legacyText.No password is saved for this connection.', {
+                  defaultValue: 'No password is saved for this connection.',
+                })}
+          </div>
+        )}
+
         <FormControl
           label={t('legacyText.Timeout', { defaultValue: 'Timeout' })}
           inputId="database-connection-timeout"
@@ -1074,19 +1946,41 @@ function ConnectionForm({
         </FormControl>
       </div>
 
-      <div className="form-actions mt-4">
+      {testStatus && (
+        <Alert
+          color={testStatus === 'success' ? 'success' : 'error'}
+          className="mt-4 py-2"
+        >
+          {testStatus === 'success'
+            ? t('legacyText.Connection successful', {
+                defaultValue: 'Connection successful',
+              })
+            : databaseErrorLabel(
+                testError ||
+                  Object.assign(new Error('Connection failed'), {
+                    ErrorCode: 'connection_failed',
+                  }),
+                t
+              )}
+        </Alert>
+      )}
+
+      <div className="mt-4 flex flex-col gap-2 border-0 border-t border-solid border-gray-7 pt-4 th-dark:border-gray-8 sm:flex-row sm:items-center sm:justify-between">
         <LoadingButton
           type="button"
           color="default"
+          className="w-full justify-center sm:w-auto"
           isLoading={isTesting}
           loadingText={t('buttons.Testing...', { defaultValue: 'Testing...' })}
           data-cy="database-test-connection-button"
           onClick={async () => {
             setTestStatus(undefined);
+            setTestError(undefined);
             try {
               await onTest(values);
               setTestStatus('success');
-            } catch {
+            } catch (error) {
+              setTestError(error as DatabaseViewError);
               setTestStatus('error');
             }
           }}
@@ -1094,40 +1988,29 @@ function ConnectionForm({
           <Icon icon={FlaskConical} className="lucide space-right" />
           {t('buttons.Test Connection', { defaultValue: 'Test Connection' })}
         </LoadingButton>
-        <LoadingButton
-          type="submit"
-          color="primary"
-          isLoading={isLoading}
-          loadingText={t('buttons.Saving...', { defaultValue: 'Saving...' })}
-          data-cy="database-save-connection-button"
-        >
-          <Icon icon={Save} className="lucide space-right" />
-          {t('buttons.Save', { defaultValue: 'Save' })}
-        </LoadingButton>
-        <Button
-          type="button"
-          color="default"
-          data-cy="database-cancel-edit-button"
-          onClick={onCancel}
-        >
-          {t('buttons.Cancel', { defaultValue: 'Cancel' })}
-        </Button>
-      </div>
-      {testStatus && (
-        <div
-          className={`small mt-2 ${
-            testStatus === 'success' ? 'text-success' : 'text-danger'
-          }`}
-        >
-          {testStatus === 'success'
-            ? t('legacyText.Connection successful', {
-                defaultValue: 'Connection successful',
-              })
-            : t('legacyText.Connection failed', {
-                defaultValue: 'Connection failed',
-              })}
+        <div className="flex gap-2 sm:ml-auto">
+          <LoadingButton
+            type="submit"
+            color="primary"
+            className="flex-1 justify-center sm:flex-none"
+            isLoading={isLoading}
+            loadingText={t('buttons.Saving...', { defaultValue: 'Saving...' })}
+            data-cy="database-save-connection-button"
+          >
+            <Icon icon={Save} className="lucide space-right" />
+            {t('buttons.Save', { defaultValue: 'Save' })}
+          </LoadingButton>
+          <Button
+            type="button"
+            color="default"
+            className="flex-1 justify-center sm:flex-none"
+            data-cy="database-cancel-edit-button"
+            onClick={onCancel}
+          >
+            {t('buttons.Cancel', { defaultValue: 'Cancel' })}
+          </Button>
         </div>
-      )}
+      </div>
     </form>
   );
 }
@@ -1303,6 +2186,14 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
   }>();
   const [copied, setCopied] = useState(false);
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
+  const formattedDetailJson = useMemo(
+    () => formatJsonText(detail?.value),
+    [detail?.value]
+  );
+
+  useEffect(() => {
+    setCopied(false);
+  }, [detail?.column, detail?.value]);
 
   async function copyDetail() {
     if (!detail) {
@@ -1312,6 +2203,17 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
     await navigator.clipboard?.writeText(detail.value);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  function formatDetailJson() {
+    if (!detail || !formattedDetailJson) {
+      return;
+    }
+
+    setDetail({
+      ...detail,
+      value: formattedDetailJson,
+    });
   }
 
   async function copyMarkdown() {
@@ -1324,9 +2226,32 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
     window.setTimeout(() => setCopiedMarkdown(false), 1500);
   }
 
+  function exportResult(format: 'csv' | 'json' | 'markdown') {
+    if (!result) {
+      return;
+    }
+
+    const content =
+      format === 'csv'
+        ? csvTable(result)
+        : format === 'json'
+          ? jsonTable(result)
+          : markdownTable(result);
+    const mime =
+      format === 'json'
+        ? 'application/json;charset=utf-8'
+        : 'text/plain;charset=utf-8';
+    const extension = format === 'markdown' ? 'md' : format;
+
+    saveAs(
+      new Blob([content], { type: mime }),
+      `database-result-${formatTimestampForFilename(new Date())}.${extension}`
+    );
+  }
+
   if (!result) {
     return (
-      <div className="text-muted mt-4 min-h-[220px] rounded border border-gray-5 p-4">
+      <div className="text-muted mt-4 min-h-0 flex-1 rounded border border-gray-5 p-4">
         {t('legacyText.Run a query to see results.', {
           defaultValue: 'Run a query to see results.',
         })}
@@ -1335,17 +2260,49 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
   }
 
   return (
-    <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded border border-gray-5">
+    <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-gray-5">
       <div className="flex items-center gap-2 border-b border-gray-5 px-3 py-2">
         <span className="font-semibold">
           {t('panelTitles.Results', { defaultValue: 'Results' })}
         </span>
         <span className="text-muted">{result.Message}</span>
+        <span className="ml-auto rounded bg-gray-2 px-2 py-1 text-xs font-medium text-gray-8 th-dark:bg-gray-iron-10 th-dark:text-gray-3">
+          {result.Duration.toFixed(3)}s
+        </span>
         <Button
           type="button"
           color="default"
           size="small"
-          className="ml-auto"
+          onClick={() => exportResult('csv')}
+          data-cy="database-export-csv-button"
+        >
+          <Icon icon={FileSpreadsheet} className="lucide space-right" />
+          CSV
+        </Button>
+        <Button
+          type="button"
+          color="default"
+          size="small"
+          onClick={() => exportResult('json')}
+          data-cy="database-export-json-button"
+        >
+          <Icon icon={FileJson} className="lucide space-right" />
+          JSON
+        </Button>
+        <Button
+          type="button"
+          color="default"
+          size="small"
+          onClick={() => exportResult('markdown')}
+          data-cy="database-export-markdown-button"
+        >
+          <Icon icon={Download} className="lucide space-right" />
+          Markdown
+        </Button>
+        <Button
+          type="button"
+          color="default"
+          size="small"
           onClick={copyMarkdown}
           data-cy="database-copy-markdown-button"
         >
@@ -1359,14 +2316,15 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
                 defaultValue: 'Copy as Markdown table',
               })}
         </Button>
-        <span className="small text-muted">{result.Duration.toFixed(3)}s</span>
       </div>
-      <div className="h-full overflow-auto">
-        <table className="table-hover nowrap-cells mb-0 table">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="table-hover nowrap-cells mb-0 table min-w-max">
           <thead className="sticky top-0 z-10 bg-gray-2 text-gray-10 th-dark:bg-blue-11 th-dark:text-white">
             <tr>
               {result.Columns.map((column) => (
-                <th key={column}>{column}</th>
+                <th key={column} className="min-w-[140px]">
+                  {column}
+                </th>
               ))}
             </tr>
           </thead>
@@ -1421,21 +2379,28 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
               <span className="text-muted truncate text-sm">
                 {detail.column}
               </span>
-              <Button
-                type="button"
-                color="default"
-                size="small"
-                className="ml-auto"
-                data-cy="database-cell-detail-close-button"
-                onClick={() => setDetail(undefined)}
-              >
-                <Icon icon={X} className="lucide" />
-              </Button>
             </div>
             <pre className="m-0 min-h-[180px] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm">
               {detail.value}
             </pre>
             <div className="flex justify-end gap-2 border-t border-gray-5 px-4 py-3">
+              <Button
+                type="button"
+                color="default"
+                disabled={!formattedDetailJson}
+                title={
+                  formattedDetailJson
+                    ? t('buttons.Format', { defaultValue: 'Format' })
+                    : t('legacyText.Cell value is not valid JSON', {
+                        defaultValue: 'Cell value is not valid JSON',
+                      })
+                }
+                data-cy="database-cell-detail-format-json-button"
+                onClick={formatDetailJson}
+              >
+                <Icon icon={Wand2} className="lucide space-right" />
+                {t('buttons.Format', { defaultValue: 'Format' })}
+              </Button>
               <Button
                 type="button"
                 color="default"
@@ -1450,6 +2415,15 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
                   ? t('buttons.Copied', { defaultValue: 'Copied' })
                   : t('buttons.Copy', { defaultValue: 'Copy' })}
               </Button>
+              <Button
+                type="button"
+                color="default"
+                data-cy="database-cell-detail-close-button"
+                onClick={() => setDetail(undefined)}
+              >
+                <Icon icon={X} className="lucide space-right" />
+                {t('buttons.Close', { defaultValue: 'Close' })}
+              </Button>
             </div>
           </div>
         </div>
@@ -1459,47 +2433,144 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
 }
 
 function normalizePayload(
-  values: ConnectionFormValues
+  values: ConnectionFormValues,
+  options: {
+    connectionId?: number;
+    preserveBlankPassword?: boolean;
+  } = {}
 ): DatabaseConnectionPayload {
+  const { Password, ...valuesWithoutPassword } = values;
+  const password = Password?.trim();
+  // 编辑连接时空密码表示保留当前密码；这里省略 Password 字段，
+  // 测试连接再带上 Id，让后端能安全复用已保存的密码。
+  const passwordPayload =
+    options.preserveBlankPassword && !password ? {} : { Password: password };
+
   return {
-    ...values,
+    ...valuesWithoutPassword,
+    ...(options.connectionId ? { Id: options.connectionId } : {}),
     Name: values.Name.trim(),
     Host: values.Host.trim(),
     Database: values.Database?.trim(),
     Username: values.Username?.trim(),
-    Password: values.Password?.trim(),
+    ...passwordPayload,
     ContainerId: values.ContainerId || '',
     QueryTimeout: Math.min(120, Math.max(5, Number(values.QueryTimeout) || 30)),
   };
 }
 
+// 数据库下拉默认优先选择业务库，跳过 MySQL/PostgreSQL 自带系统库；
+// 这样刷新页面后不会误把 information_schema 作为当前查询上下文。
+function preferredDatabaseOption(
+  databases: string[],
+  connectionType?: DatabaseConnectionType
+) {
+  if (!databases.length) {
+    return '';
+  }
+
+  return (
+    databases.find((database) => !isSystemDatabase(database, connectionType)) ||
+    databases[0]
+  );
+}
+
+function isSystemDatabase(
+  database: string,
+  connectionType?: DatabaseConnectionType
+) {
+  const normalized = database.toLowerCase();
+  const mysqlSystemDatabases = new Set([
+    'information_schema',
+    'mysql',
+    'performance_schema',
+    'sys',
+  ]);
+  const postgresSystemDatabases = new Set(['information_schema', 'pg_catalog']);
+
+  if (connectionType === 'postgres') {
+    return (
+      normalized.startsWith('pg_') || postgresSystemDatabases.has(normalized)
+    );
+  }
+
+  return mysqlSystemDatabases.has(normalized);
+}
+
 function applyContainerSuggestion(
   values: ConnectionFormValues,
   container: ContainerListViewModel | undefined,
-  type: DatabaseConnectionType
+  type: DatabaseConnectionType,
+  preferPublishedPorts: boolean
 ): ConnectionFormValues {
   const containerName = container?.Names?.[0]?.replace(/^\//, '') || '';
+  const suggestion = suggestedConnectionTarget(
+    container,
+    type,
+    preferPublishedPorts
+  );
 
   return {
     ...values,
     ContainerId: container?.Id || values.ContainerId || '',
-    Name: values.Name || containerName,
-    Host: container?.IP || '127.0.0.1',
-    Port: suggestedPortForType(container, type),
+    Name: containerName || values.Name,
+    Host: suggestion.host,
+    Port: suggestion.port,
   };
 }
 
-function suggestedPortForType(
+function suggestedConnectionTarget(
+  container: ContainerListViewModel | undefined,
+  type: DatabaseConnectionType,
+  preferPublishedPorts: boolean
+) {
+  const defaultPort = portByType[type];
+  const publishedPort = publishedPortForType(container, type);
+
+  if (preferPublishedPorts && publishedPort) {
+    return {
+      host: normalizePublishedHost(publishedPort.host),
+      port: publishedPort.public,
+    };
+  }
+
+  return {
+    host: container?.IP || '127.0.0.1',
+    port:
+      container?.ExposedPorts?.find((port) => port.private === defaultPort)
+        ?.private ||
+      container?.Ports?.find((port) => port.private === defaultPort)?.private ||
+      container?.ExposedPorts?.[0]?.private ||
+      defaultPort,
+  };
+}
+
+function publishedPortForType(
   container: ContainerListViewModel | undefined,
   type: DatabaseConnectionType
 ) {
   const defaultPort = portByType[type];
   return (
-    container?.ExposedPorts?.find((port) => port.private === defaultPort)
-      ?.private ||
-    container?.Ports?.find((port) => port.private === defaultPort)?.private ||
-    container?.ExposedPorts?.[0]?.private ||
-    defaultPort
+    container?.Ports?.find((port) => port.private === defaultPort) ||
+    container?.Ports?.[0]
+  );
+}
+
+function normalizePublishedHost(host?: string) {
+  if (!host || host === '0.0.0.0' || host === '::' || host === '[::]') {
+    return '127.0.0.1';
+  }
+
+  return host;
+}
+
+function isLocalAgentUrl(url = '') {
+  const normalized = url.replace(/^[a-z]+:\/\//i, '').toLowerCase();
+  return (
+    normalized.startsWith('localhost:') ||
+    normalized.startsWith('127.0.0.1:') ||
+    normalized.startsWith('[::1]:') ||
+    normalized.startsWith('host.docker.internal:')
   );
 }
 
@@ -1553,6 +2624,86 @@ function isUpdateOrDeleteStatement(query: string) {
   return type === 'update' || type === 'delete';
 }
 
+// 写操作缺少 WHERE 时先在前端提高确认等级，后端仍会做同样校验。
+function isUnsafeWriteStatement(query: string) {
+  return (
+    isUpdateOrDeleteStatement(query) &&
+    !containsSqlKeywordOutsideLiterals(query, 'where')
+  );
+}
+
+function containsSqlKeywordOutsideLiterals(query: string, keyword: string) {
+  return new RegExp(`\\b${keyword}\\b`, 'i').test(
+    stripSqlLiteralsAndComments(query)
+  );
+}
+
+function stripSqlLiteralsAndComments(query: string) {
+  let result = '';
+  let quote: "'" | '"' | '`' | undefined;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < query.length; index += 1) {
+    const char = query[index];
+    const next = query[index + 1];
+
+    if (lineComment) {
+      if (char === '\n') {
+        lineComment = false;
+        result += char;
+      }
+      continue;
+    }
+
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (quote) {
+      result += ' ';
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === quote) {
+        if (next === quote) {
+          index += 1;
+          continue;
+        }
+        quote = undefined;
+      }
+      continue;
+    }
+
+    if (char === '-' && next === '-') {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char;
+      result += ' ';
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
 function statementType(query: string) {
   return stripSqlCommentLines(query)
     .trimStart()
@@ -1587,6 +2738,162 @@ function capSelectLimit(query: string, maxRows: number) {
   }
 
   return `${withoutSemicolon.replace(limitPattern, `LIMIT ${maxRows}`)}${semicolon}`;
+}
+
+function loadQueryTabs(
+  storageKey: string,
+  connection: DatabaseConnection,
+  databases: string[],
+  t: TranslateFn
+): PersistedQueryTabs {
+  const fallback = createDefaultQueryTab(connection, databases, 1, t);
+
+  try {
+    const stored = window.localStorage.getItem(storageKey);
+    if (!stored) {
+      return { activeTabId: fallback.id, tabs: [fallback] };
+    }
+
+    const parsed = JSON.parse(stored) as PersistedQueryTabs;
+    const tabs = sanitizeQueryTabs(parsed.tabs, connection, databases, t);
+    const activeTabId = tabs.some((tab) => tab.id === parsed.activeTabId)
+      ? parsed.activeTabId
+      : tabs[0].id;
+
+    return { activeTabId, tabs };
+  } catch {
+    return { activeTabId: fallback.id, tabs: [fallback] };
+  }
+}
+
+function saveQueryTabs(
+  storageKey: string,
+  activeTabId: string,
+  tabs: QueryTab[]
+) {
+  const payload: PersistedQueryTabs = {
+    activeTabId,
+    tabs: tabs.map(({ id, name, query, database }) => ({
+      id,
+      name,
+      query,
+      database,
+    })),
+  };
+
+  window.localStorage.setItem(storageKey, JSON.stringify(payload));
+}
+
+function sanitizeQueryTabs(
+  tabs: QueryTab[] | undefined,
+  connection: DatabaseConnection,
+  databases: string[],
+  t: TranslateFn
+) {
+  const validTabs = (tabs || [])
+    .filter((tab) => tab.id && tab.name)
+    .map((tab, index) => ({
+      id: tab.id,
+      name: tab.name || queryTabName(index + 1, t),
+      query: tab.query || defaultSqlTemplate,
+      database:
+        tab.database ||
+        connection.Database ||
+        preferredDatabaseOption(databases, connection.Type),
+    }));
+
+  return validTabs.length
+    ? validTabs
+    : [createDefaultQueryTab(connection, databases, 1, t)];
+}
+
+// 新建查询标签只持久化草稿和当前库，避免把结果数据写入浏览器存储。
+function createDefaultQueryTab(
+  connection: DatabaseConnection,
+  databases: string[],
+  index: number,
+  t: TranslateFn
+): QueryTab {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name: queryTabName(index, t),
+    query: defaultSqlTemplate,
+    database:
+      connection.Database ||
+      preferredDatabaseOption(databases, connection.Type),
+  };
+}
+
+function queryTabName(index: number, t: TranslateFn) {
+  return t('legacyText.Query {{number}}', {
+    number: index,
+    defaultValue: `Query ${index}`,
+  });
+}
+
+function databaseResultError(result: DatabaseQueryResult): DatabaseViewError {
+  return Object.assign(new Error(result.Message || 'Database query failed'), {
+    ErrorCode: result.ErrorCode,
+    Details: result.Message,
+  });
+}
+
+function databaseCanceledError(): DatabaseViewError {
+  return Object.assign(new Error('Query canceled'), {
+    ErrorCode: 'request_canceled',
+  });
+}
+
+function databaseErrorLabel(error: DatabaseViewError, t: TranslateFn) {
+  const code = error.ErrorCode || 'unknown_database_error';
+  const messageMap: Record<string, string> = {
+    network_unreachable: t('legacyText.Network unreachable', {
+      defaultValue:
+        'Network unreachable. Check whether Portainer can access the host and port.',
+    }),
+    authentication_failed: t('legacyText.Database authentication failed', {
+      defaultValue: 'Database authentication failed. Check username/password.',
+    }),
+    database_not_found: t('legacyText.Database does not exist', {
+      defaultValue: 'Database does not exist.',
+    }),
+    object_not_found: t('legacyText.Database object does not exist', {
+      defaultValue: 'Database object does not exist.',
+    }),
+    permission_denied: t('legacyText.Database permission denied', {
+      defaultValue: 'Database permission denied.',
+    }),
+    timeout: t('legacyText.Database request timed out', {
+      defaultValue: 'Database request timed out.',
+    }),
+    request_canceled: t('legacyText.Query canceled by user', {
+      defaultValue: 'Query canceled.',
+    }),
+    agent_unreachable: t('legacyText.Agent is unreachable', {
+      defaultValue:
+        'Agent is unreachable. Check the endpoint URL and Agent availability.',
+    }),
+    sql_error: t('legacyText.SQL execution failed', {
+      defaultValue: 'SQL execution failed.',
+    }),
+    unsafe_write_requires_confirmation: t(
+      'legacyText.Unsafe write requires confirmation',
+      {
+        defaultValue:
+          'This UPDATE/DELETE has no WHERE clause and requires confirmation.',
+      }
+    ),
+    connection_failed: t('legacyText.Connection failed', {
+      defaultValue: 'Connection failed',
+    }),
+    unknown_database_error: t('legacyText.Database operation failed', {
+      defaultValue: 'Database operation failed.',
+    }),
+  };
+  const message = messageMap[code] || messageMap.unknown_database_error;
+  const details = error.Details || error.message;
+
+  return details && details !== message ? `${message} ${details}` : message;
 }
 
 function loadQueryHistory(storageKey: string) {
@@ -1638,6 +2945,49 @@ function markdownTable(result: DatabaseQueryResult) {
   );
 
   return [header, separator, ...rows].join('\n');
+}
+
+function csvTable(result: DatabaseQueryResult) {
+  const columns = result.Columns;
+  const header = columns.map(escapeCsvCell).join(',');
+  const rows = result.Rows.map((row) =>
+    columns.map((column) => escapeCsvCell(row[column])).join(',')
+  );
+
+  return [header, ...rows].join('\n');
+}
+
+function jsonTable(result: DatabaseQueryResult) {
+  return JSON.stringify(result.Rows, null, 2);
+}
+
+function formatJsonText(value?: string) {
+  const trimmed = value?.trim();
+  if (
+    !trimmed ||
+    (!trimmed.startsWith('{') && !trimmed.startsWith('['))
+  ) {
+    return undefined;
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return undefined;
+  }
+}
+
+function escapeCsvCell(value?: string) {
+  const normalized = String(value ?? '');
+  if (!/[",\r\n]/.test(normalized)) {
+    return normalized;
+  }
+
+  return `"${normalized.replaceAll('"', '""')}"`;
+}
+
+function formatTimestampForFilename(date: Date) {
+  return date.toISOString().replace(/[:.]/g, '-');
 }
 
 function escapeMarkdownCell(value?: string) {

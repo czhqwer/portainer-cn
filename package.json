@@ -131,6 +131,7 @@
     "react-select-async-paginate": "^0.7.11",
     "sanitize-html": "^2.17.0",
     "spinkit": "^2.0.1",
+    "sql-formatter": "^15.8.2",
     "strip-ansi": "^6.0.0",
     "tailwindcss-animate": "^1.0.7",
     "tippy.js": "^6.3.7",

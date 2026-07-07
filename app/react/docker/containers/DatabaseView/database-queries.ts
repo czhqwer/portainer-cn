@@ -6,7 +6,6 @@ import { withError } from '@/react-tools/react-query';
 import { EnvironmentId } from '@/react/portainer/environments/types';
 
 import { withAgentTargetHeader } from '../../proxy/queries/utils';
-import { buildDockerUrl } from '../../queries/utils/buildDockerUrl';
 
 export type DatabaseConnectionType = 'mysql' | 'mariadb' | 'postgres' | 'redis';
 
@@ -29,6 +28,7 @@ export type DatabaseConnection = {
 };
 
 export type DatabaseConnectionPayload = {
+  Id?: number;
   Name: string;
   Type: DatabaseConnectionType;
   Host: string;
@@ -48,6 +48,9 @@ export type DatabaseQueryResult = {
   RowsAffected?: number;
   StatementType?: string;
   Preview?: boolean;
+  RequiresConfirmation?: boolean;
+  UnsafeWrite?: boolean;
+  ErrorCode?: string;
 };
 
 export type DatabaseSchema = {
@@ -65,6 +68,51 @@ export type DatabaseConnectionTestResult = {
   Message: string;
 };
 
+export type DatabaseTableDetails = {
+  Database: string;
+  Table: string;
+  Comment?: string;
+  Columns: Array<{
+    Name: string;
+    Type: string;
+    Nullable: boolean;
+    PrimaryKey: boolean;
+    Default?: string;
+    Extra?: string;
+    Comment?: string;
+  }>;
+  Indexes: Array<{
+    Name: string;
+    Columns: string[];
+    Unique: boolean;
+    Primary: boolean;
+  }>;
+};
+
+export type RedisKeySummary = {
+  Name: string;
+  Type: string;
+  TTL: string;
+};
+
+export type RedisKeyScanResponse = {
+  Cursor: string;
+  Keys: RedisKeySummary[];
+};
+
+export type RedisKeyDetails = {
+  Name: string;
+  Type: string;
+  TTL: string;
+  Value?: string;
+  Rows: Array<Record<string, string>>;
+};
+
+export type DatabaseRequestError = Error & {
+  ErrorCode?: string;
+  Details?: string;
+};
+
 const databaseQueryKeys = {
   list: (environmentId: EnvironmentId) =>
     ['environments', environmentId, 'database-connections'] as const,
@@ -75,6 +123,53 @@ const databaseQueryKeys = {
       'database-connections',
       connectionId,
       'schema',
+    ] as const,
+  tableDetails: (
+    environmentId: EnvironmentId,
+    connectionId?: number,
+    database?: string,
+    table?: string
+  ) =>
+    [
+      'environments',
+      environmentId,
+      'database-connections',
+      connectionId,
+      'table-details',
+      database,
+      table,
+    ] as const,
+  redisKeys: (
+    environmentId: EnvironmentId,
+    connectionId?: number,
+    database?: string,
+    pattern?: string,
+    cursor?: string
+  ) =>
+    [
+      'environments',
+      environmentId,
+      'database-connections',
+      connectionId,
+      'redis-keys',
+      database,
+      pattern,
+      cursor,
+    ] as const,
+  redisKeyDetails: (
+    environmentId: EnvironmentId,
+    connectionId?: number,
+    database?: string,
+    key?: string
+  ) =>
+    [
+      'environments',
+      environmentId,
+      'database-connections',
+      connectionId,
+      'redis-key-details',
+      database,
+      key,
     ] as const,
 };
 
@@ -139,13 +234,17 @@ export function useRunDatabaseQuery(environmentId: EnvironmentId) {
       query,
       database,
       preview,
+      confirmUnsafeWrite,
       nodeName,
+      signal,
     }: {
       connection: DatabaseConnection;
       query: string;
       database?: string;
       preview?: boolean;
+      confirmUnsafeWrite?: boolean;
       nodeName?: string;
+      signal?: AbortSignal;
     }) =>
       runDatabaseQuery(
         environmentId,
@@ -153,9 +252,10 @@ export function useRunDatabaseQuery(environmentId: EnvironmentId) {
         query,
         database,
         preview,
-        nodeName
+        confirmUnsafeWrite,
+        nodeName,
+        signal
       ),
-    ...withError('Unable to execute database query'),
   });
 }
 
@@ -169,6 +269,85 @@ export function useDatabaseSchema(
     queryFn: () => getDatabaseSchema(environmentId, connection!, nodeName),
     enabled: !!connection,
     ...withError('Unable to retrieve database schema'),
+  });
+}
+
+export function useDatabaseTableDetails(
+  environmentId: EnvironmentId,
+  connection?: DatabaseConnection,
+  database?: string,
+  table?: string,
+  nodeName?: string
+) {
+  return useQuery({
+    queryKey: databaseQueryKeys.tableDetails(
+      environmentId,
+      connection?.Id,
+      database,
+      table
+    ),
+    queryFn: () =>
+      getDatabaseTableDetails(
+        environmentId,
+        connection!,
+        database!,
+        table!,
+        nodeName
+      ),
+    enabled:
+      !!connection && !!database && !!table && connection.Type !== 'redis',
+    ...withError('Unable to retrieve table details'),
+  });
+}
+
+export function useRedisKeys(
+  environmentId: EnvironmentId,
+  connection?: DatabaseConnection,
+  database?: string,
+  pattern = '*',
+  cursor = '0',
+  nodeName?: string
+) {
+  return useQuery({
+    queryKey: databaseQueryKeys.redisKeys(
+      environmentId,
+      connection?.Id,
+      database,
+      pattern,
+      cursor
+    ),
+    queryFn: () =>
+      getRedisKeys(
+        environmentId,
+        connection!,
+        database,
+        pattern,
+        cursor,
+        nodeName
+      ),
+    enabled: !!connection && connection.Type === 'redis',
+    ...withError('Unable to scan Redis keys'),
+  });
+}
+
+export function useRedisKeyDetails(
+  environmentId: EnvironmentId,
+  connection?: DatabaseConnection,
+  database?: string,
+  key?: string,
+  nodeName?: string
+) {
+  return useQuery({
+    queryKey: databaseQueryKeys.redisKeyDetails(
+      environmentId,
+      connection?.Id,
+      database,
+      key
+    ),
+    queryFn: () =>
+      getRedisKeyDetails(environmentId, connection!, database, key!, nodeName),
+    enabled: !!connection && connection.Type === 'redis' && !!key,
+    ...withError('Unable to retrieve Redis key details'),
   });
 }
 
@@ -193,7 +372,7 @@ async function getDatabaseConnections(environmentId: EnvironmentId) {
 
     return data;
   } catch (e) {
-    throw parseAxiosError(e, 'Unable to retrieve database connections');
+    throw parseDatabaseError(e, 'Unable to retrieve database connections');
   }
 }
 
@@ -209,7 +388,7 @@ async function createDatabaseConnection(
 
     return data;
   } catch (e) {
-    throw parseAxiosError(e, 'Unable to create database connection');
+    throw parseDatabaseError(e, 'Unable to create database connection');
   }
 }
 
@@ -226,7 +405,7 @@ async function updateDatabaseConnection(
 
     return data;
   } catch (e) {
-    throw parseAxiosError(e, 'Unable to update database connection');
+    throw parseDatabaseError(e, 'Unable to update database connection');
   }
 }
 
@@ -237,7 +416,7 @@ async function deleteDatabaseConnection(
   try {
     await axios.delete(databaseConnectionUrl(environmentId, id));
   } catch (e) {
-    throw parseAxiosError(e, 'Unable to delete database connection');
+    throw parseDatabaseError(e, 'Unable to delete database connection');
   }
 }
 
@@ -247,18 +426,25 @@ async function runDatabaseQuery(
   query: string,
   database?: string,
   preview = false,
-  nodeName?: string
+  confirmUnsafeWrite = false,
+  nodeName?: string,
+  signal?: AbortSignal
 ) {
   try {
     const { data } = await axios.post<DatabaseQueryResult>(
       `${databaseConnectionUrl(environmentId, connection)}/query`,
-      { Query: query, Database: database, Preview: preview },
-      { headers: { ...withAgentTargetHeader(nodeName) } }
+      {
+        Query: query,
+        Database: database,
+        Preview: preview,
+        ConfirmUnsafeWrite: confirmUnsafeWrite,
+      },
+      { headers: { ...withAgentTargetHeader(nodeName) }, signal }
     );
 
     return data;
   } catch (e) {
-    throw parseAxiosError(e, 'Unable to execute database query');
+    throw parseDatabaseError(e, 'Unable to execute database query');
   }
 }
 
@@ -275,7 +461,74 @@ async function getDatabaseSchema(
 
     return data;
   } catch (e) {
-    throw parseAxiosError(e, 'Unable to retrieve database schema');
+    throw parseDatabaseError(e, 'Unable to retrieve database schema');
+  }
+}
+
+async function getDatabaseTableDetails(
+  environmentId: EnvironmentId,
+  connection: DatabaseConnection,
+  database: string,
+  table: string,
+  nodeName?: string
+) {
+  try {
+    const { data } = await axios.get<DatabaseTableDetails>(
+      `${databaseConnectionUrl(environmentId, connection)}/table-details`,
+      {
+        params: { database, table },
+        headers: { ...withAgentTargetHeader(nodeName) },
+      }
+    );
+
+    return data;
+  } catch (e) {
+    throw parseDatabaseError(e, 'Unable to retrieve table details');
+  }
+}
+
+async function getRedisKeys(
+  environmentId: EnvironmentId,
+  connection: DatabaseConnection,
+  database?: string,
+  pattern = '*',
+  cursor = '0',
+  nodeName?: string
+) {
+  try {
+    const { data } = await axios.get<RedisKeyScanResponse>(
+      `${databaseConnectionUrl(environmentId, connection)}/redis-keys`,
+      {
+        params: { database, pattern, cursor },
+        headers: { ...withAgentTargetHeader(nodeName) },
+      }
+    );
+
+    return data;
+  } catch (e) {
+    throw parseDatabaseError(e, 'Unable to scan Redis keys');
+  }
+}
+
+async function getRedisKeyDetails(
+  environmentId: EnvironmentId,
+  connection: DatabaseConnection,
+  database?: string,
+  key?: string,
+  nodeName?: string
+) {
+  try {
+    const { data } = await axios.get<RedisKeyDetails>(
+      `${databaseConnectionUrl(environmentId, connection)}/redis-key-details`,
+      {
+        params: { database, key },
+        headers: { ...withAgentTargetHeader(nodeName) },
+      }
+    );
+
+    return data;
+  } catch (e) {
+    throw parseDatabaseError(e, 'Unable to retrieve Redis key details');
   }
 }
 
@@ -293,8 +546,33 @@ async function testDatabaseConnection(
 
     return data;
   } catch (e) {
-    throw parseAxiosError(e, 'Unable to test database connection');
+    throw parseDatabaseError(e, 'Unable to test database connection');
   }
+}
+
+function parseDatabaseError(err: unknown, fallbackMessage: string) {
+  const parsedError = parseAxiosError(
+    err,
+    fallbackMessage
+  ) as DatabaseRequestError;
+  const responseData =
+    typeof err === 'object' && err && 'response' in err
+      ? (err.response as { data?: Record<string, unknown> } | undefined)?.data
+      : undefined;
+
+  if (responseData) {
+    if (typeof responseData.ErrorCode === 'string') {
+      parsedError.ErrorCode = responseData.ErrorCode;
+    }
+    if (typeof responseData.Details === 'string') {
+      parsedError.Details = responseData.Details;
+    }
+    if (typeof responseData.Message === 'string') {
+      parsedError.message = responseData.Message;
+    }
+  }
+
+  return parsedError;
 }
 
 function databaseConnectionsUrl(environmentId: EnvironmentId) {
@@ -303,18 +581,8 @@ function databaseConnectionsUrl(environmentId: EnvironmentId) {
 
 function databaseConnectionTestUrl(
   environmentId: EnvironmentId,
-  payload: DatabaseConnectionPayload
+  _payload: DatabaseConnectionPayload
 ) {
-  if (payload.ContainerId) {
-    return buildDockerUrl(
-      environmentId,
-      'containers',
-      payload.ContainerId,
-      'database-connections',
-      'test'
-    );
-  }
-
   return `${databaseConnectionsUrl(environmentId)}/test`;
 }
 
@@ -322,16 +590,6 @@ function databaseConnectionUrl(
   environmentId: EnvironmentId,
   connection: number | DatabaseConnection
 ) {
-  if (typeof connection !== 'number' && connection.ContainerId) {
-    return buildDockerUrl(
-      environmentId,
-      'containers',
-      connection.ContainerId,
-      'database-connections',
-      connection.Id
-    );
-  }
-
   const id = typeof connection === 'number' ? connection : connection.Id;
   return `${databaseConnectionsUrl(environmentId)}/${id}`;
 }

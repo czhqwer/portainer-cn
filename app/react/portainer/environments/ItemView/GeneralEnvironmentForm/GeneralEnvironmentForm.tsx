@@ -74,7 +74,7 @@ export function GeneralEnvironmentForm({ environment, onSuccess }: Props) {
                   </>
                 )}
 
-                {!hasError && values.tls && (
+                {values.tls && (
                   <TLSFieldset
                     values={values.tls}
                     onChange={(partialValues) => {

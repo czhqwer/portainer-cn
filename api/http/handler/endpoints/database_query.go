@@ -14,7 +14,7 @@ import (
 	"unicode"
 
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	portainer "github.com/portainer/portainer/api"
 	httperror "github.com/portainer/portainer/pkg/libhttp/error"
 	"github.com/portainer/portainer/pkg/libhttp/request"
@@ -23,9 +23,10 @@ import (
 )
 
 type databaseQueryPayload struct {
-	Query    string `json:"Query"`
-	Database string `json:"Database"`
-	Preview  bool   `json:"Preview"`
+	Query              string `json:"Query"`
+	Database           string `json:"Database"`
+	Preview            bool   `json:"Preview"`
+	ConfirmUnsafeWrite bool   `json:"ConfirmUnsafeWrite"`
 }
 
 func (payload *databaseQueryPayload) Validate(r *http.Request) error {
@@ -39,13 +40,22 @@ func (payload *databaseQueryPayload) Validate(r *http.Request) error {
 }
 
 type databaseQueryResult struct {
-	Columns       []string            `json:"Columns"`
-	Rows          []map[string]string `json:"Rows"`
-	Message       string              `json:"Message"`
-	Duration      float64             `json:"Duration"`
-	RowsAffected  int64               `json:"RowsAffected,omitempty"`
-	StatementType string              `json:"StatementType,omitempty"`
-	Preview       bool                `json:"Preview,omitempty"`
+	Columns              []string            `json:"Columns"`
+	Rows                 []map[string]string `json:"Rows"`
+	Message              string              `json:"Message"`
+	Duration             float64             `json:"Duration"`
+	RowsAffected         int64               `json:"RowsAffected,omitempty"`
+	StatementType        string              `json:"StatementType,omitempty"`
+	Preview              bool                `json:"Preview,omitempty"`
+	RequiresConfirmation bool                `json:"RequiresConfirmation,omitempty"`
+	UnsafeWrite          bool                `json:"UnsafeWrite,omitempty"`
+	ErrorCode            string              `json:"ErrorCode,omitempty"`
+}
+
+type databaseErrorResponse struct {
+	Message   string `json:"Message"`
+	Details   string `json:"Details,omitempty"`
+	ErrorCode string `json:"ErrorCode"`
 }
 
 func (handler *Handler) databaseConnectionQuery(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
@@ -58,9 +68,6 @@ func (handler *Handler) databaseConnectionQuery(w http.ResponseWriter, r *http.R
 	if httpErr != nil {
 		return httpErr
 	}
-	if connection.ContainerID != "" {
-		return httperror.BadRequest("Container database connections must be queried through the Docker endpoint", errors.New("container database connection"))
-	}
 
 	var payload databaseQueryPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
@@ -72,9 +79,22 @@ func (handler *Handler) databaseConnectionQuery(w http.ResponseWriter, r *http.R
 		queryConnection.Database = payload.Database
 	}
 
+	statementType := databaseStatementType(payload.Query)
+	if !payload.Preview && isUnsafeWriteStatement(payload.Query) && !payload.ConfirmUnsafeWrite {
+		return response.JSON(w, &databaseQueryResult{
+			Columns:              []string{},
+			Rows:                 []map[string]string{},
+			Message:              "UPDATE/DELETE without WHERE requires confirmation",
+			StatementType:        statementType,
+			RequiresConfirmation: true,
+			UnsafeWrite:          true,
+			ErrorCode:            "unsafe_write_requires_confirmation",
+		})
+	}
+
 	result, err := executeDirectDatabaseQuery(r.Context(), queryConnection, payload.Query, payload.Preview)
 	if err != nil {
-		return httperror.InternalServerError("Unable to execute database query", err)
+		return writeDatabaseError(w, "Unable to execute database query", err)
 	}
 
 	return response.JSON(w, result)
@@ -381,6 +401,181 @@ func databaseStatementType(query string) string {
 	}
 
 	return ""
+}
+
+func isUnsafeWriteStatement(query string) bool {
+	statementType := databaseStatementType(query)
+	if statementType != "update" && statementType != "delete" {
+		return false
+	}
+
+	return !containsSQLKeywordOutsideLiterals(query, "where")
+}
+
+// 写入保护只关心 WHERE 是否出现在真正的 SQL 结构里；
+// 这里先去掉注释和字符串字面量，避免因为文本内容里包含 where 而误放行危险 UPDATE/DELETE。
+func containsSQLKeywordOutsideLiterals(query string, keyword string) bool {
+	normalized := stripSQLLiteralsAndComments(query)
+	fields := strings.FieldsFunc(normalized, func(r rune) bool {
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_')
+	})
+
+	for _, field := range fields {
+		if strings.EqualFold(field, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func stripSQLLiteralsAndComments(query string) string {
+	var builder strings.Builder
+	var quote rune
+	escaped := false
+	inLineComment := false
+	inBlockComment := false
+	runes := []rune(query)
+
+	for i := 0; i < len(runes); i++ {
+		current := runes[i]
+		next := rune(0)
+		if i+1 < len(runes) {
+			next = runes[i+1]
+		}
+
+		if inLineComment {
+			if current == '\n' {
+				inLineComment = false
+				builder.WriteRune(current)
+			}
+			continue
+		}
+
+		if inBlockComment {
+			if current == '*' && next == '/' {
+				inBlockComment = false
+				i++
+			}
+			continue
+		}
+
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if current == '\\' && quote != '\'' {
+				escaped = true
+				continue
+			}
+			if current == quote {
+				quote = 0
+			}
+			builder.WriteRune(' ')
+			continue
+		}
+
+		if current == '-' && next == '-' {
+			inLineComment = true
+			i++
+			continue
+		}
+		if current == '/' && next == '*' {
+			inBlockComment = true
+			i++
+			continue
+		}
+		if current == '\'' || current == '"' || current == '`' {
+			quote = current
+			builder.WriteRune(' ')
+			continue
+		}
+
+		builder.WriteRune(current)
+	}
+
+	return builder.String()
+}
+
+func writeDatabaseError(w http.ResponseWriter, message string, err error) *httperror.HandlerError {
+	code, friendlyMessage, status := classifyDatabaseError(err)
+	if friendlyMessage == "" {
+		friendlyMessage = message
+	}
+	return response.JSONWithStatus(w, databaseErrorResponse{
+		Message:   friendlyMessage,
+		Details:   err.Error(),
+		ErrorCode: code,
+	}, status)
+}
+
+// 数据库错误来自不同驱动，统一映射成前端可展示的诊断码和中文可翻译消息。
+func classifyDatabaseError(err error) (string, string, int) {
+	if err == nil {
+		return "unknown", "Database operation failed", http.StatusInternalServerError
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return "request_canceled", "Query was canceled", http.StatusRequestTimeout
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout", "Query timed out", http.StatusGatewayTimeout
+	}
+
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		switch mysqlErr.Number {
+		case 1045:
+			return "authentication_failed", "Database authentication failed", http.StatusUnauthorized
+		case 1049:
+			return "database_not_found", "Database does not exist", http.StatusBadRequest
+		case 1146:
+			return "object_not_found", "Database object does not exist", http.StatusBadRequest
+		case 1064:
+			return "sql_error", "SQL syntax error", http.StatusBadRequest
+		}
+	}
+
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		switch string(pqErr.Code) {
+		case "28P01":
+			return "authentication_failed", "Database authentication failed", http.StatusUnauthorized
+		case "3D000":
+			return "database_not_found", "Database does not exist", http.StatusBadRequest
+		case "42P01":
+			return "object_not_found", "Database object does not exist", http.StatusBadRequest
+		case "42601":
+			return "sql_error", "SQL syntax error", http.StatusBadRequest
+		case "42501":
+			return "permission_denied", "Database permission denied", http.StatusForbidden
+		}
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout", "Database connection timed out", http.StatusGatewayTimeout
+	}
+
+	lowerErr := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lowerErr, "connection refused"),
+		strings.Contains(lowerErr, "no such host"),
+		strings.Contains(lowerErr, "network is unreachable"),
+		strings.Contains(lowerErr, "i/o timeout"):
+		return "network_unreachable", "Database host is unreachable", http.StatusBadGateway
+	case strings.Contains(lowerErr, "unable to upgrade to tcp"),
+		strings.Contains(lowerErr, "agent"):
+		return "agent_unreachable", "Portainer Agent is unreachable", http.StatusBadGateway
+	case strings.Contains(lowerErr, "access denied"),
+		strings.Contains(lowerErr, "password authentication failed"):
+		return "authentication_failed", "Database authentication failed", http.StatusUnauthorized
+	case strings.Contains(lowerErr, "syntax"):
+		return "sql_error", "SQL syntax error", http.StatusBadRequest
+	}
+
+	return "database_error", "Database operation failed", http.StatusInternalServerError
 }
 
 func splitRedisCommand(command string) ([]string, error) {

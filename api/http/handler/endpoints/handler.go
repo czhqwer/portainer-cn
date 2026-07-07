@@ -95,6 +95,12 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionQuery))).Methods(http.MethodPost)
 	h.Handle("/endpoints/{id}/database-connections/{connectionId}/schema",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionSchema))).Methods(http.MethodGet)
+	h.Handle("/endpoints/{id}/database-connections/{connectionId}/table-details",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionTableDetails))).Methods(http.MethodGet)
+	h.Handle("/endpoints/{id}/database-connections/{connectionId}/redis-keys",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionRedisKeys))).Methods(http.MethodGet)
+	h.Handle("/endpoints/{id}/database-connections/{connectionId}/redis-key-details",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.databaseConnectionRedisKeyDetails))).Methods(http.MethodGet)
 
 	h.Handle("/endpoints/global-key", bouncer.PublicAccess(httperror.LoggerHandler(h.endpointCreateGlobalKey))).Methods(http.MethodPost)
 	h.Handle("/endpoints/{id}/forceupdateservice",

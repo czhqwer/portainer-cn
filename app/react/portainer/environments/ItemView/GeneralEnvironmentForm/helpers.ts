@@ -13,6 +13,7 @@ export function buildInitialValues(
   environment: Environment
 ): GeneralEnvironmentFormValues {
   const isDockerAPI = isDockerAPIEnvironment(environment);
+  const isDockerAgent = environment.Type === EnvironmentType.AgentOnDocker;
   const isLocalDocker = isLocalDockerEnvironment(environment.URL);
   return {
     name: environment.Name,
@@ -26,15 +27,16 @@ export function buildInitialValues(
       tagIds: environment.TagIds || [],
     },
 
-    tls: isDockerAPI
-      ? {
-          tls: environment.TLSConfig?.TLS || false,
-          skipVerify: environment.TLSConfig?.TLSSkipVerify || false,
-          caCertFile: undefined,
-          certFile: undefined,
-          keyFile: undefined,
-        }
-      : undefined,
+    tls:
+      isDockerAPI || isDockerAgent
+        ? {
+            tls: environment.TLSConfig?.TLS || false,
+            skipVerify: environment.TLSConfig?.TLSSkipVerify || false,
+            caCertFile: undefined,
+            certFile: undefined,
+            keyFile: undefined,
+          }
+        : undefined,
   };
 }
 

@@ -281,7 +281,7 @@ describe('GeneralEnvironmentForm', () => {
         description: 'Agent on Docker',
         url: 'tcp://agent:9001',
         environmentType: EnvironmentType.AgentOnDocker,
-        shouldShowTLS: false,
+        shouldShowTLS: true,
       },
       {
         description: 'Agent on Kubernetes',
