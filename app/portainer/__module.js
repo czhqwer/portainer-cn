@@ -1,4 +1,4 @@
-﻿import featureFlagModule from '@/react/portainer/feature-flags';
+import featureFlagModule from '@/react/portainer/feature-flags';
 
 import './rbac';
 
@@ -356,6 +356,67 @@ angular
         },
       };
 
+      var platformBase = {
+        name: 'portainer.platform',
+        url: '/platform',
+        abstract: true,
+      };
+
+      var platformProjects = {
+        name: 'portainer.platform.projects',
+        url: '/projects',
+        data: { docs: '/user/app-delivery/platform/projects' },
+        views: {
+          'content@': {
+            component: 'platformProjectsView',
+          },
+        },
+      };
+
+      var platformApplications = {
+        name: 'portainer.platform.applications',
+        url: '/applications',
+        data: { docs: '/user/app-delivery/platform/applications' },
+        views: {
+          'content@': {
+            component: 'platformApplicationsView',
+          },
+        },
+      };
+
+      var platformDeploy = {
+        name: 'portainer.platform.deploy',
+        url: '/deploy',
+        data: { docs: '/user/app-delivery/platform/deploy' },
+        views: {
+          'content@': {
+            component: 'platformDeployView',
+          },
+        },
+      };
+
+      var platformArtifacts = {
+        name: 'portainer.platform.artifacts',
+        url: '/artifacts',
+        data: { docs: '/user/app-delivery/platform/artifacts' },
+        views: {
+          'content@': {
+            component: 'platformArtifactsView',
+          },
+        },
+      };
+
+      var platformReleases = {
+        name: 'portainer.platform.releases',
+        url: '/releases',
+        data: { docs: '/user/app-delivery/platform/releases' },
+        views: {
+          'content@': {
+            component: 'platformReleasesView',
+          },
+        },
+      };
+
       var init = {
         name: 'portainer.init',
         abstract: true,
@@ -480,6 +541,12 @@ angular
       $stateRegistryProvider.register(gitopsSources);
       $stateRegistryProvider.register(gitopsSourceDetail);
       $stateRegistryProvider.register(gitopsSourceCreate);
+      $stateRegistryProvider.register(platformBase);
+      $stateRegistryProvider.register(platformProjects);
+      $stateRegistryProvider.register(platformApplications);
+      $stateRegistryProvider.register(platformDeploy);
+      $stateRegistryProvider.register(platformArtifacts);
+      $stateRegistryProvider.register(platformReleases);
       $stateRegistryProvider.register(init);
       $stateRegistryProvider.register(initAdmin);
       $stateRegistryProvider.register(settings);

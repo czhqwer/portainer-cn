@@ -4291,5 +4291,133 @@
   },
   "breadcrumbs": {
     "Add service": "Add service"
+  },
+  "platform": {
+    "navigation": {
+      "section": "App Delivery",
+      "projects": "Projects",
+      "applications": "Applications",
+      "deploy": "Deploy",
+      "artifacts": "Artifacts",
+      "releases": "Releases",
+      "gitopsWorkflows": "GitOps Workflows",
+      "gitopsSources": "GitOps Sources"
+    },
+    "pages": {
+      "projects": { "title": "Projects" },
+      "applications": { "title": "Applications and services" },
+      "deploy": { "title": "Deploy service" },
+      "artifacts": { "title": "Artifacts" },
+      "releases": { "title": "Release records" }
+    },
+    "alerts": {
+      "productionRisk": {
+        "title": "Technical preview",
+        "body": "V0.1 is a technical preview. Production deployments must assume short downtime and should not be treated as lossless releases."
+      },
+      "adminOnly": {
+        "title": "Administrator access only",
+        "body": "All /api/platform business APIs, including read requests, are limited to administrators in V0.1."
+      },
+      "gate0b": {
+        "title": "Gate 0B required",
+        "body": "Gate 0B has not passed. Docker RuntimeDriver, DeploymentExecutor, ContainerAdapter, candidate validation, switching, and recovery remain disabled."
+      }
+    },
+    "summary": {
+      "projects": "Projects",
+      "active": "Active",
+      "archived": "Archived",
+      "releases": "Releases",
+      "failed": "Failed",
+      "blocked": "Blocked"
+    },
+    "projects": { "tableTitle": "Project list" },
+    "applications": { "tableTitle": "Applications" },
+    "services": { "tableTitle": "Services" },
+    "artifacts": { "tableTitle": "Artifacts" },
+    "releases": { "tableTitle": "Release records" },
+    "filters": { "project": "Project" },
+    "columns": {
+      "name": "Name",
+      "slug": "Slug",
+      "status": "Status",
+      "resourceVersion": "Resource version",
+      "type": "Type",
+      "version": "Version",
+      "source": "Source",
+      "image": "Image",
+      "sha256": "SHA256",
+      "releaseId": "Release ID",
+      "failureReason": "Failure reason"
+    },
+    "empty": {
+      "projects": "No projects yet. Create projects through the API or later forms, then return here to continue the deployment flow.",
+      "applications": "Select a project with applications to view application-level deployment status.",
+      "services": "Services appear after an application is selected. Each service can later own one deployment config per environment.",
+      "artifacts": "No image-reference artifacts yet. Use the deployment wizard or API to register an existing image.",
+      "releases": "No release records yet. Gate 0B is still required before real Docker release execution."
+    },
+    "actions": {
+      "previous": "Previous",
+      "next": "Next",
+      "realReleaseDisabled": "Real release disabled before Gate 0B"
+    },
+    "deploy": {
+      "steps": {
+        "basic": "Basic information",
+        "image": "Existing image",
+        "registry": "Image and registry",
+        "health": "Ports and health check",
+        "env": "Environment variables",
+        "strategy": "Release strategy",
+        "validate": "Validation result",
+        "confirm": "Confirm"
+      },
+      "summary": {
+        "title": "Deployment summary",
+        "project": "Project",
+        "environment": "Environment",
+        "service": "Service",
+        "image": "Image",
+        "validation": "Validation"
+      },
+      "basic": {
+        "title": "Select model scope",
+        "body": "Choose project, environment, application, and service before registering an artifact."
+      },
+      "image": {
+        "title": "Existing image only",
+        "body": "Stage 1 supports image-reference input. Git repositories, source builds, and embedded registries are intentionally out of scope."
+      },
+      "registry": {
+        "title": "Registry and traceability",
+        "body": "Select an existing Portainer registry when needed. Digest resolution waits for the Docker executor batch."
+      },
+      "health": {
+        "title": "Ports and health check",
+        "body": "Capture host port, container port, health level, check path, retry count, and timeout."
+      },
+      "env": {
+        "title": "Environment variables",
+        "body": "Literal variables can be captured now. Sensitive config inheritance and masking will expand in later batches."
+      },
+      "strategy": {
+        "title": "Replace strategy",
+        "body": "V0.1 only supports replace strategy and may briefly stop service. Production requires explicit warning."
+      },
+      "validate": {
+        "title": "Validation result",
+        "body": "Control-plane validation can run, but real release execution returns GATE_0B_REQUIRED until the Docker/Agent Spike passes."
+      },
+      "confirm": {
+        "title": "Confirm blocked execution",
+        "body": "The final release button is disabled in this batch. This page is ready for data entry and later executor wiring."
+      },
+      "sample": {
+        "image": "Sample image reference",
+        "digest": "Sample digest"
+      }
+    }
   }
 }

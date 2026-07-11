@@ -4350,5 +4350,133 @@
   },
   "breadcrumbs": {
     "Add service": "添加服务"
+  },
+  "platform": {
+    "navigation": {
+      "section": "应用交付",
+      "projects": "项目",
+      "applications": "应用与服务",
+      "deploy": "部署向导",
+      "artifacts": "制品",
+      "releases": "发布记录",
+      "gitopsWorkflows": "GitOps 流程",
+      "gitopsSources": "GitOps 来源"
+    },
+    "pages": {
+      "projects": { "title": "项目" },
+      "applications": { "title": "应用与服务" },
+      "deploy": { "title": "部署服务" },
+      "artifacts": { "title": "制品" },
+      "releases": { "title": "发布记录" }
+    },
+    "alerts": {
+      "productionRisk": {
+        "title": "技术预览",
+        "body": "V0.1 是技术预览版本。生产部署必须预期短暂停机，不能按无损发布处理。"
+      },
+      "adminOnly": {
+        "title": "仅管理员可访问",
+        "body": "V0.1 中所有 /api/platform 业务接口，包括读取接口，都仅限管理员访问。"
+      },
+      "gate0b": {
+        "title": "需要 Gate 0B",
+        "body": "Gate 0B 尚未通过。Docker RuntimeDriver、DeploymentExecutor、ContainerAdapter、候选容器验证、切换与恢复仍保持禁用。"
+      }
+    },
+    "summary": {
+      "projects": "项目",
+      "active": "启用",
+      "archived": "已归档",
+      "releases": "发布",
+      "failed": "失败",
+      "blocked": "已阻断"
+    },
+    "projects": { "tableTitle": "项目列表" },
+    "applications": { "tableTitle": "应用" },
+    "services": { "tableTitle": "服务" },
+    "artifacts": { "tableTitle": "制品" },
+    "releases": { "tableTitle": "发布记录" },
+    "filters": { "project": "项目" },
+    "columns": {
+      "name": "名称",
+      "slug": "标识",
+      "status": "状态",
+      "resourceVersion": "资源版本",
+      "type": "类型",
+      "version": "版本",
+      "source": "来源",
+      "image": "镜像",
+      "sha256": "SHA256",
+      "releaseId": "发布 ID",
+      "failureReason": "失败原因"
+    },
+    "empty": {
+      "projects": "暂无项目。可先通过 API 或后续表单创建项目，再回到这里继续部署流程。",
+      "applications": "选择包含应用的项目后，可查看应用级部署状态。",
+      "services": "选择应用后会展示服务。每个服务后续可在每个环境下拥有一份部署配置。",
+      "artifacts": "暂无 image-reference 制品。可通过部署向导或 API 登记已有镜像。",
+      "releases": "暂无发布记录。真实 Docker 发布执行仍需要 Gate 0B。"
+    },
+    "actions": {
+      "previous": "上一步",
+      "next": "下一步",
+      "realReleaseDisabled": "Gate 0B 前禁用真实发布"
+    },
+    "deploy": {
+      "steps": {
+        "basic": "基础信息",
+        "image": "已有镜像",
+        "registry": "镜像与仓库",
+        "health": "端口与健康检查",
+        "env": "环境变量",
+        "strategy": "发布策略",
+        "validate": "校验结果",
+        "confirm": "确认"
+      },
+      "summary": {
+        "title": "部署摘要",
+        "project": "项目",
+        "environment": "环境",
+        "service": "服务",
+        "image": "镜像",
+        "validation": "校验"
+      },
+      "basic": {
+        "title": "选择模型范围",
+        "body": "登记制品前先选择项目、环境、应用和服务。"
+      },
+      "image": {
+        "title": "仅支持已有镜像",
+        "body": "阶段 1 支持 image-reference 输入。Git 仓库、源码构建和内置 registry 均不在范围内。"
+      },
+      "registry": {
+        "title": "仓库与追溯信息",
+        "body": "需要认证时选择已有 Portainer registry。Digest 解析等待 Docker 执行器批次处理。"
+      },
+      "health": {
+        "title": "端口与健康检查",
+        "body": "记录宿主机端口、容器端口、健康等级、检查路径、重试次数和超时时间。"
+      },
+      "env": {
+        "title": "环境变量",
+        "body": "当前可记录明文变量。敏感配置继承与掩码会在后续批次扩展。"
+      },
+      "strategy": {
+        "title": "替换策略",
+        "body": "V0.1 仅支持替换策略，服务可能短暂停止。生产环境需要明确风险提示。"
+      },
+      "validate": {
+        "title": "校验结果",
+        "body": "控制面校验可以先运行；真实发布执行在 Docker/Agent Spike 通过前返回 GATE_0B_REQUIRED。"
+      },
+      "confirm": {
+        "title": "确认阻断状态",
+        "body": "本批次禁用最终发布按钮。页面已为数据录入和后续执行器接线做好准备。"
+      },
+      "sample": {
+        "image": "示例镜像引用",
+        "digest": "示例 digest"
+      }
+    }
   }
 }
