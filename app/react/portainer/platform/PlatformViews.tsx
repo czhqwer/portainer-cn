@@ -2883,7 +2883,9 @@ function buildReleasePayload({
     ArtifactId: artifact.Id,
     Version: version,
     ExpectedSpecRevision: deployment.SpecRevision,
-    Strategy: 'replace',
+    Strategy: {
+      Type: 'replace',
+    },
     TriggerType: 'manual',
   };
 }

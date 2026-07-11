@@ -310,7 +310,9 @@ export interface CreatePlatformReleasePayload {
   ArtifactId: number;
   Version: string;
   ExpectedSpecRevision: number;
-  Strategy: string;
+  Strategy: {
+    Type: string;
+  };
   TriggerType?: string;
 }
 
