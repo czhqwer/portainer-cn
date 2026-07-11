@@ -1,0 +1,12 @@
+﻿checked_at=2026-07-11T19:59:07
+remote_agent_url=https://8.134.9.240:9001
+node_name=
+agent_ping_status=204
+agent_version=2.43.0
+agent_platform=1
+candidate_health_url_provided=True
+candidate_health_status=200
+blocked_candidate_health_url_provided=True
+blocked_candidate_health_status=000
+expected_unreachable_reason=HEALTHCHECK_HOST_UNREACHABLE
+conclusion=REMOTE_AGENT_SPIKE_PASSED

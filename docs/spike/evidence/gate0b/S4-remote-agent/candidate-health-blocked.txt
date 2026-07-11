@@ -1,0 +1,13 @@
+﻿exit_code=28
+captured_at=2026-07-11T19:59:07
+url=http://8.134.9.240:32769/
+
+curl.exe : curl: (28) Connection timed out after 10007 milliseconds
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-remote-agent-spike.ps1:101 char:19
++         $output = & curl.exe @curlArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (curl: (28) Conn...07 milliseconds:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+status=000

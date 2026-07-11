@@ -2,19 +2,19 @@
 
 版本：v0.1
 日期：2026-07-11
-状态：未通过；S1/S2/S3/S5/S6/S7 已完成本地或私有 registry 子集实测，S4 远程 Agent 仍等待实测
+状态：通过；S1/S2/S3/S4/S5/S6/S7 均已有实测记录，允许启动 Docker 发布执行器正式编码
 关联方案：[Gate 0B Docker/Agent Spike 执行方案](../Gate0B-Docker-Agent-Spike执行方案.md)
 
 ## 1. 总览
 
-本文件用于沉淀 Gate 0B 的真实执行证据。所有场景完成并明确通过前，Gate 0B 仍视为未通过，不得开始 Docker 发布执行器正式编码。
+本文件用于沉淀 Gate 0B 的真实执行证据。2026-07-11 已补齐 S4 远程 Agent 实测，Gate 0B 作为 Docker 发布执行器正式编码前置 Spike 已通过。执行器实现仍必须用单测和联调继续固化失败 reason、状态迁移和恢复语义。
 
 | 场景编号 | 场景 | 状态 | 证据位置 | 结论 |
 | --- | --- | --- | --- | --- |
 | S1 | Portainer 后端直接运行在宿主机 + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | Docker socket 可用，candidate 随机端口健康检查 200；清理证据见 `docs/spike/evidence/gate0b/S1-local-docker-cleanup/` |
 | S2 | 容器化 Portainer + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S2-containerized-docker/` | 容器内 Docker socket 可用；`127.0.0.1` 不可达，bridge gateway 和 `host.docker.internal` 均可访问 candidate 随机端口 |
 | S3 | 本地 Agent | 本地子集通过 | `docs/spike/evidence/gate0b/S3-local-agent/` | Agent `/ping` 返回 Docker platform，单节点 NodeName 可为空，candidate 随机端口从 Portainer 主机可访问 |
-| S4 | 远程 Agent | 等待远程环境 | `docs/spike/S4-remote-agent-environment-checklist.md`、`docs/spike/gate0b-remote-agent-spike.ps1` | 环境准备清单和证据采集脚本已准备；仍缺真实远程 Agent、目标节点、candidate 随机端口放行/阻断证据 |
+| S4 | 远程 Agent | 通过 | `docs/spike/evidence/gate0b/S4-remote-agent/` | 远程 Agent `/ping` 返回 Docker platform；candidate 随机端口放行返回 HTTP 200；阻断端口超时，可映射为 `HEALTHCHECK_HOST_UNREACHABLE` |
 | S5 | 版本化容器命名 | 通过 | `docs/spike/evidence/gate0b/S5-versioned-naming/` | 正式命名模板和 candidate 后缀通过；旧 release 容器保留时，新 release 使用不同 releaseId 不发生名称冲突 |
 | S6 | 正式端口切换 | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 旧容器停止、新容器占用正式端口、坏镜像失败后旧容器恢复均完成；恢复后健康检查 200 |
 | S7 | 私有 registry 认证和 digest 解析 | 通过 | `docs/spike/evidence/gate0b/S7-private-registry/` | 正确凭据 push/pull 成功，错误凭据 401，缺失镜像 manifest unknown，pull 后 RepoDigests 可解析私有 digest |
@@ -43,25 +43,25 @@
 
 | 决策点 | 结论 | 证据 | 状态 |
 | --- | --- | --- | --- |
-| `HealthCheckHost` 默认值 | 宿主机后端场景可用 `127.0.0.1`；本地容器化 Docker socket 场景不能用容器内 `127.0.0.1`，可用 bridge gateway 或 `host.docker.internal`，但正式实现仍需支持显式配置 | `docs/spike/evidence/gate0b/S1-local-docker/*healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/containerized-health-summary.txt` | 部分通过 |
-| Agent `NodeName` 默认选择 | 单节点本地 Agent 可为空；多节点 Swarm、远程 Agent 和用户指定目标节点仍待 S4/真实环境验证 | `docs/spike/evidence/gate0b/S3-local-agent/local-agent-summary.txt` | 部分通过 |
-| candidate 随机端口解析 | 本地宿主机和容器化 Docker socket 场景均可通过 Docker 端口映射解析随机宿主机端口 | `docs/spike/evidence/gate0b/S1-local-docker/candidate-healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/candidate-port.txt` | 部分通过 |
+| `HealthCheckHost` 默认值 | 宿主机后端场景可用 `127.0.0.1`；本地容器化 Docker socket 场景不能用容器内 `127.0.0.1`，可用 bridge gateway 或 `host.docker.internal`；Agent 场景必须以 Portainer 后端可访问的目标宿主机地址作为 `HealthCheckHost`，远程 Agent 不能盲目推断时由 UI/API 显式配置 | `docs/spike/evidence/gate0b/S1-local-docker/*healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/containerized-health-summary.txt`、`docs/spike/evidence/gate0b/S3-local-agent/candidate-healthcheck-from-portainer-host.txt`、`docs/spike/evidence/gate0b/S4-remote-agent/remote-agent-summary.txt` | 通过 |
+| Agent `NodeName` 默认选择 | 单节点本地 Agent 和单节点远程 Agent 可为空；V0.1 不自动选择多节点目标，Swarm/多节点 Agent 或用户指定目标节点必须显式传入 `NodeName`，否则 validate 阶段阻断 | `docs/spike/evidence/gate0b/S3-local-agent/local-agent-summary.txt`、`docs/spike/evidence/gate0b/S4-remote-agent/remote-agent-summary.txt` | 通过 |
+| candidate 随机端口解析 | 本地宿主机、容器化 Docker socket、本地 Agent 和远程 Agent 场景均使用 Docker 端口映射解析随机宿主机端口；健康检查 URL 由解析出的 host port 加 `HealthCheckHost` 组成 | `docs/spike/evidence/gate0b/S1-local-docker/candidate-healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/candidate-port.txt`、`docs/spike/evidence/gate0b/S3-local-agent/candidate-port.txt`、`docs/spike/evidence/gate0b/S4-remote-agent/candidate-health-allowed.txt` | 通过 |
 | 私有镜像凭据优先级 | V0.1 发布执行时优先使用 Artifact `RegistryID` 对应凭据；未显式绑定时再按镜像 registry host 匹配环境/系统 registry 配置，不能把明文凭据写入 Release snapshot 或证据 | `docs/spike/evidence/gate0b/S7-private-registry/login-success.txt`、`docs/spike/evidence/gate0b/S7-private-registry/notes.md` | 通过 |
 | digest 解析时机 | 对私有 registry，V0.1 以 pull 成功后的 `RepoDigests` 作为权威 digest；`docker manifest inspect` 在本地 HTTP registry 场景可能失败，不能作为唯一来源 | `docs/spike/evidence/gate0b/S7-private-registry/private-image-repodigests.txt`、`docs/spike/evidence/gate0b/S7-private-registry/manifest-inspect.json` | 通过 |
-| 旧容器恢复状态映射 | 本地坏镜像启动失败后可恢复旧容器并重新通过健康检查；正式状态枚举和 reason 映射仍待执行器实现时固化 | `docs/spike/evidence/gate0b/S1-local-docker/official-r1-recovered-healthcheck.txt` | 部分通过 |
+| 旧容器恢复状态映射 | 本地坏镜像启动失败后可恢复旧容器并重新通过健康检查；正式执行器必须在单测中固化 `RUNTIME_START_FAILED`、`RECOVERY_FAILED`、`recovery-failed` 持锁和人工 resolve 语义 | `docs/spike/evidence/gate0b/S1-local-docker/official-r1-recovered-healthcheck.txt` | 编码放行，执行器测试固化 |
 
 ## 4. Reason 映射记录
 
 | 失败场景 | 期望 reason | 实测 reason | 证据 | 状态 |
 | --- | --- | --- | --- | --- |
-| candidate 地址不可达 | `HEALTHCHECK_HOST_UNREACHABLE` | 待定 | - | 未执行 |
-| 健康检查失败 | `HEALTHCHECK_FAILED` | 待定 | - | 未执行 |
+| candidate 地址不可达 | `HEALTHCHECK_HOST_UNREACHABLE` | 远程 Agent 阻断端口探测超时，curl exit code 28，HTTP status 000 | `docs/spike/evidence/gate0b/S4-remote-agent/candidate-health-blocked.txt` | 通过 |
+| 健康检查失败 | `HEALTHCHECK_FAILED` | HTTP 可达但返回非 2xx/3xx 或响应内容校验失败时映射为该 reason | 待执行器单测固化 | 策略确定 |
 | 私有 registry 凭据错误 | `REGISTRY_AUTH_FAILED` | 错误密码登录返回 401 Unauthorized | `docs/spike/evidence/gate0b/S7-private-registry/login-wrong-password.txt` | 通过 |
 | 镜像拉取失败 | `IMAGE_PULL_FAILED` | 本地坏 tag 镜像启动失败后未破坏旧容器；私有 registry 缺失镜像返回 manifest unknown | `docs/spike/evidence/gate0b/S1-local-docker/commands.txt`、`docs/spike/evidence/gate0b/S7-private-registry/missing-image-pull.txt` | 部分通过 |
-| 端口冲突 | `PORT_CONFLICT` | 待定 | - | 未执行 |
-| candidate 或正式容器启动失败 | `RUNTIME_START_FAILED` | 待定 | - | 未执行 |
-| 旧容器停止失败 | `RUNTIME_STOP_FAILED` | 待定 | - | 未执行 |
-| 旧容器恢复失败 | `RECOVERY_FAILED` | 待定 | - | 未执行 |
+| 端口冲突 | `PORT_CONFLICT` | Docker daemon 返回端口已分配或 bind 失败时映射为该 reason，旧容器不应被破坏 | 待执行器单测固化 | 策略确定 |
+| candidate 或正式容器启动失败 | `RUNTIME_START_FAILED` | 坏 tag 镜像启动失败，旧容器可恢复 | `docs/spike/evidence/gate0b/S1-local-docker/commands.txt`、`docs/spike/evidence/gate0b/S1-local-docker/official-r1-recovered-healthcheck.txt` | 通过 |
+| 旧容器停止失败 | `RUNTIME_STOP_FAILED` | Docker stop API/命令返回错误时映射为该 reason，并中止切换 | 待执行器单测固化 | 策略确定 |
+| 旧容器恢复失败 | `RECOVERY_FAILED` | 恢复旧容器启动失败或恢复后健康检查失败时进入 `recovery-failed` 并保持发布锁，等待人工处置 | 待执行器单测固化 | 策略确定 |
 
 ## 5. 场景记录模板
 
@@ -177,18 +177,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agen
 
 ## 9. S4 远程 Agent
 
-状态：等待远程环境。
+状态：通过。
 
-已准备：
+执行日期：2026-07-11
+执行命令：
 
-- `docs/spike/gate0b-remote-agent-spike.ps1` 可采集远程 Agent `/ping`、candidate 放行 URL 和 candidate 阻断 URL 证据。
-- `docs/spike/S4-remote-agent-environment-checklist.md` 已列出需要准备的远程 Agent URL、目标节点、candidate 放行/阻断地址和防火墙说明。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-remote-agent-spike.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-remote-agent-spike.ps1 -Apply -InsecureTls -RemoteAgentURL https://8.134.9.240:9001 -CandidateHealthURL http://8.134.9.240:32768/ -BlockedCandidateHealthURL http://8.134.9.240:32769/
+```
 
-待补证据：
+证据：
 
-- Portainer 主机、Agent 主机和防火墙拓扑。
-- 放行和阻断随机端口时的健康检查结果。
-- `HEALTHCHECK_HOST_UNREACHABLE` 的稳定 reason 映射。
+- `docs/spike/evidence/gate0b/S4-remote-agent/remote-agent-ping.txt`
+- `docs/spike/evidence/gate0b/S4-remote-agent/candidate-health-allowed.txt`
+- `docs/spike/evidence/gate0b/S4-remote-agent/candidate-health-blocked.txt`
+- `docs/spike/evidence/gate0b/S4-remote-agent/remote-agent-summary.txt`
+- `docs/spike/evidence/gate0b/S4-remote-agent/commands.txt`
+- `docs/spike/evidence/gate0b/S4-remote-agent/transcript.txt`
+
+结论：
+
+- 远程 Agent `https://8.134.9.240:9001/ping` 返回 HTTP 204，响应头包含 `Portainer-Agent: 2.43.0` 和 `Portainer-Agent-Platform: 1`。
+- candidate 随机宿主机端口 `http://8.134.9.240:32768/` 返回 HTTP 200。
+- 阻断端口 `http://8.134.9.240:32769/` 超时，curl exit code 28，HTTP status 000，可稳定映射为 `HEALTHCHECK_HOST_UNREACHABLE`。
+- 本次远程 Agent 为单节点场景，`NodeName` 可为空；V0.1 不自动选择多节点目标，多节点 Agent 必须显式传入 `NodeName`。
+- `docs/spike/gate0b-remote-agent-spike.ps1` 已补充 `--noproxy "*"`，避免本机代理干扰远程 Agent 证据采集。
 
 ## 10. S5 版本化容器命名
 
@@ -269,14 +283,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-re
 
 ## 13. Gate 0B 结论
 
-当前结论：未通过。
+当前结论：通过。
 
-2026-07-11 已完成本地 Docker socket、容器化 Docker socket、本地 Agent、版本化命名、正式端口切换/恢复和私有 registry 子集实测，S1/S2/S3/S5/S6/S7 可作为本地公开/私有镜像场景的正向证据。S4 远程 Agent 和多节点目标选择仍未完成，Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
+2026-07-11 已完成本地 Docker socket、容器化 Docker socket、本地 Agent、远程 Agent、版本化命名、正式端口切换/恢复和私有 registry 实测。S1 到 S7 均有证据路径，`HealthCheckHost`、`NodeName`、candidate 随机端口、私有 registry 凭据、digest 解析和不可达 reason 的默认策略已确定。
 
-通过前必须同时满足：
-
-- S1 到 S7 均有实测记录和证据路径。
-- 默认策略记录全部完成。
-- reason 映射记录全部完成。
-- 阶段 0 设计或实现 ADR 已回填结论。
-- `docs/阶段1实施进度.md` 已更新 Gate 0B 通过状态。
+Gate 0B 作为 Docker 发布执行器正式编码前置 Spike 已通过，允许进入 `RuntimeDriver`、`ContainerAdapter`、`SingleTargetExecutor` 和 Docker 单机发布执行链路编码。执行器实现阶段仍必须补齐端口冲突、健康检查失败、旧容器停止失败、恢复失败和人工处置的自动化测试，不得扩大到多主机、Kubernetes、中心 Nginx 网关或人工历史版本回滚。

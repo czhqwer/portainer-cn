@@ -1,0 +1,39 @@
+﻿exit_code=0
+captured_at=2026-07-11T19:58:57
+url=http://8.134.9.240:32768/
+
+HTTP/1.1 200 OK
+Server: nginx/1.21.5
+Date: Sat, 11 Jul 2026 11:58:56 GMT
+Content-Type: text/html
+Content-Length: 615
+Last-Modified: Tue, 28 Dec 2021 18:48:00 GMT
+Connection: keep-alive
+ETag: "61cb5be0-267"
+Accept-Ranges: bytes
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+status=200

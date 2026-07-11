@@ -2,14 +2,14 @@
 
 版本：v0.1
 日期：2026-07-11
-状态：等待真实远程环境
+状态：已完成实测
 关联台账：[Gate 0B Docker/Agent Spike 实测记录](./gate0b-spike-record.md)
 
 ## 1. 目标
 
 S4 用于验证远程 Agent 场景，必须证明 Portainer 后端所在主机与远程 Agent 目标宿主机不在同一网络假设下，candidate 随机端口的可达和不可达行为都能被稳定识别。
 
-S4 未完成前，Gate 0B 仍不得通过，Docker 发布执行器正式编码仍不得启动。
+S4 已于 2026-07-11 完成远程 Agent 实测，证据位于 `docs/spike/evidence/gate0b/S4-remote-agent/`。Gate 0B 通过结论以 [Gate 0B Docker/Agent Spike 实测记录](./gate0b-spike-record.md) 为准。
 
 ## 2. 需要准备的环境信息
 
@@ -76,4 +76,4 @@ S4 完成后需要同步更新：
 - `docs/阶段1实施进度.md`
 - 如 S4 结论改变默认策略，还需要更新 `docs/Gate0B-Docker-Agent-Spike执行方案.md`
 
-只有 S4 实测通过并完成回填后，才允许重新判断 Gate 0B 是否通过。
+S4 已完成实测并回填；后续若更换远程 Agent 网络拓扑，应按本清单重新采集证据。

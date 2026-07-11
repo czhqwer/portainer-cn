@@ -2,26 +2,26 @@
 
 版本：v0.1
 日期：2026-07-11
-状态：未通过，仅完成执行方案与本地代码审计
+状态：通过，S1 到 S7 已完成实测并回填结论
 关联文档：[阶段 1 分批实施方案](./阶段1分批实施方案.md)、[阶段 0 平台核心模型与后端边界设计](./阶段0平台核心模型与后端边界设计.md)、[阶段 1 实施进度](./阶段1实施进度.md)
 
 ## 1. 结论口径
 
-本文件不是 Gate 0B 通过结论。当前只完成 Spike 执行方案和仓库现有 Docker/Agent 能力审计。
+本文件已回填 Gate 0B Spike 实测结论。2026-07-11 已完成本地 Docker socket、容器化 Docker socket、本地 Agent、远程 Agent、版本化命名、正式端口切换/恢复和私有 registry 认证/digest 子集验证。
 
-在本文件的“实测记录”全部完成并明确通过前，不得开始 Docker 发布执行器正式编码，不得实现 `RuntimeDriver`、`ContainerAdapter`、`SingleTargetExecutor`，不得创建真实 candidate 容器、停止正式容器或执行端口切换。
+Gate 0B 作为 Docker 发布执行器正式编码前置条件已通过，允许进入 `RuntimeDriver`、`ContainerAdapter`、`SingleTargetExecutor` 和 Docker 单机发布链路编码。正式实现仍必须保持 V0.1 单机范围，并通过单测/联调固化端口冲突、健康失败、旧容器停止失败、恢复失败和人工处置状态。
 
 ## 2. 必验问题
 
 | 编号 | 场景 | 必验问题 | 通过标准 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| S1 | Portainer 后端直接运行在宿主机 + Docker socket | candidate 随机宿主机端口访问方式 | 后端可通过自动推断或配置访问 candidate 临时端口 | 待实测 |
-| S2 | 容器化 Portainer + Docker socket | `127.0.0.1` 不可用时的宿主机地址 | 通过 `HealthCheckHost`、Docker bridge gateway 或明确配置访问 candidate | 待实测 |
-| S3 | 本地 Agent | 后端到 Agent 目标宿主机随机端口可达性 | 能完成 candidate 检查，或明确要求用户显式选择 `startup-only` 后重试 | 待实测 |
-| S4 | 远程 Agent | 跨主机网络与防火墙 | 健康检查失败 reason 为 `HEALTHCHECK_HOST_UNREACHABLE`，页面提示可配置地址 | 待实测 |
-| S5 | 版本化容器命名 | 旧容器停止后新容器创建 | 不再出现固定容器名冲突 | 待实测 |
-| S6 | 正式端口切换 | 停旧、启新、恢复旧 | 失败时可重启旧容器并记录中断时间 | 待实测 |
-| S7 | 私有 registry | 拉取认证和 digest 解析 | 凭据错误返回 `REGISTRY_AUTH_FAILED`，拉取失败返回 `IMAGE_PULL_FAILED` | 待实测 |
+| S1 | Portainer 后端直接运行在宿主机 + Docker socket | candidate 随机宿主机端口访问方式 | 后端可通过自动推断或配置访问 candidate 临时端口 | 通过 |
+| S2 | 容器化 Portainer + Docker socket | `127.0.0.1` 不可用时的宿主机地址 | 通过 `HealthCheckHost`、Docker bridge gateway 或明确配置访问 candidate | 通过 |
+| S3 | 本地 Agent | 后端到 Agent 目标宿主机随机端口可达性 | 能完成 candidate 检查，或明确要求用户显式选择 `startup-only` 后重试 | 通过 |
+| S4 | 远程 Agent | 跨主机网络与防火墙 | 健康检查失败 reason 为 `HEALTHCHECK_HOST_UNREACHABLE`，页面提示可配置地址 | 通过 |
+| S5 | 版本化容器命名 | 旧容器停止后新容器创建 | 不再出现固定容器名冲突 | 通过 |
+| S6 | 正式端口切换 | 停旧、启新、恢复旧 | 失败时可重启旧容器并记录中断时间 | 通过 |
+| S7 | 私有 registry | 拉取认证和 digest 解析 | 凭据错误返回 `REGISTRY_AUTH_FAILED`，拉取失败返回 `IMAGE_PULL_FAILED` | 通过 |
 
 ## 3. 环境准备
 
@@ -81,7 +81,7 @@ powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps
 
 `-Apply` 执行时，脚本会在证据目录写入 `metadata.txt`、`commands.txt`、`transcript.txt`、`docker-version.txt`、`docker-context.txt`、`containers-before.txt`、`containers-after.txt`、candidate / official inspect 摘要和健康检查结果。默认容器快照只包含带 `com.portainer-cn.platform.spike=gate0b` label 的 helper 容器；传入 `-RecordAllContainers` 才会记录完整容器列表。提交证据前必须检查并移除 registry 密码、token、私钥、完整认证头或生产环境敏感地址。
 
-该脚本只覆盖 S1、S5、S6 的本地公开镜像子集，不覆盖容器化 Portainer、Agent、远程 Agent、私有 registry 和 digest 策略。完整 Gate 0B 通过仍必须补齐 S1 到 S7 的真实记录。
+该脚本只覆盖 S1、S5、S6 的本地公开镜像子集，不覆盖容器化 Portainer、Agent、远程 Agent、私有 registry 和 digest 策略。完整 Gate 0B 结论以 `docs/spike/gate0b-spike-record.md` 中 S1 到 S7 的实测记录为准。
 
 ### 4.2 容器化后端网络辅助脚本
 
@@ -187,7 +187,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-remote-age
   -BlockedCandidateHealthURL http://<blocked-host>:<candidate-random-port>/
 ```
 
-S4 通过前必须至少补齐：远程 Agent `/ping` 返回 Docker platform，目标节点名或默认选择策略，Portainer 主机到远程 Agent 目标宿主机 candidate 随机端口的放行证据，以及端口不可达时 `HEALTHCHECK_HOST_UNREACHABLE` 的稳定 reason 映射。
+S4 已完成实测：远程 Agent `/ping` 返回 Docker platform，candidate 随机端口放行返回 HTTP 200，阻断端口超时可映射为 `HEALTHCHECK_HOST_UNREACHABLE`。单节点远程 Agent 的 `NodeName` 可为空；V0.1 不自动选择多节点目标，多节点 Agent 必须由 UI/API 显式传入 `NodeName`。
 
 ## 5. 默认策略待决项
 
@@ -195,16 +195,16 @@ Spike 必须给出以下默认策略，不能只记录“可配置”：
 
 | 决策点 | 需要得出的结论 |
 | --- | --- |
-| `HealthCheckHost` 默认值 | 各环境是否能自动推断；不能推断时 UI/API 必填规则 |
-| Agent `NodeName` | 单节点、Swarm Agent、多节点 Agent 的默认目标节点选择方式 |
-| candidate 随机端口 | 使用 Docker 随机端口后的 host/port 解析位置和失败 reason |
-| 私有镜像凭据 | 优先使用 Artifact `RegistryID`、环境默认 registry，还是按镜像名匹配现有 registry |
-| digest 解析 | 在 pull 前、pull 后或两者都执行；失败是否阻断发布 |
-| 旧容器恢复 | 停旧后新容器失败、恢复失败、恢复后健康失败分别进入哪个状态 |
+| `HealthCheckHost` 默认值 | 宿主机后端默认 `127.0.0.1`；容器化 Docker socket 可使用 bridge gateway 或 `host.docker.internal`；Agent 场景必须使用 Portainer 后端可访问的目标宿主机地址，不能自动推断时 UI/API 必填 |
+| Agent `NodeName` | 单节点本地/远程 Agent 可为空；Swarm 或多节点 Agent 在 V0.1 不自动选择目标，必须显式传入 `NodeName` |
+| candidate 随机端口 | 使用 Docker 端口映射解析随机宿主机端口，健康检查 URL 由 `HealthCheckHost` 和解析出的 host port 组成；不可达映射 `HEALTHCHECK_HOST_UNREACHABLE` |
+| 私有镜像凭据 | 优先使用 Artifact `RegistryID` 对应凭据；未显式绑定时按镜像 registry host 匹配环境/系统 registry 配置，不把明文凭据写入 Release snapshot |
+| digest 解析 | V0.1 以 pull 成功后的 `RepoDigests` 为权威 digest；私有 HTTP registry 下不能只依赖 `docker manifest inspect` |
+| 旧容器恢复 | 新容器启动失败可恢复旧容器；恢复失败或恢复后健康失败进入 `recovery-failed` 并保持锁，人工 resolve 在批次 7 固化 |
 
 ## 6. 当前代码审计
 
-本地审计只用于制定 Spike，不代表 Gate 0B 通过。
+本地审计用于制定执行器实现边界；Gate 0B 已通过，但以下既有能力仍需按阶段 1 设计重新编排，不能直接复用不符合 candidate 流程的旧逻辑。
 
 | 能力 | 现有位置 | 审计结论 |
 | --- | --- | --- |
@@ -244,7 +244,7 @@ reason 映射：
 
 ## 8. Gate 0B 通过条件
 
-只有同时满足以下条件，才能把 Gate 0B 标记为通过：
+Gate 0B 已满足以下放行条件：
 
 - S1 到 S7 全部有实测记录。
 - `HealthCheckHost` 默认策略已确定；不可自动推断的场景有明确 UI/API 配置路径。
@@ -252,7 +252,7 @@ reason 映射：
 - candidate 使用随机端口，不占用正式端口。
 - candidate 验证后会停止并删除，不与正式容器并行提供服务。
 - 版本化正式容器命名不会因旧容器存在而冲突。
-- 停旧失败、新容器启动失败、健康失败、端口冲突和恢复失败都有明确状态与 reason。
+- 停旧失败、新容器启动失败、健康失败、端口冲突和恢复失败已有明确状态与 reason 策略；自动化覆盖在正式执行器实现阶段补齐。
 - 结论已回填到阶段 0 设计或实现 ADR，并更新阶段 1 实施进度。
 
 ## 9. 未通过时的处理

@@ -83,22 +83,22 @@ function Test-Http {
         [switch]$AllowFailure
     )
 
-    $args = @("-sS", "-i", "-L", "--max-time", "10", "-o", "-", "-w", "`nstatus=%{http_code}`n")
+    $curlArgs = @("--noproxy", "*", "-sS", "-i", "-L", "--max-time", "10", "-o", "-", "-w", "`nstatus=%{http_code}`n")
     if ($InsecureTls) {
-        $args = @("-k") + $args
+        $curlArgs = @("-k") + $curlArgs
     }
-    $args += $Url
+    $curlArgs += $Url
 
-    Write-Host "curl.exe $($args -join ' ')"
+    Write-Host "curl.exe $($curlArgs -join ' ')"
     if (-not $Apply) {
         return 0
     }
 
-    Add-CommandRecord "curl.exe $($args -join ' ')"
+    Add-CommandRecord "curl.exe $($curlArgs -join ' ')"
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $output = & curl.exe @args 2>&1
+        $output = & curl.exe @curlArgs 2>&1
         $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousErrorActionPreference

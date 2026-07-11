@@ -1,0 +1,6 @@
+﻿scenario=S4-remote-agent
+remote_agent_url=https://8.134.9.240:9001
+node_name_provided=False
+candidate_health_url_provided=True
+blocked_candidate_health_url_provided=True
+started_at=2026-07-11T19:58:56

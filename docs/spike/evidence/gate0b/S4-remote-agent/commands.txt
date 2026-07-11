@@ -1,0 +1,9 @@
+﻿curl.exe -k --noproxy * -sS -i -L --max-time 10 -o - -w 
+status=%{http_code}
+ https://8.134.9.240:9001/ping
+curl.exe -k --noproxy * -sS -i -L --max-time 10 -o - -w 
+status=%{http_code}
+ http://8.134.9.240:32768/
+curl.exe -k --noproxy * -sS -i -L --max-time 10 -o - -w 
+status=%{http_code}
+ http://8.134.9.240:32769/
