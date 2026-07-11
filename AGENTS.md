@@ -20,7 +20,7 @@
 
 ## 注释规范
 
-- 关键修改的方法、函数或复杂逻辑块上必须添加中文注释。
+- 方法、函数或复杂逻辑块上必须添加中文注释。
 - 中文注释应说明“为什么这样做”以及“这个逻辑解决什么场景”，不要只复述代码。
 - 适合添加中文注释的场景：
   - 新增或改造后端 handler、service、schema/query 执行方法。
@@ -71,6 +71,15 @@ function suggestedConnectionTarget(...) ...
 - SELECT 查询默认限制结果行数，避免误拉大表。
 - UPDATE/DELETE 需要先预执行并回滚，展示影响行数后再由用户确认正式执行。
 - 查询历史先保存在浏览器本地，按用户、环境、连接隔离。
+
+## Apifox CLI 规则
+
+- 使用 Apifox CLI 前，必须读取当前项目根目录下的 `.apifox/settings.json`。
+- 使用其中的 `projectId` 作为当前项目的 Apifox 项目 ID。
+- 执行项目资源命令时，自动附加 `--project <projectId>`。
+- 不允许猜测或使用其他项目的 projectId。
+- 如果 `.apifox/settings.json` 不存在，先执行 `apifox project list` 查找项目，不得使用写死的默认项目。
+- 访问令牌不得写入仓库、AGENTS.md 或 `.apifox/settings.json`。
 
 ## 常用命令
 

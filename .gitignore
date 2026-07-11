@@ -22,4 +22,4 @@ go.work.sum
 .vitest
 
 .portainer-data
-
+.apifox
