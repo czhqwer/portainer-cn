@@ -160,6 +160,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-
 
 该脚本验证 `pcn-{projectSlug}-{envSlug}-{serviceSlug}-r{releaseId}` 和 `pcn-{projectSlug}-{envSlug}-{serviceSlug}-r{releaseId}-candidate` 命名模板，证明旧 release 容器保留时，新 release 使用不同 releaseId 不发生 Docker name 冲突。正式执行器仍应复用平台模型中已校验的 slug 字段，并在运行前拒绝空 slug、非法字符或超长名称。
 
+### 4.6 远程 Agent 证据采集脚本
+
+远程 Agent 场景需要真实远程主机、网络和防火墙拓扑，不能由本机 Docker Desktop 完整替代。拿到远程 Agent endpoint 和 candidate 可达地址后，可使用 `docs/spike/gate0b-remote-agent-spike.ps1` 采集 S4 证据。
+
+示例：
+
+```powershell
+# 预演，不执行 HTTP 探测
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-remote-agent-spike.ps1
+
+# 执行 S4：远程 Agent /ping，以及远程 candidate 随机端口可达性
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-remote-agent-spike.ps1 `
+  -Apply `
+  -InsecureTls `
+  -RemoteAgentURL https://<remote-agent-host>:9001 `
+  -NodeName <target-node-name> `
+  -CandidateHealthURL http://<remote-agent-host>:<candidate-random-port>/
+
+# 可选：传入一个被防火墙阻断的 candidate URL，用于固化 HEALTHCHECK_HOST_UNREACHABLE
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-remote-agent-spike.ps1 `
+  -Apply `
+  -InsecureTls `
+  -RemoteAgentURL https://<remote-agent-host>:9001 `
+  -CandidateHealthURL http://<allowed-host>:<candidate-random-port>/ `
+  -BlockedCandidateHealthURL http://<blocked-host>:<candidate-random-port>/
+```
+
+S4 通过前必须至少补齐：远程 Agent `/ping` 返回 Docker platform，目标节点名或默认选择策略，Portainer 主机到远程 Agent 目标宿主机 candidate 随机端口的放行证据，以及端口不可达时 `HEALTHCHECK_HOST_UNREACHABLE` 的稳定 reason 映射。
+
 ## 5. 默认策略待决项
 
 Spike 必须给出以下默认策略，不能只记录“可配置”：
