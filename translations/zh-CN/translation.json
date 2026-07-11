@@ -4389,38 +4389,113 @@
       "archived": "已归档",
       "releases": "发布",
       "failed": "失败",
-      "blocked": "已阻断"
+      "blocked": "已阻断",
+      "manualAction": "需要人工处理"
     },
     "projects": { "tableTitle": "项目列表" },
+    "environments": { "tableTitle": "环境" },
     "applications": { "tableTitle": "应用" },
     "services": { "tableTitle": "服务" },
     "artifacts": { "tableTitle": "制品" },
     "releases": { "tableTitle": "发布记录" },
-    "filters": { "project": "项目" },
+    "filters": {
+      "project": "项目",
+      "application": "应用",
+      "service": "服务",
+      "deployment": "部署配置"
+    },
     "columns": {
       "name": "名称",
       "slug": "标识",
       "status": "状态",
       "resourceVersion": "资源版本",
       "type": "类型",
+      "target": "目标",
       "version": "版本",
       "source": "来源",
       "image": "镜像",
       "sha256": "SHA256",
       "releaseId": "发布 ID",
-      "failureReason": "失败原因"
+      "failureReason": "失败原因",
+      "message": "消息",
+      "runtime": "运行时",
+      "execution": "执行",
+      "actions": "操作"
     },
     "empty": {
-      "projects": "暂无项目。可先通过 API 或后续表单创建项目，再回到这里继续部署流程。",
+      "projects": "暂无项目。创建项目后即可开始部署流程。",
+      "environments": "暂无环境。请为当前项目创建环境。",
       "applications": "选择包含应用的项目后，可查看应用级部署状态。",
       "services": "选择应用后会展示服务。每个服务后续可在每个环境下拥有一份部署配置。",
-      "artifacts": "暂无 image-reference 制品。可通过部署向导或 API 登记已有镜像。",
-      "releases": "暂无发布记录。真实 Docker 发布执行仍需要 Gate 0B。"
+      "artifacts": "暂无 image-reference 制品。登记已有镜像后即可用于发布。",
+      "releases": "暂无发布记录。选择服务和镜像后，可从部署向导创建发布。"
     },
     "actions": {
       "previous": "上一步",
       "next": "下一步",
+      "cancel": "取消",
+      "refresh": "刷新",
+      "createProject": "创建项目",
+      "createEnvironment": "创建环境",
+      "createApplication": "创建应用",
+      "createService": "创建服务",
+      "createArtifact": "登记镜像制品",
+      "validateRelease": "校验发布",
+      "createRelease": "创建发布",
+      "acceptCurrent": "接受当前运行态",
+      "markHandled": "标记已处理",
       "realReleaseDisabled": "Gate 0B 前禁用真实发布"
+    },
+    "forms": {
+      "project": "项目",
+      "environment": "环境",
+      "application": "应用",
+      "service": "服务",
+      "name": "名称",
+      "slug": "标识",
+      "description": "描述",
+      "type": "类型",
+      "endpointId": "Endpoint ID",
+      "healthCheckHost": "健康检查 Host",
+      "targetHost": "目标 Host",
+      "artifactName": "制品名称",
+      "version": "版本",
+      "imageRef": "镜像地址",
+      "imageDigest": "镜像 digest",
+      "containerPort": "容器端口",
+      "hostPort": "宿主机端口",
+      "healthPort": "健康检查端口",
+      "healthType": "健康检查类型",
+      "healthVerification": "健康验证等级",
+      "healthPath": "健康检查路径",
+      "envOverrides": "环境变量",
+      "traceabilityWeak": "可追溯等级：weak / 仅 image-reference"
+    },
+    "formTitles": {
+      "project": "创建项目",
+      "environment": "创建环境",
+      "application": "创建应用",
+      "service": "创建服务",
+      "artifact": "登记镜像制品"
+    },
+    "environmentTypes": {
+      "dev": "开发",
+      "test": "测试",
+      "prod": "生产",
+      "custom": "自定义"
+    },
+    "serviceTypes": {
+      "backend": "后端",
+      "frontend": "前端",
+      "worker": "Worker"
+    },
+    "healthTypes": {
+      "none": "无"
+    },
+    "healthLevels": {
+      "verified": "强校验",
+      "basic": "基础",
+      "none": "无"
     },
     "deploy": {
       "steps": {
@@ -4439,7 +4514,15 @@
         "environment": "环境",
         "service": "服务",
         "image": "镜像",
-        "validation": "校验"
+        "validation": "校验",
+        "notValidated": "未校验",
+        "existingDeployment": "发布前将更新已有部署配置 #{{id}}。",
+        "runtimeDriver": "运行时驱动",
+        "replicas": "副本数",
+        "restartPolicy": "重启策略",
+        "strategy": "发布策略",
+        "deploymentConfig": "部署配置",
+        "willCreateDeployment": "将创建"
       },
       "basic": {
         "title": "选择模型范围",
@@ -4451,28 +4534,36 @@
       },
       "registry": {
         "title": "仓库与追溯信息",
-        "body": "需要认证时选择已有 Portainer registry。Digest 解析等待 Docker 执行器批次处理。"
+        "body": "Digest 为可选项。image-reference 制品的可追溯等级记录为 weak。"
       },
       "health": {
         "title": "端口与健康检查",
-        "body": "记录宿主机端口、容器端口、健康等级、检查路径、重试次数和超时时间。"
+        "body": "记录发布端口、容器端口、健康等级、检查路径、重试次数和超时时间。"
       },
       "env": {
         "title": "环境变量",
-        "body": "当前可记录明文变量。敏感配置继承与掩码会在后续批次扩展。"
+        "body": "当前可记录明文变量。每行输入一个 KEY=VALUE。"
       },
       "strategy": {
         "title": "替换策略",
-        "body": "V0.1 仅支持替换策略，服务可能短暂停止。生产环境需要明确风险提示。"
+        "body": "V0.1 使用 docker-container 运行时、单副本、unless-stopped 重启策略和 replace 发布策略。"
       },
       "validate": {
         "title": "校验结果",
-        "body": "控制面校验可以先运行；真实发布执行在 Docker/Agent Spike 通过前返回 GATE_0B_REQUIRED。"
+        "body": "点击校验发布会先保存部署配置，登记或复用镜像制品，再执行控制面校验。",
+        "empty": "尚未执行校验。"
       },
       "confirm": {
-        "title": "确认阻断状态",
-        "body": "本批次禁用最终发布按钮。页面已为数据录入和后续执行器接线做好准备。"
+        "title": "确认发布",
+        "body": "创建发布会触发已配置的发布执行器。生产环境提交前会额外提示短暂停机风险。",
+        "ready": "检查摘要后即可创建发布。"
       },
+      "confirmRelease": "现在创建这个发布？",
+      "confirmProductionRelease": "当前是生产环境。V0.1 replace 策略可能造成短暂停机，确认继续创建发布？",
+      "productionWarningTitle": "生产环境提示",
+      "productionWarningBody": "V0.1 replace 策略可能造成服务短暂停止，请确认窗口可接受后再继续。",
+      "releaseCreated": "发布已创建",
+      "releaseCreatedBody": "发布 #{{id}} 已创建。",
       "sample": {
         "image": "示例镜像引用",
         "digest": "示例 digest"

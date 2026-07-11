@@ -4330,38 +4330,113 @@
       "archived": "Archived",
       "releases": "Releases",
       "failed": "Failed",
-      "blocked": "Blocked"
+      "blocked": "Blocked",
+      "manualAction": "Manual action"
     },
     "projects": { "tableTitle": "Project list" },
+    "environments": { "tableTitle": "Environments" },
     "applications": { "tableTitle": "Applications" },
     "services": { "tableTitle": "Services" },
     "artifacts": { "tableTitle": "Artifacts" },
     "releases": { "tableTitle": "Release records" },
-    "filters": { "project": "Project" },
+    "filters": {
+      "project": "Project",
+      "application": "Application",
+      "service": "Service",
+      "deployment": "Deployment config"
+    },
     "columns": {
       "name": "Name",
       "slug": "Slug",
       "status": "Status",
       "resourceVersion": "Resource version",
       "type": "Type",
+      "target": "Target",
       "version": "Version",
       "source": "Source",
       "image": "Image",
       "sha256": "SHA256",
       "releaseId": "Release ID",
-      "failureReason": "Failure reason"
+      "failureReason": "Failure reason",
+      "message": "Message",
+      "runtime": "Runtime",
+      "execution": "Execution",
+      "actions": "Actions"
     },
     "empty": {
-      "projects": "No projects yet. Create projects through the API or later forms, then return here to continue the deployment flow.",
+      "projects": "No projects yet. Create a project to start the deployment flow.",
+      "environments": "No environments yet. Create an environment for the selected project.",
       "applications": "Select a project with applications to view application-level deployment status.",
       "services": "Services appear after an application is selected. Each service can later own one deployment config per environment.",
-      "artifacts": "No image-reference artifacts yet. Use the deployment wizard or API to register an existing image.",
-      "releases": "No release records yet. Gate 0B is still required before real Docker release execution."
+      "artifacts": "No image-reference artifacts yet. Register an existing image to use it in a release.",
+      "releases": "No release records yet. Create a release from the deployment wizard after selecting a service and image."
     },
     "actions": {
       "previous": "Previous",
       "next": "Next",
+      "cancel": "Cancel",
+      "refresh": "Refresh",
+      "createProject": "Create project",
+      "createEnvironment": "Create environment",
+      "createApplication": "Create application",
+      "createService": "Create service",
+      "createArtifact": "Register image artifact",
+      "validateRelease": "Validate release",
+      "createRelease": "Create release",
+      "acceptCurrent": "Accept current",
+      "markHandled": "Mark handled",
       "realReleaseDisabled": "Real release disabled before Gate 0B"
+    },
+    "forms": {
+      "project": "Project",
+      "environment": "Environment",
+      "application": "Application",
+      "service": "Service",
+      "name": "Name",
+      "slug": "Slug",
+      "description": "Description",
+      "type": "Type",
+      "endpointId": "Endpoint ID",
+      "healthCheckHost": "Health check host",
+      "targetHost": "Target host",
+      "artifactName": "Artifact name",
+      "version": "Version",
+      "imageRef": "Image reference",
+      "imageDigest": "Image digest",
+      "containerPort": "Container port",
+      "hostPort": "Host port",
+      "healthPort": "Health port",
+      "healthType": "Health type",
+      "healthVerification": "Health verification",
+      "healthPath": "Health path",
+      "envOverrides": "Environment variables",
+      "traceabilityWeak": "Traceability: weak / image-reference only"
+    },
+    "formTitles": {
+      "project": "Create project",
+      "environment": "Create environment",
+      "application": "Create application",
+      "service": "Create service",
+      "artifact": "Register image artifact"
+    },
+    "environmentTypes": {
+      "dev": "Dev",
+      "test": "Test",
+      "prod": "Production",
+      "custom": "Custom"
+    },
+    "serviceTypes": {
+      "backend": "Backend",
+      "frontend": "Frontend",
+      "worker": "Worker"
+    },
+    "healthTypes": {
+      "none": "None"
+    },
+    "healthLevels": {
+      "verified": "Verified",
+      "basic": "Basic",
+      "none": "None"
     },
     "deploy": {
       "steps": {
@@ -4380,7 +4455,15 @@
         "environment": "Environment",
         "service": "Service",
         "image": "Image",
-        "validation": "Validation"
+        "validation": "Validation",
+        "notValidated": "Not validated",
+        "existingDeployment": "Existing deployment config #{{id}} will be updated before release.",
+        "runtimeDriver": "Runtime driver",
+        "replicas": "Replicas",
+        "restartPolicy": "Restart policy",
+        "strategy": "Strategy",
+        "deploymentConfig": "Deployment config",
+        "willCreateDeployment": "Will create"
       },
       "basic": {
         "title": "Select model scope",
@@ -4392,28 +4475,36 @@
       },
       "registry": {
         "title": "Registry and traceability",
-        "body": "Select an existing Portainer registry when needed. Digest resolution waits for the Docker executor batch."
+        "body": "Digest is optional. Traceability is stored as weak for image-reference artifacts."
       },
       "health": {
         "title": "Ports and health check",
-        "body": "Capture host port, container port, health level, check path, retry count, and timeout."
+        "body": "Capture published port, container port, health level, check path, retry count, and timeout."
       },
       "env": {
         "title": "Environment variables",
-        "body": "Literal variables can be captured now. Sensitive config inheritance and masking will expand in later batches."
+        "body": "Literal variables can be captured now. Enter one KEY=VALUE pair per line."
       },
       "strategy": {
         "title": "Replace strategy",
-        "body": "V0.1 only supports replace strategy and may briefly stop service. Production requires explicit warning."
+        "body": "V0.1 uses docker-container runtime, one replica, unless-stopped restart policy, and replace strategy."
       },
       "validate": {
         "title": "Validation result",
-        "body": "Control-plane validation can run, but real release execution returns GATE_0B_REQUIRED until the Docker/Agent Spike passes."
+        "body": "Click Validate release to persist the deployment config, register or reuse the image artifact, and run control-plane validation.",
+        "empty": "No validation has been run yet."
       },
       "confirm": {
-        "title": "Confirm blocked execution",
-        "body": "The final release button is disabled in this batch. This page is ready for data entry and later executor wiring."
+        "title": "Confirm release",
+        "body": "Create release will trigger the configured release executor. Production environments show an extra downtime warning before submission.",
+        "ready": "Review the summary, then create the release when ready."
       },
+      "confirmRelease": "Create this release now?",
+      "confirmProductionRelease": "This is a production environment. V0.1 replace strategy may cause short downtime. Continue creating the release?",
+      "productionWarningTitle": "Production warning",
+      "productionWarningBody": "V0.1 replace strategy may briefly stop service. Confirm only when the window is acceptable.",
+      "releaseCreated": "Release created",
+      "releaseCreatedBody": "Release #{{id}} was created.",
       "sample": {
         "image": "Sample image reference",
         "digest": "Sample digest"

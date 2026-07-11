@@ -31,6 +31,25 @@ export interface PlatformProject extends PlatformLifecycle {
   Description?: string;
 }
 
+export interface PlatformEnvironment extends PlatformLifecycle {
+  Id: number;
+  ProjectId: number;
+  Name: string;
+  Slug: string;
+  Type: string;
+  IsProduction: boolean;
+  TargetMode: string;
+  Targets?: PlatformEnvironmentTarget[];
+  HealthCheckHost?: string;
+}
+
+export interface PlatformEnvironmentTarget {
+  EndpointId: number;
+  Role: string;
+  HostAddress?: string;
+  Enabled: boolean;
+}
+
 export interface PlatformApplication extends PlatformLifecycle {
   Id: number;
   ProjectId: number;
@@ -64,6 +83,15 @@ export interface PlatformPublishedPort {
   HostPort?: number;
   Protocol?: string;
   HostIP?: string;
+  ExposeMode?: string;
+}
+
+export interface PlatformEnvOverride {
+  Key: string;
+  Value?: string;
+  Source?: string;
+  IsSecret?: boolean;
+  HasValue?: boolean;
 }
 
 export interface PlatformDeploymentDesiredSpec {
@@ -82,11 +110,17 @@ export interface PlatformDeploymentDesiredSpec {
     Port?: number;
     Retries?: number;
     TimeoutSeconds?: number;
+    IntervalSeconds?: number;
+    StartPeriodSeconds?: number;
   };
+  EnvOverrides?: PlatformEnvOverride[];
   Runtime?: {
     RuntimeDriver?: string;
     Replicas?: number;
     RestartPolicy?: string;
+    StopTimeoutSeconds?: number;
+    ContainerRetentionCount?: number;
+    ContainerRetentionDays?: number;
   };
   Strategy?: {
     Type?: string;
@@ -216,3 +250,78 @@ export type PlatformReleaseResolutionAction =
   | 'accept-current'
   | 'mark-handled'
   | 'release-lock-only';
+
+export interface CreatePlatformProjectPayload {
+  Name: string;
+  Slug: string;
+  Description?: string;
+}
+
+export interface CreatePlatformEnvironmentPayload {
+  Name: string;
+  Slug: string;
+  Type: string;
+  IsProduction: boolean;
+  TargetMode: string;
+  HealthCheckHost?: string;
+  Targets: PlatformEnvironmentTarget[];
+}
+
+export interface CreatePlatformApplicationPayload {
+  Name: string;
+  Slug: string;
+  Description?: string;
+}
+
+export interface CreatePlatformServiceDefinitionPayload {
+  Name: string;
+  Slug: string;
+  Type: string;
+  Description?: string;
+}
+
+export interface CreatePlatformServiceDeploymentPayload {
+  EnvironmentId: number;
+  DesiredSpec?: PlatformDeploymentDesiredSpec;
+}
+
+export interface UpdatePlatformServiceDeploymentPayload {
+  ResourceVersion: number;
+  DesiredSpec: PlatformDeploymentDesiredSpec;
+}
+
+export interface CreateImageReferenceArtifactPayload {
+  ProjectId: number;
+  ApplicationId?: number;
+  ServiceDefinitionId?: number;
+  Name: string;
+  Version: string;
+  ImageRef: string;
+  ImageDigest?: string;
+  Traceability: string;
+}
+
+export interface CreatePlatformReleasePayload {
+  ProjectId: number;
+  EnvironmentId: number;
+  ApplicationId: number;
+  ServiceDefinitionId: number;
+  ServiceDeploymentId: number;
+  ArtifactId: number;
+  Version: string;
+  ExpectedSpecRevision: number;
+  Strategy: string;
+  TriggerType?: string;
+}
+
+export interface PlatformReleaseValidateResponse {
+  Status?: string;
+  Reason?: string;
+  Message?: string;
+  Release?: PlatformRelease;
+}
+
+export interface PlatformReleaseCreateResponse {
+  Status?: string;
+  Release?: PlatformRelease;
+}
