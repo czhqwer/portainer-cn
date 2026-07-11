@@ -105,6 +105,7 @@
   "platform_applications": null,
   "platform_artifacts": null,
   "platform_audit_logs": null,
+  "platform_config_sets": null,
   "platform_environments": null,
   "platform_projects": null,
   "platform_release_locks": null,

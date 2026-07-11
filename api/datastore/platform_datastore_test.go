@@ -59,6 +59,23 @@ func TestPlatformDataServicesCRUDAndArchive(t *testing.T) {
 	deployment.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
 	require.NoError(t, store.PlatformServiceDeployment().Update(deployment.ID, deployment))
 
+	configSet := samplePlatformConfigSet(project.ID)
+	require.NoError(t, store.PlatformConfigSet().Create(configSet))
+	gotConfigSet, err := store.PlatformConfigSet().Read(configSet.ID)
+	require.NoError(t, err)
+	require.Equal(t, 1, gotConfigSet.Revision)
+	require.Equal(t, portainer.PlatformConfigEntrySourceProject, gotConfigSet.Entries[0].Source)
+	configSet.Entries[0].Value = "test"
+	require.NoError(t, store.PlatformConfigSet().Update(configSet.ID, configSet))
+	gotConfigSet, err = store.PlatformConfigSet().Read(configSet.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, gotConfigSet.Revision)
+	configSet.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
+	require.NoError(t, store.PlatformConfigSet().Update(configSet.ID, configSet))
+	gotConfigSet, err = store.PlatformConfigSet().Read(configSet.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, gotConfigSet.Revision)
+
 	artifact := samplePlatformArtifact(project.ID, application.ID, definition.ID)
 	require.NoError(t, store.PlatformArtifact().Create(artifact))
 	gotArtifact, err := store.PlatformArtifact().Read(artifact.ID)
@@ -99,6 +116,9 @@ func TestPlatformDataServicesTxAndReleaseLock(t *testing.T) {
 
 		deployment := samplePlatformServiceDeployment(project.ID, environment.ID, 0, 0)
 		if err := tx.PlatformServiceDeployment().Create(deployment); err != nil {
+			return err
+		}
+		if err := tx.PlatformConfigSet().Create(samplePlatformConfigSet(project.ID)); err != nil {
 			return err
 		}
 
@@ -150,6 +170,8 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	require.NoError(t, store.PlatformServiceDefinition().Create(definition))
 	deployment := samplePlatformServiceDeployment(project.ID, environment.ID, application.ID, definition.ID)
 	require.NoError(t, store.PlatformServiceDeployment().Create(deployment))
+	configSet := samplePlatformConfigSet(project.ID)
+	require.NoError(t, store.PlatformConfigSet().Create(configSet))
 	artifact := samplePlatformArtifact(project.ID, application.ID, definition.ID)
 	require.NoError(t, store.PlatformArtifact().Create(artifact))
 	release := samplePlatformRelease(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID)
@@ -181,6 +203,10 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	importedDeployment, err := importedStore.PlatformServiceDeployment().Read(deployment.ID)
 	require.NoError(t, err)
 	require.Equal(t, portainer.PlatformRuntimeDriverDockerContainer, importedDeployment.DesiredSpec.Runtime.RuntimeDriver)
+
+	importedConfigSet, err := importedStore.PlatformConfigSet().Read(configSet.ID)
+	require.NoError(t, err)
+	require.Equal(t, configSet.Entries, importedConfigSet.Entries)
 
 	importedLock, err := importedStore.PlatformReleaseLock().Read(lock.ID)
 	require.NoError(t, err)
@@ -269,6 +295,20 @@ func samplePlatformDesiredSpec() portainer.PlatformDeploymentDesiredSpec {
 	spec.HealthCheck.Port = 8080
 	portainer.NormalizePlatformDeploymentDesiredSpec(&spec)
 	return spec
+}
+
+func samplePlatformConfigSet(projectID portainer.PlatformProjectID) *portainer.PlatformConfigSet {
+	configSet := portainer.NewPlatformConfigSet()
+	configSet.ProjectID = projectID
+	configSet.ScopeType = portainer.PlatformConfigScopeProject
+	configSet.ScopeID = int(projectID)
+	configSet.Entries = []portainer.PlatformConfigEntry{
+		{
+			Key:   "APP_ENV",
+			Value: "production",
+		},
+	}
+	return &configSet
 }
 
 func samplePlatformArtifact(

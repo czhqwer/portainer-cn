@@ -46,6 +46,10 @@ func (tx *StoreTx) PlatformServiceDeployment() dataservices.PlatformServiceDeplo
 	return tx.store.PlatformServiceDeploymentService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformConfigSet() dataservices.PlatformConfigSetService {
+	return tx.store.PlatformConfigSetService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PlatformArtifact() dataservices.PlatformArtifactService {
 	return tx.store.PlatformArtifactService.Tx(tx.tx)
 }

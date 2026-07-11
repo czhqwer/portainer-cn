@@ -16,6 +16,7 @@ type (
 		PlatformApplication() PlatformApplicationService
 		PlatformServiceDefinition() PlatformServiceDefinitionService
 		PlatformServiceDeployment() PlatformServiceDeploymentService
+		PlatformConfigSet() PlatformConfigSetService
 		PlatformArtifact() PlatformArtifactService
 		PlatformRelease() PlatformReleaseService
 		PlatformReleaseLock() PlatformReleaseLockService
@@ -116,6 +117,12 @@ type (
 	// PlatformServiceDeploymentService represents a service to manage platform service deployments.
 	PlatformServiceDeploymentService interface {
 		BaseCRUD[portainer.PlatformServiceDeployment, portainer.PlatformServiceDeploymentID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformConfigSetService manages versioned project, environment, and service-deployment configuration sets.
+	PlatformConfigSetService interface {
+		BaseCRUD[portainer.PlatformConfigSet, portainer.PlatformConfigSetID]
 		GetNextIdentifier() int
 	}
 

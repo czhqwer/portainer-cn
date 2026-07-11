@@ -1,6 +1,10 @@
 package portainer
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 type (
 	PlatformProjectID           int
@@ -126,6 +130,8 @@ const (
 	PlatformConfigEntrySourceProject           PlatformConfigEntrySource = "project"
 	PlatformConfigEntrySourceEnvironment       PlatformConfigEntrySource = "environment"
 	PlatformConfigEntrySourceServiceDeployment PlatformConfigEntrySource = "service-deployment"
+
+	PlatformConfigSetDefaultName = "default"
 
 	PlatformHealthVerificationVerified    PlatformHealthVerification = "verified"
 	PlatformHealthVerificationStartupOnly PlatformHealthVerification = "startup-only"
@@ -641,6 +647,100 @@ func NewPlatformLifecycle() PlatformLifecycle {
 	return PlatformLifecycle{
 		LifecycleStatus: PlatformLifecycleStatusActive,
 		ResourceVersion: 1,
+	}
+}
+
+var platformConfigEntryKeyPattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+
+// NewPlatformConfigSet creates the safe metadata-only baseline for a configuration set.
+// 敏感值的加密保存将在阶段 2 批次 4 接入；这里先固定默认配置集和版本，避免
+// 后续配置 CRUD 因缺少版本基线而无法判断发布快照是否已经过期。
+func NewPlatformConfigSet() PlatformConfigSet {
+	return PlatformConfigSet{
+		Name:              PlatformConfigSetDefaultName,
+		Revision:          1,
+		PlatformLifecycle: NewPlatformLifecycle(),
+	}
+}
+
+// NormalizePlatformConfigSet 为直接 datastore 调用和后续 HTTP handler 应用一致的确定性默认值。
+// 配置项来源必须由所属配置集的作用域推导，避免低层级条目伪装成更高优先级并破坏三级合并顺序。
+func NormalizePlatformConfigSet(configSet *PlatformConfigSet) {
+	if configSet == nil {
+		return
+	}
+
+	configSet.Name = strings.TrimSpace(configSet.Name)
+	if configSet.Name == "" {
+		configSet.Name = PlatformConfigSetDefaultName
+	}
+	if configSet.Revision == 0 {
+		configSet.Revision = 1
+	}
+
+	source := platformConfigEntrySourceForScope(configSet.ScopeType)
+	for i := range configSet.Entries {
+		if configSet.Entries[i].ValueType == "" {
+			configSet.Entries[i].ValueType = PlatformConfigValuePlain
+		}
+		configSet.Entries[i].Source = source
+	}
+}
+
+// ValidatePlatformConfigSet 在配置 API 尚未开放时守住阶段 2 的存储边界。
+// 在敏感变量专属批次接入加密字段和密钥版本服务前，必须拒绝敏感 plain 值，避免明文进入 BoltDB。
+func ValidatePlatformConfigSet(configSet PlatformConfigSet) error {
+	NormalizePlatformConfigSet(&configSet)
+
+	if configSet.ProjectID == 0 {
+		return fmt.Errorf("config set project ID is required")
+	}
+	if configSet.ScopeID == 0 {
+		return fmt.Errorf("config set scope ID is required")
+	}
+	if configSet.ScopeType != PlatformConfigScopeProject &&
+		configSet.ScopeType != PlatformConfigScopeEnvironment &&
+		configSet.ScopeType != PlatformConfigScopeServiceDeployment {
+		return fmt.Errorf("config set scope type %q is invalid", configSet.ScopeType)
+	}
+	if configSet.Name == "" {
+		return fmt.Errorf("config set name is required")
+	}
+
+	keys := make(map[string]struct{}, len(configSet.Entries))
+	for _, entry := range configSet.Entries {
+		if !platformConfigEntryKeyPattern.MatchString(entry.Key) {
+			return fmt.Errorf("config entry key %q is invalid", entry.Key)
+		}
+		if _, exists := keys[entry.Key]; exists {
+			return fmt.Errorf("config entry key %q is duplicated", entry.Key)
+		}
+		keys[entry.Key] = struct{}{}
+
+		if entry.ValueType != PlatformConfigValuePlain &&
+			entry.ValueType != PlatformConfigValueSecretRef &&
+			entry.ValueType != PlatformConfigValueDatabaseRef &&
+			entry.ValueType != PlatformConfigValueRedisRef {
+			return fmt.Errorf("config entry %q value type %q is invalid", entry.Key, entry.ValueType)
+		}
+		if entry.Sensitive && entry.ValueType == PlatformConfigValuePlain && entry.Value != "" {
+			return fmt.Errorf("sensitive config entry %q cannot store a plain value before encrypted storage is enabled", entry.Key)
+		}
+	}
+
+	return nil
+}
+
+func platformConfigEntrySourceForScope(scope PlatformConfigScopeType) PlatformConfigEntrySource {
+	switch scope {
+	case PlatformConfigScopeProject:
+		return PlatformConfigEntrySourceProject
+	case PlatformConfigScopeEnvironment:
+		return PlatformConfigEntrySourceEnvironment
+	case PlatformConfigScopeServiceDeployment:
+		return PlatformConfigEntrySourceServiceDeployment
+	default:
+		return ""
 	}
 }
 

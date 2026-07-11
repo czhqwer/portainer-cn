@@ -25,6 +25,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/platformapplication"
 	"github.com/portainer/portainer/api/dataservices/platformartifact"
 	"github.com/portainer/portainer/api/dataservices/platformauditlog"
+	"github.com/portainer/portainer/api/dataservices/platformconfigset"
 	"github.com/portainer/portainer/api/dataservices/platformenvironment"
 	"github.com/portainer/portainer/api/dataservices/platformproject"
 	"github.com/portainer/portainer/api/dataservices/platformrelease"
@@ -71,6 +72,7 @@ type Store struct {
 	PlatformApplicationService       *platformapplication.Service
 	PlatformServiceDefinitionService *platformservicedefinition.Service
 	PlatformServiceDeploymentService *platformservicedeployment.Service
+	PlatformConfigSetService         *platformconfigset.Service
 	PlatformArtifactService          *platformartifact.Service
 	PlatformReleaseService           *platformrelease.Service
 	PlatformReleaseLockService       *platformreleaselock.Service
@@ -162,6 +164,12 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.PlatformServiceDeploymentService = platformServiceDeploymentService
+
+	platformConfigSetService, err := platformconfigset.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformConfigSetService = platformConfigSetService
 
 	platformArtifactService, err := platformartifact.NewService(store.connection)
 	if err != nil {
@@ -418,6 +426,11 @@ func (store *Store) PlatformServiceDeployment() dataservices.PlatformServiceDepl
 	return store.PlatformServiceDeploymentService
 }
 
+// PlatformConfigSet gives access to the versioned platform configuration data management layer.
+func (store *Store) PlatformConfigSet() dataservices.PlatformConfigSetService {
+	return store.PlatformConfigSetService
+}
+
 // PlatformArtifact gives access to the platform artifact data management layer
 func (store *Store) PlatformArtifact() dataservices.PlatformArtifactService {
 	return store.PlatformArtifactService
@@ -601,6 +614,7 @@ type storeExport struct {
 	PlatformApplication       []portainer.PlatformApplication       `json:"platform_applications,omitempty"`
 	PlatformServiceDefinition []portainer.PlatformServiceDefinition `json:"platform_service_definitions,omitempty"`
 	PlatformServiceDeployment []portainer.PlatformServiceDeployment `json:"platform_service_deployments,omitempty"`
+	PlatformConfigSet         []portainer.PlatformConfigSet         `json:"platform_config_sets,omitempty"`
 	PlatformArtifact          []portainer.PlatformArtifact          `json:"platform_artifacts,omitempty"`
 	PlatformRelease           []portainer.PlatformRelease           `json:"platform_releases,omitempty"`
 	PlatformReleaseLock       []portainer.PlatformReleaseLock       `json:"platform_release_locks,omitempty"`
@@ -851,6 +865,14 @@ func (store *Store) Export(filename string) (err error) {
 		backup.PlatformServiceDeployment = d
 	}
 
+	if c, err := store.PlatformConfigSet().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Config Sets")
+		}
+	} else {
+		backup.PlatformConfigSet = c
+	}
+
 	if a, err := store.PlatformArtifact().ReadAll(); err != nil {
 		if !store.IsErrObjectNotFound(err) {
 			log.Error().Err(err).Msg("exporting Platform Artifacts")
@@ -1080,6 +1102,12 @@ func (store *Store) Import(filename string) (err error) {
 	for _, v := range backup.PlatformServiceDeployment {
 		if err := store.PlatformServiceDeployment().Update(v.ID, &v); err != nil {
 			log.Warn().Err(err).Msg("failed to update the platform service deployment in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformConfigSet {
+		if err := store.PlatformConfigSet().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform config set in the database")
 		}
 	}
 
