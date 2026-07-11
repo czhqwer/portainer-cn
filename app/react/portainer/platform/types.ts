@@ -29,6 +29,20 @@ export interface PlatformProject extends PlatformLifecycle {
   Name: string;
   Slug: string;
   Description?: string;
+  MemberPolicies?: Record<number, PlatformProjectRole>;
+  TeamPolicies?: Record<number, PlatformProjectRole>;
+  Permissions?: PlatformProjectPermissions;
+}
+
+export type PlatformProjectRole = 'admin' | 'developer' | 'viewer';
+
+// 权限摘要由服务端按用户和团队策略计算，页面只用来隐藏或禁用无效操作。
+export interface PlatformProjectPermissions {
+  Role?: PlatformProjectRole;
+  CanManageProject: boolean;
+  CanManageResources: boolean;
+  CanDeploy: boolean;
+  CanRevealSensitive: boolean;
 }
 
 export interface PlatformEnvironment extends PlatformLifecycle {

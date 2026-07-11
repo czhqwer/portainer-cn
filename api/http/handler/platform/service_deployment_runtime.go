@@ -53,9 +53,16 @@ func (handler *Handler) serviceDeploymentStatus(w http.ResponseWriter, r *http.R
 		return handlerErr
 	}
 
-	deployment, err := handler.DataStore.PlatformServiceDeployment().Read(portainer.PlatformServiceDeploymentID(id))
+	deployment, handlerErr := handler.requireServiceDeploymentPermission(r, portainer.PlatformServiceDeploymentID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	environment, err := handler.DataStore.PlatformEnvironment().Read(deployment.EnvironmentID)
 	if err != nil {
 		return handler.convertError(err)
+	}
+	if handlerErr := handler.requireEnvironmentEndpointAccess(r, environment); handlerErr != nil {
+		return handlerErr
 	}
 
 	result := serviceDeploymentStatusFromDeployment(*deployment)
@@ -90,9 +97,16 @@ func (handler *Handler) serviceDeploymentLogs(w http.ResponseWriter, r *http.Req
 		return handlerErr
 	}
 
-	deployment, err := handler.DataStore.PlatformServiceDeployment().Read(portainer.PlatformServiceDeploymentID(id))
+	deployment, handlerErr := handler.requireServiceDeploymentPermission(r, portainer.PlatformServiceDeploymentID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	environment, err := handler.DataStore.PlatformEnvironment().Read(deployment.EnvironmentID)
 	if err != nil {
 		return handler.convertError(err)
+	}
+	if handlerErr := handler.requireEnvironmentEndpointAccess(r, environment); handlerErr != nil {
+		return handlerErr
 	}
 
 	tail := parseRuntimeLogTail(r)

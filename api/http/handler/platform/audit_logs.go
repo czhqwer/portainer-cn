@@ -18,6 +18,18 @@ func (handler *Handler) auditLogList(w http.ResponseWriter, r *http.Request) *ht
 	if handlerErr != nil {
 		return handlerErr
 	}
+	context, err := security.RetrieveRestrictedRequestContext(r)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	if !context.IsAdmin && filters.projectID == 0 {
+		return platformAccessDenied()
+	}
+	if filters.projectID != 0 {
+		if _, handlerErr := handler.requireProjectPermission(r, filters.projectID, platformPermissionManage); handlerErr != nil {
+			return handlerErr
+		}
+	}
 
 	logs, err := handler.DataStore.PlatformAuditLog().ReadAll(func(log portainer.PlatformAuditLog) bool {
 		if filters.projectID != 0 && log.ProjectID != filters.projectID {

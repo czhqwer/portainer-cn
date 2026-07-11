@@ -19,6 +19,13 @@ func (handler *Handler) releaseRetryRecovery(w http.ResponseWriter, r *http.Requ
 	if handlerErr != nil {
 		return handlerErr
 	}
+	release, handlerErr := handler.requireReleasePermission(r, portainer.PlatformReleaseID(id), platformPermissionManage)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if handlerErr := handler.requireReleaseRuntimePermission(r, release); handlerErr != nil {
+		return handlerErr
+	}
 	if handler.ReleaseRecoveryExecutor == nil {
 		return writePlatformError(
 			w,
@@ -66,6 +73,13 @@ func (handler *Handler) releaseRetryRecovery(w http.ResponseWriter, r *http.Requ
 func (handler *Handler) releaseCleanupRuntime(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "releaseId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	release, handlerErr := handler.requireReleasePermission(r, portainer.PlatformReleaseID(id), platformPermissionManage)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if handlerErr := handler.requireReleaseRuntimePermission(r, release); handlerErr != nil {
 		return handlerErr
 	}
 	if handler.ReleaseRecoveryExecutor == nil {

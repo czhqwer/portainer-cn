@@ -72,3 +72,19 @@ func TestPlatformSensitiveConfigEncryptsRedactsAuditsAndInjectsReleaseSnapshot(t
 	require.NotEqual(t, sensitiveValue, storedSecretSnapshot.CipherText)
 
 }
+
+func TestPlatformProjectAdminCanRevealSensitiveConfig(t *testing.T) {
+	fips.InitFIPS(false)
+	ctx, project, _, _, _ := createPlatformReleaseFixture(t)
+	configSet := createConfigSet(t, ctx, createConfigSetPayload{
+		ProjectID: project.ID,
+		ScopeType: portainer.PlatformConfigScopeProject,
+		ScopeID:   int(project.ID),
+		Entries:   []portainer.PlatformConfigEntry{{Key: "PROJECT_ADMIN_SECRET", Sensitive: true, Value: "project-admin-test"}},
+	})
+
+	// 项目管理员可维护并按需读取本项目敏感配置；开发者和观察者仍由同一服务端授权点拒绝。
+	project.MemberPolicies = map[portainer.UserID]portainer.PlatformProjectRole{2: portainer.PlatformProjectRoleAdmin}
+	require.NoError(t, ctx.handler.DataStore.PlatformProject().Update(project.ID, &project))
+	doRawJSON(t, ctx, ctx.standardJWT, http.MethodPost, fmt.Sprintf("/platform/config-sets/%d/entries/PROJECT_ADMIN_SECRET/reveal", configSet.ID), nil, http.StatusOK)
+}

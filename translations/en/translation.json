@@ -4331,6 +4331,14 @@
         "title": "Administrator access only",
         "body": "All /api/platform business APIs, including read requests, are limited to administrators in V0.1."
       },
+      "roleAccess": {
+        "title": "Project-based access",
+        "body": "Projects are visible according to project roles. Project administrators manage project resources, developers can deploy, and viewers can only inspect project data. Runtime operations also require access to the target environment."
+      },
+      "permissionDenied": {
+        "title": "Deployment permission required",
+        "deployBody": "Your current project role cannot register artifacts or create releases. Contact a project administrator if deployment access is needed."
+      },
       "gate0b": {
         "title": "Gate 0B required",
         "body": "Gate 0B has not passed. Docker RuntimeDriver, DeploymentExecutor, ContainerAdapter, candidate validation, switching, and recovery remain disabled."

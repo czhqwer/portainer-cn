@@ -24,8 +24,20 @@ func (handler *Handler) artifactList(w http.ResponseWriter, r *http.Request) *ht
 	if handlerErr != nil {
 		return handlerErr
 	}
+	visibleProjectIDs, handlerErr := handler.visibleProjectIDs(r)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if filters.projectID != 0 {
+		if _, handlerErr := handler.requireProjectPermission(r, filters.projectID, platformPermissionView); handlerErr != nil {
+			return handlerErr
+		}
+	}
 
 	artifacts, err := handler.DataStore.PlatformArtifact().ReadAll(func(artifact portainer.PlatformArtifact) bool {
+		if visibleProjectIDs != nil && !visibleProjectIDs[artifact.ProjectID] {
+			return false
+		}
 		if !filters.includeArchived && !isActive(artifact.PlatformLifecycle) {
 			return false
 		}
@@ -54,9 +66,9 @@ func (handler *Handler) artifactInspect(w http.ResponseWriter, r *http.Request) 
 		return handlerErr
 	}
 
-	artifact, err := handler.DataStore.PlatformArtifact().Read(portainer.PlatformArtifactID(id))
-	if err != nil {
-		return handler.convertError(err)
+	artifact, handlerErr := handler.requireArtifactPermission(r, portainer.PlatformArtifactID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
 	return response.JSON(w, artifact)
@@ -66,6 +78,9 @@ func (handler *Handler) artifactImageReferenceCreate(w http.ResponseWriter, r *h
 	var payload createImageReferenceArtifactPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
 		return validationFailed(err)
+	}
+	if _, handlerErr := handler.requireProjectPermission(r, payload.ProjectID, platformPermissionArtifactRelease); handlerErr != nil {
+		return handlerErr
 	}
 
 	now := time.Now().Unix()
@@ -150,9 +165,9 @@ func (handler *Handler) artifactValidate(w http.ResponseWriter, r *http.Request)
 		return handlerErr
 	}
 
-	artifact, err := handler.DataStore.PlatformArtifact().Read(portainer.PlatformArtifactID(id))
-	if err != nil {
-		return handler.convertError(err)
+	artifact, handlerErr := handler.requireArtifactPermission(r, portainer.PlatformArtifactID(id), platformPermissionArtifactRelease)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
 	result := artifactValidationResponse{
@@ -170,6 +185,9 @@ func (handler *Handler) artifactValidate(w http.ResponseWriter, r *http.Request)
 func (handler *Handler) artifactArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "artifactId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireArtifactPermission(r, portainer.PlatformArtifactID(id), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 

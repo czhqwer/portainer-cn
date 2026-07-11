@@ -18,8 +18,8 @@ func (handler *Handler) serviceDeploymentList(w http.ResponseWriter, r *http.Req
 		return handlerErr
 	}
 
-	if _, err := handler.DataStore.PlatformServiceDefinition().Read(portainer.PlatformServiceDefinitionID(id)); err != nil {
-		return handler.convertError(err)
+	if _, handlerErr := handler.requireServiceDefinitionPermission(r, portainer.PlatformServiceDefinitionID(id), platformPermissionView); handlerErr != nil {
+		return handlerErr
 	}
 
 	withArchived := includeArchived(r)
@@ -39,9 +39,9 @@ func (handler *Handler) serviceDeploymentInspect(w http.ResponseWriter, r *http.
 		return handlerErr
 	}
 
-	deployment, err := handler.DataStore.PlatformServiceDeployment().Read(portainer.PlatformServiceDeploymentID(id))
-	if err != nil {
-		return handler.convertError(err)
+	deployment, handlerErr := handler.requireServiceDeploymentPermission(r, portainer.PlatformServiceDeploymentID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
 	return response.JSON(w, deployment)
@@ -52,10 +52,20 @@ func (handler *Handler) serviceDeploymentCreate(w http.ResponseWriter, r *http.R
 	if handlerErr != nil {
 		return handlerErr
 	}
+	if _, handlerErr := handler.requireServiceDefinitionPermission(r, portainer.PlatformServiceDefinitionID(serviceID), platformPermissionDeployment); handlerErr != nil {
+		return handlerErr
+	}
 
 	var payload createServiceDeploymentPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
 		return validationFailed(err)
+	}
+	environment, err := handler.DataStore.PlatformEnvironment().Read(payload.EnvironmentID)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	if _, handlerErr := handler.requireProjectPermission(r, environment.ProjectID, platformPermissionDeployment); handlerErr != nil {
+		return handlerErr
 	}
 
 	desiredSpec := portainer.NewPlatformDeploymentDesiredSpec()
@@ -79,7 +89,7 @@ func (handler *Handler) serviceDeploymentCreate(w http.ResponseWriter, r *http.R
 
 	// ServiceDeployment 是阶段 1 前半段最接近运行态的控制面资源；
 	// 此处只保存期望配置和版本号，真实容器验证/切换必须等待 Gate 0B。
-	err := handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		service, err := readActiveServiceDefinition(tx, deployment.ServiceDefinitionID)
 		if err != nil {
 			return err
@@ -121,6 +131,9 @@ func (handler *Handler) serviceDeploymentUpdate(w http.ResponseWriter, r *http.R
 	if handlerErr != nil {
 		return handlerErr
 	}
+	if _, handlerErr := handler.requireServiceDeploymentPermission(r, portainer.PlatformServiceDeploymentID(id), platformPermissionDeployment); handlerErr != nil {
+		return handlerErr
+	}
 
 	var payload updateServiceDeploymentPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
@@ -159,6 +172,9 @@ func (handler *Handler) serviceDeploymentUpdate(w http.ResponseWriter, r *http.R
 func (handler *Handler) serviceDeploymentArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "deploymentId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireServiceDeploymentPermission(r, portainer.PlatformServiceDeploymentID(id), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 

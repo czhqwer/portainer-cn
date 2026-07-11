@@ -22,6 +22,7 @@ const (
 	errPlatformIdempotencyPayloadMismatch = "PLATFORM_IDEMPOTENCY_PAYLOAD_MISMATCH"
 	errPlatformUnsupportedOperation       = "PLATFORM_UNSUPPORTED_OPERATION"
 	errPlatformInternalError              = "PLATFORM_INTERNAL_ERROR"
+	errPlatformAccessDenied               = "PLATFORM_ACCESS_DENIED"
 )
 
 func (handler *Handler) routeID(r *http.Request, name string) (int, *httperror.HandlerError) {

@@ -63,8 +63,20 @@ func (handler *Handler) releaseList(w http.ResponseWriter, r *http.Request) *htt
 	if handlerErr != nil {
 		return handlerErr
 	}
+	visibleProjectIDs, handlerErr := handler.visibleProjectIDs(r)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if filters.projectID != 0 {
+		if _, handlerErr := handler.requireProjectPermission(r, filters.projectID, platformPermissionView); handlerErr != nil {
+			return handlerErr
+		}
+	}
 
 	releases, err := handler.DataStore.PlatformRelease().ReadAll(func(release portainer.PlatformRelease) bool {
+		if visibleProjectIDs != nil && !visibleProjectIDs[release.ProjectID] {
+			return false
+		}
 		if filters.projectID != 0 && release.ProjectID != filters.projectID {
 			return false
 		}
@@ -99,9 +111,9 @@ func (handler *Handler) releaseInspect(w http.ResponseWriter, r *http.Request) *
 		return handlerErr
 	}
 
-	release, err := handler.DataStore.PlatformRelease().Read(portainer.PlatformReleaseID(id))
-	if err != nil {
-		return handler.convertError(err)
+	release, handlerErr := handler.requireReleasePermission(r, portainer.PlatformReleaseID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
 	return response.JSON(w, redactRelease(*release))
@@ -111,6 +123,9 @@ func (handler *Handler) releaseValidate(w http.ResponseWriter, r *http.Request) 
 	var payload createReleasePayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
 		return validationFailed(err)
+	}
+	if handlerErr := handler.requireReleaseRequestPermission(r, payload); handlerErr != nil {
+		return handlerErr
 	}
 
 	err := handler.DataStore.ViewTx(func(tx dataservices.DataStoreTx) error {
@@ -159,6 +174,9 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 	var payload createReleasePayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
 		return validationFailed(err)
+	}
+	if handlerErr := handler.requireReleaseRequestPermission(r, payload); handlerErr != nil {
+		return handlerErr
 	}
 
 	idempotencyKey := strings.TrimSpace(r.Header.Get(idempotencyKeyHeader))

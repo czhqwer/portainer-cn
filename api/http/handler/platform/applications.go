@@ -17,8 +17,8 @@ func (handler *Handler) applicationList(w http.ResponseWriter, r *http.Request) 
 		return handlerErr
 	}
 
-	if _, err := handler.DataStore.PlatformProject().Read(portainer.PlatformProjectID(id)); err != nil {
-		return handler.convertError(err)
+	if _, handlerErr := handler.requireProjectPermission(r, portainer.PlatformProjectID(id), platformPermissionView); handlerErr != nil {
+		return handlerErr
 	}
 
 	withArchived := includeArchived(r)
@@ -38,9 +38,9 @@ func (handler *Handler) applicationInspect(w http.ResponseWriter, r *http.Reques
 		return handlerErr
 	}
 
-	application, err := handler.DataStore.PlatformApplication().Read(portainer.PlatformApplicationID(id))
-	if err != nil {
-		return handler.convertError(err)
+	application, handlerErr := handler.requireApplicationPermission(r, portainer.PlatformApplicationID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
 	return response.JSON(w, application)
@@ -49,6 +49,9 @@ func (handler *Handler) applicationInspect(w http.ResponseWriter, r *http.Reques
 func (handler *Handler) applicationCreate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	projectID, handlerErr := handler.routeID(r, "projectId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireProjectPermission(r, portainer.PlatformProjectID(projectID), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 
@@ -100,6 +103,9 @@ func (handler *Handler) applicationUpdate(w http.ResponseWriter, r *http.Request
 	if handlerErr != nil {
 		return handlerErr
 	}
+	if _, handlerErr := handler.requireApplicationPermission(r, portainer.PlatformApplicationID(id), platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
 
 	var payload updateApplicationPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
@@ -142,6 +148,9 @@ func (handler *Handler) applicationUpdate(w http.ResponseWriter, r *http.Request
 func (handler *Handler) applicationArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "applicationId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireApplicationPermission(r, portainer.PlatformApplicationID(id), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 

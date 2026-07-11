@@ -4390,6 +4390,14 @@
         "title": "仅管理员可访问",
         "body": "V0.1 中所有 /api/platform 业务接口，包括读取接口，都仅限管理员访问。"
       },
+      "roleAccess": {
+        "title": "项目角色权限",
+        "body": "项目按角色控制可见范围：项目管理员可管理项目资源，开发者可发起发布，只读观察者只能查看项目数据。运行态操作还必须具备目标环境权限。"
+      },
+      "permissionDenied": {
+        "title": "需要发布权限",
+        "deployBody": "当前项目角色不能登记制品或创建发布。如需发布权限，请联系项目管理员。"
+      },
       "gate0b": {
         "title": "需要 Gate 0B",
         "body": "Gate 0B 尚未通过。Docker RuntimeDriver、DeploymentExecutor、ContainerAdapter、候选容器验证、切换与恢复仍保持禁用。"

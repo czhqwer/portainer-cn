@@ -98,12 +98,12 @@ func (handler *Handler) configSecretRead(w http.ResponseWriter, r *http.Request,
 	if err != nil || key == "" {
 		return validationFailedError("Config entry key is required")
 	}
+	if _, handlerErr := handler.requireConfigSetPermission(r, portainer.PlatformConfigSetID(id), platformPermissionSensitiveConfig); handlerErr != nil {
+		return handlerErr
+	}
 
 	var value string
 	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
-		if err := handler.requireSensitiveConfigAccess(tx, r); err != nil {
-			return err
-		}
 		configSet, err := readActiveConfigSet(tx, portainer.PlatformConfigSetID(id))
 		if err != nil {
 			return err
@@ -137,23 +137,6 @@ func (handler *Handler) configSecretRead(w http.ResponseWriter, r *http.Request,
 	}
 
 	return response.JSON(w, secretRevealResponse{Value: value})
-}
-
-// requireSensitiveConfigAccess is deliberately separate from route bouncers. 当前阶段仍只
-// 允许管理员，但这层服务端检查将成为批次 5 项目权限与 sensitive-reveal 权限取交集的固定入口。
-func (handler *Handler) requireSensitiveConfigAccess(tx dataservices.DataStoreTx, r *http.Request) error {
-	userID, err := currentUserID(r)
-	if err != nil {
-		return err
-	}
-	user, err := tx.User().Read(userID)
-	if err != nil {
-		return err
-	}
-	if user.Role != portainer.AdministratorRole {
-		return httperror.Forbidden(errPlatformInvalidRequest, nil)
-	}
-	return nil
 }
 
 func findConfigEntry(entries []portainer.PlatformConfigEntry, key string) (portainer.PlatformConfigEntry, bool) {

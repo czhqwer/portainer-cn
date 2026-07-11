@@ -17,8 +17,8 @@ func (handler *Handler) serviceDefinitionList(w http.ResponseWriter, r *http.Req
 		return handlerErr
 	}
 
-	if _, err := handler.DataStore.PlatformApplication().Read(portainer.PlatformApplicationID(id)); err != nil {
-		return handler.convertError(err)
+	if _, handlerErr := handler.requireApplicationPermission(r, portainer.PlatformApplicationID(id), platformPermissionView); handlerErr != nil {
+		return handlerErr
 	}
 
 	withArchived := includeArchived(r)
@@ -38,9 +38,9 @@ func (handler *Handler) serviceDefinitionInspect(w http.ResponseWriter, r *http.
 		return handlerErr
 	}
 
-	service, err := handler.DataStore.PlatformServiceDefinition().Read(portainer.PlatformServiceDefinitionID(id))
-	if err != nil {
-		return handler.convertError(err)
+	service, handlerErr := handler.requireServiceDefinitionPermission(r, portainer.PlatformServiceDefinitionID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
 	return response.JSON(w, service)
@@ -49,6 +49,9 @@ func (handler *Handler) serviceDefinitionInspect(w http.ResponseWriter, r *http.
 func (handler *Handler) serviceDefinitionCreate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	applicationID, handlerErr := handler.routeID(r, "applicationId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireApplicationPermission(r, portainer.PlatformApplicationID(applicationID), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 
@@ -103,6 +106,9 @@ func (handler *Handler) serviceDefinitionUpdate(w http.ResponseWriter, r *http.R
 	if handlerErr != nil {
 		return handlerErr
 	}
+	if _, handlerErr := handler.requireServiceDefinitionPermission(r, portainer.PlatformServiceDefinitionID(id), platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
 
 	var payload updateServiceDefinitionPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
@@ -146,6 +152,9 @@ func (handler *Handler) serviceDefinitionUpdate(w http.ResponseWriter, r *http.R
 func (handler *Handler) serviceDefinitionArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "serviceDefinitionId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireServiceDefinitionPermission(r, portainer.PlatformServiceDefinitionID(id), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 

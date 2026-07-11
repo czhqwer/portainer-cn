@@ -17,8 +17,8 @@ func (handler *Handler) environmentList(w http.ResponseWriter, r *http.Request) 
 		return handlerErr
 	}
 
-	if _, err := handler.DataStore.PlatformProject().Read(portainer.PlatformProjectID(id)); err != nil {
-		return handler.convertError(err)
+	if _, handlerErr := handler.requireProjectPermission(r, portainer.PlatformProjectID(id), platformPermissionView); handlerErr != nil {
+		return handlerErr
 	}
 
 	withArchived := includeArchived(r)
@@ -38,9 +38,9 @@ func (handler *Handler) environmentInspect(w http.ResponseWriter, r *http.Reques
 		return handlerErr
 	}
 
-	environment, err := handler.DataStore.PlatformEnvironment().Read(portainer.PlatformEnvironmentID(id))
-	if err != nil {
-		return handler.convertError(err)
+	environment, handlerErr := handler.requireEnvironmentPermission(r, portainer.PlatformEnvironmentID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
 	return response.JSON(w, environment)
@@ -49,6 +49,9 @@ func (handler *Handler) environmentInspect(w http.ResponseWriter, r *http.Reques
 func (handler *Handler) environmentCreate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	projectID, handlerErr := handler.routeID(r, "projectId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireProjectPermission(r, portainer.PlatformProjectID(projectID), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 
@@ -72,6 +75,11 @@ func (handler *Handler) environmentCreate(w http.ResponseWriter, r *http.Request
 		PlatformLifecycle: newLifecycle(now),
 	}
 	normalizeEnvironment(environment)
+	if len(environment.Targets) > 0 {
+		if handlerErr := handler.requireEndpointAccessForTargets(r, environment.Targets); handlerErr != nil {
+			return handlerErr
+		}
+	}
 
 	// 环境只绑定 Portainer Endpoint 等目标描述，不创建或修改任何运行时资源；
 	// Docker/Agent 侧真实验证留给 Gate 0B Spike 后的执行器批次。
@@ -106,10 +114,18 @@ func (handler *Handler) environmentUpdate(w http.ResponseWriter, r *http.Request
 	if handlerErr != nil {
 		return handlerErr
 	}
+	if _, handlerErr := handler.requireEnvironmentPermission(r, portainer.PlatformEnvironmentID(id), platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
 
 	var payload updateEnvironmentPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
 		return validationFailed(err)
+	}
+	if payload.Targets != nil && len(*payload.Targets) > 0 {
+		if handlerErr := handler.requireEndpointAccessForTargets(r, *payload.Targets); handlerErr != nil {
+			return handlerErr
+		}
 	}
 
 	now := time.Now().Unix()
@@ -164,6 +180,9 @@ func (handler *Handler) environmentUpdate(w http.ResponseWriter, r *http.Request
 func (handler *Handler) environmentArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "environmentId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireEnvironmentPermission(r, portainer.PlatformEnvironmentID(id), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 

@@ -113,10 +113,10 @@ func TestPlatformCRUDAdminCreatesFullChain(t *testing.T) {
 	require.Equal(t, portainer.PlatformLifecycleStatusArchived, archivedDeployment.LifecycleStatus)
 }
 
-func TestPlatformCRUDRequiresAdmin(t *testing.T) {
+func TestPlatformProjectListHidesUnassignedProjects(t *testing.T) {
 	ctx := newPlatformTestContext(t)
 
-	doRawJSON(t, ctx, ctx.standardJWT, http.MethodGet, "/platform/projects", nil, http.StatusForbidden)
+	doRawJSON(t, ctx, ctx.standardJWT, http.MethodGet, "/platform/projects", nil, http.StatusOK)
 }
 
 func TestPlatformProjectArchiveIsHiddenFromDefaultList(t *testing.T) {

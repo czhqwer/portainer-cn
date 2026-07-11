@@ -13,15 +13,19 @@ import (
 
 func (handler *Handler) projectList(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	withArchived := includeArchived(r)
+	visibleProjectIDs, handlerErr := handler.visibleProjectIDs(r)
+	if handlerErr != nil {
+		return handlerErr
+	}
 
 	projects, err := handler.DataStore.PlatformProject().ReadAll(func(project portainer.PlatformProject) bool {
-		return withArchived || isActive(project.PlatformLifecycle)
+		return (visibleProjectIDs == nil || visibleProjectIDs[project.ID]) && (withArchived || isActive(project.PlatformLifecycle))
 	})
 	if err != nil {
 		return handler.convertError(err)
 	}
 
-	return response.JSON(w, projects)
+	return response.JSON(w, handler.projectResponses(r, projects))
 }
 
 func (handler *Handler) projectInspect(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
@@ -30,17 +34,23 @@ func (handler *Handler) projectInspect(w http.ResponseWriter, r *http.Request) *
 		return handlerErr
 	}
 
-	project, err := handler.DataStore.PlatformProject().Read(portainer.PlatformProjectID(id))
-	if err != nil {
-		return handler.convertError(err)
+	project, handlerErr := handler.requireProjectPermission(r, portainer.PlatformProjectID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 
-	return response.JSON(w, project)
+	return response.JSON(w, handler.projectResponse(r, *project))
 }
 
 func (handler *Handler) projectCreate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
+	if handlerErr := handler.requireGlobalAdmin(r); handlerErr != nil {
+		return handlerErr
+	}
 	var payload createProjectPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
+		return validationFailed(err)
+	}
+	if err := validateProjectPolicies(payload.MemberPolicies, payload.TeamPolicies); err != nil {
 		return validationFailed(err)
 	}
 
@@ -73,11 +83,15 @@ func (handler *Handler) projectCreate(w http.ResponseWriter, r *http.Request) *h
 		return handler.convertError(err)
 	}
 
-	return response.JSONWithStatus(w, project, http.StatusCreated)
+	return response.JSONWithStatus(w, handler.projectResponse(r, *project), http.StatusCreated)
 }
 
 func (handler *Handler) projectUpdate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "projectId")
+	if handlerErr != nil {
+		return handlerErr
+	}
+	project, handlerErr := handler.requireProjectPermission(r, portainer.PlatformProjectID(id), platformPermissionManage)
 	if handlerErr != nil {
 		return handlerErr
 	}
@@ -88,8 +102,6 @@ func (handler *Handler) projectUpdate(w http.ResponseWriter, r *http.Request) *h
 	}
 
 	now := time.Now().Unix()
-	var project *portainer.PlatformProject
-
 	err := handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		var err error
 		project, err = readActiveProject(tx, portainer.PlatformProjectID(id))
@@ -106,12 +118,19 @@ func (handler *Handler) projectUpdate(w http.ResponseWriter, r *http.Request) *h
 		if payload.Description != nil {
 			project.Description = *payload.Description
 		}
+		memberPolicies := project.MemberPolicies
+		teamPolicies := project.TeamPolicies
 		if payload.MemberPolicies != nil {
-			project.MemberPolicies = payload.MemberPolicies
+			memberPolicies = payload.MemberPolicies
 		}
 		if payload.TeamPolicies != nil {
-			project.TeamPolicies = payload.TeamPolicies
+			teamPolicies = payload.TeamPolicies
 		}
+		if err := validateProjectPolicies(memberPolicies, teamPolicies); err != nil {
+			return validationFailed(err)
+		}
+		project.MemberPolicies = memberPolicies
+		project.TeamPolicies = teamPolicies
 		touchLifecycle(&project.PlatformLifecycle, now)
 
 		return tx.PlatformProject().Update(project.ID, project)
@@ -120,12 +139,15 @@ func (handler *Handler) projectUpdate(w http.ResponseWriter, r *http.Request) *h
 		return handler.convertError(err)
 	}
 
-	return response.JSON(w, project)
+	return response.JSON(w, handler.projectResponse(r, *project))
 }
 
 func (handler *Handler) projectArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "projectId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireProjectPermission(r, portainer.PlatformProjectID(id), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 

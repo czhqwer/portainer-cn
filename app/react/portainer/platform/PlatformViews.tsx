@@ -17,6 +17,8 @@ import { Alert } from '@@/Alert';
 import { Button } from '@@/buttons';
 import { PageHeader } from '@@/PageHeader';
 
+import { useCurrentUser } from '@/react/hooks/useUser';
+
 import {
   useCreateImageReferenceArtifactMutation,
   useCreatePlatformApplicationMutation,
@@ -57,6 +59,7 @@ import {
 
 export function PlatformProjectsView() {
   const { t } = useTranslation();
+  const { isPureAdmin } = useCurrentUser();
   const projectsQuery = usePlatformProjects();
   const projects = projectsQuery.data ?? [];
   const [selectedProjectId, setSelectedProjectId] = useState<number>();
@@ -64,6 +67,8 @@ export function PlatformProjectsView() {
   const [isEnvironmentFormOpen, setIsEnvironmentFormOpen] = useState(false);
   const currentProject =
     projects.find((project) => project.Id === selectedProjectId) ?? projects[0];
+  const canManageCurrentProject =
+    !!currentProject?.Permissions?.CanManageResources;
   const environmentsQuery = usePlatformEnvironments(currentProject?.Id);
   const environments = environmentsQuery.data ?? [];
 
@@ -74,20 +79,22 @@ export function PlatformProjectsView() {
     >
       <PlatformNoticeStack />
       <ActionBar>
-        <Button
-          color="primary"
-          icon={Plus}
-          onClick={() => setIsProjectFormOpen((value) => !value)}
-          data-cy="platform-create-project-open"
-        >
-          {t('platform.actions.createProject', {
-            defaultValue: 'Create project',
-          })}
-        </Button>
+        {isPureAdmin && (
+          <Button
+            color="primary"
+            icon={Plus}
+            onClick={() => setIsProjectFormOpen((value) => !value)}
+            data-cy="platform-create-project-open"
+          >
+            {t('platform.actions.createProject', {
+              defaultValue: 'Create project',
+            })}
+          </Button>
+        )}
         <Button
           color="light"
           icon={Plus}
-          disabled={!currentProject}
+          disabled={!currentProject || !canManageCurrentProject}
           onClick={() => setIsEnvironmentFormOpen((value) => !value)}
           data-cy="platform-create-environment-open"
         >
@@ -99,7 +106,7 @@ export function PlatformProjectsView() {
       {isProjectFormOpen && (
         <CreateProjectPanel onDone={() => setIsProjectFormOpen(false)} />
       )}
-      {isEnvironmentFormOpen && (
+      {isEnvironmentFormOpen && canManageCurrentProject && (
         <CreateEnvironmentPanel
           projects={projects}
           projectId={currentProject?.Id}
@@ -201,6 +208,8 @@ export function PlatformApplicationsView() {
   const [isServiceFormOpen, setIsServiceFormOpen] = useState(false);
   const currentProject =
     projects.find((project) => project.Id === selectedProjectId) ?? projects[0];
+  const canManageCurrentProject =
+    !!currentProject?.Permissions?.CanManageResources;
   const applicationsQuery = usePlatformApplications(currentProject?.Id);
   const applications = applicationsQuery.data ?? [];
   const currentApplication =
@@ -227,7 +236,7 @@ export function PlatformApplicationsView() {
         <Button
           color="primary"
           icon={Plus}
-          disabled={!currentProject}
+          disabled={!currentProject || !canManageCurrentProject}
           onClick={() => setIsApplicationFormOpen((value) => !value)}
           data-cy="platform-create-application-open"
         >
@@ -238,7 +247,7 @@ export function PlatformApplicationsView() {
         <Button
           color="light"
           icon={Plus}
-          disabled={!currentApplication}
+          disabled={!currentApplication || !canManageCurrentProject}
           onClick={() => setIsServiceFormOpen((value) => !value)}
           data-cy="platform-create-service-open"
         >
@@ -247,7 +256,7 @@ export function PlatformApplicationsView() {
           })}
         </Button>
       </ActionBar>
-      {isApplicationFormOpen && (
+      {isApplicationFormOpen && canManageCurrentProject && (
         <CreateApplicationPanel
           projects={projects}
           projectId={currentProject?.Id}
@@ -260,7 +269,7 @@ export function PlatformApplicationsView() {
           onDone={() => setIsApplicationFormOpen(false)}
         />
       )}
-      {isServiceFormOpen && (
+      {isServiceFormOpen && canManageCurrentProject && (
         <CreateServicePanel
           applications={applications}
           applicationId={currentApplication?.Id}
@@ -380,6 +389,9 @@ export function PlatformArtifactsView() {
   const artifacts = artifactsQuery.data ?? [];
   const projectsQuery = usePlatformProjects();
   const projects = projectsQuery.data ?? [];
+  const artifactProjects = projects.filter(
+    (project) => project.Permissions?.CanDeploy
+  );
   const [isArtifactFormOpen, setIsArtifactFormOpen] = useState(false);
 
   return (
@@ -392,7 +404,7 @@ export function PlatformArtifactsView() {
         <Button
           color="primary"
           icon={Plus}
-          disabled={projects.length === 0}
+          disabled={artifactProjects.length === 0}
           onClick={() => setIsArtifactFormOpen((value) => !value)}
           data-cy="platform-create-artifact-open"
         >
@@ -403,7 +415,7 @@ export function PlatformArtifactsView() {
       </ActionBar>
       {isArtifactFormOpen && (
         <CreateArtifactPanel
-          projects={projects}
+          projects={artifactProjects}
           onDone={() => setIsArtifactFormOpen(false)}
         />
       )}
@@ -428,6 +440,8 @@ export function PlatformReleasesView() {
   const { t } = useTranslation();
   const releasesQuery = usePlatformReleases();
   const releases = releasesQuery.data ?? [];
+  const projectsQuery = usePlatformProjects();
+  const projects = projectsQuery.data ?? [];
   const failedCount = releases.filter(
     (release) => release.Status === 'failed'
   ).length;
@@ -465,14 +479,14 @@ export function PlatformReleasesView() {
         title={t('platform.releases.tableTitle', {
           defaultValue: 'Release records',
         })}
-        isLoading={releasesQuery.isLoading}
+        isLoading={releasesQuery.isLoading || projectsQuery.isLoading}
         empty={releases.length === 0}
         emptyMessage={t('platform.empty.releases', {
           defaultValue:
             'No release records yet. Create a release from the deployment wizard after selecting a service and image.',
         })}
       >
-        <ReleasesTable releases={releases} />
+        <ReleasesTable releases={releases} projects={projects} />
       </DataSection>
     </PlatformPage>
   );
@@ -486,6 +500,7 @@ export function PlatformDeployView() {
   const [selectedProjectId, setSelectedProjectId] = useState<number>();
   const currentProject =
     projects.find((project) => project.Id === selectedProjectId) ?? projects[0];
+  const canDeployCurrentProject = !!currentProject?.Permissions?.CanDeploy;
   const environmentsQuery = usePlatformEnvironments(currentProject?.Id);
   const environments = environmentsQuery.data ?? [];
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<number>();
@@ -695,6 +710,16 @@ export function PlatformDeployView() {
   return (
     <PlatformPage titleKey="platform.pages.deploy.title" titleDefault="Deploy">
       <PlatformNoticeStack />
+      {currentProject && !canDeployCurrentProject && (
+        <div className="mx-4 mb-4">
+          <Alert
+            color="warn"
+            title={t('platform.alerts.permissionDenied.title')}
+          >
+            {t('platform.alerts.permissionDenied.deployBody')}
+          </Alert>
+        </div>
+      )}
       <div className="mx-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
           <ol className="mb-4 grid gap-2 md:grid-cols-4">
@@ -802,7 +827,7 @@ export function PlatformDeployView() {
               <Button
                 color="light"
                 icon={CheckCircle2}
-                disabled={!isReady || isBusy}
+                disabled={!isReady || isBusy || !canDeployCurrentProject}
                 onClick={handleValidateRelease}
                 data-cy="platform-release-validate"
               >
@@ -813,7 +838,7 @@ export function PlatformDeployView() {
               <Button
                 color="primary"
                 icon={Rocket}
-                disabled={!isReady || isBusy}
+                disabled={!isReady || isBusy || !canDeployCurrentProject}
                 onClick={handleCreateRelease}
                 data-cy="platform-release-create"
               >
@@ -1567,11 +1592,8 @@ function PlatformNoticeStack() {
             'V0.1 is a technical preview. Production deployments must assume short downtime and should not be treated as lossless releases.',
         })}
       </Alert>
-      <Alert color="default" title={t('platform.alerts.adminOnly.title')}>
-        {t('platform.alerts.adminOnly.body', {
-          defaultValue:
-            'All /api/platform business APIs, including read requests, are limited to administrators in V0.1.',
-        })}
+      <Alert color="default" title={t('platform.alerts.roleAccess.title')}>
+        {t('platform.alerts.roleAccess.body')}
       </Alert>
     </div>
   );
@@ -1968,7 +1990,13 @@ function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
   );
 }
 
-function ReleasesTable({ releases }: { releases: PlatformRelease[] }) {
+function ReleasesTable({
+  releases,
+  projects,
+}: {
+  releases: PlatformRelease[];
+  projects: PlatformProject[];
+}) {
   const { t } = useTranslation();
   return (
     <PlatformTable
@@ -1996,7 +2024,14 @@ function ReleasesTable({ releases }: { releases: PlatformRelease[] }) {
             ports={release.RuntimeSnapshot?.PublishedPorts}
           />,
           <ReleaseExecutionSummary key="execution" release={release} />,
-          <ReleaseManualActions key="actions" release={release} />,
+          <ReleaseManualActions
+            key="actions"
+            release={release}
+            canManage={
+              !!projects.find((project) => project.Id === release.ProjectId)
+                ?.Permissions?.CanManageResources
+            }
+          />,
         ],
       }))}
     />
@@ -2213,7 +2248,13 @@ function ReleaseExecutionSummary({ release }: { release: PlatformRelease }) {
   );
 }
 
-function ReleaseManualActions({ release }: { release: PlatformRelease }) {
+function ReleaseManualActions({
+  release,
+  canManage,
+}: {
+  release: PlatformRelease;
+  canManage: boolean;
+}) {
   const { t } = useTranslation();
   const mutation = useResolvePlatformReleaseMutation();
   const requiresManualAction =
@@ -2223,7 +2264,7 @@ function ReleaseManualActions({ release }: { release: PlatformRelease }) {
   const hasCurrentRuntime =
     !!release.RuntimeSnapshot?.CurrentRuntimeRef?.ResourceId;
 
-  if (!requiresManualAction) {
+  if (!requiresManualAction || !canManage) {
     return <span className="text-muted">-</span>;
   }
 

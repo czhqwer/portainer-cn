@@ -17,6 +17,13 @@ func (handler *Handler) releaseResolve(w http.ResponseWriter, r *http.Request) *
 	if handlerErr != nil {
 		return handlerErr
 	}
+	release, handlerErr := handler.requireReleasePermission(r, portainer.PlatformReleaseID(id), platformPermissionManage)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if handlerErr := handler.requireReleaseRuntimePermission(r, release); handlerErr != nil {
+		return handlerErr
+	}
 
 	var payload resolveReleasePayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {

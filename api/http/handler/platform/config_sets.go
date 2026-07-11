@@ -29,9 +29,21 @@ func (handler *Handler) configSetList(w http.ResponseWriter, r *http.Request) *h
 	if handlerErr != nil {
 		return handlerErr
 	}
+	visibleProjectIDs, handlerErr := handler.visibleProjectIDs(r)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if filters.projectID != 0 {
+		if _, handlerErr := handler.requireProjectPermission(r, filters.projectID, platformPermissionView); handlerErr != nil {
+			return handlerErr
+		}
+	}
 
 	withArchived := includeArchived(r)
 	configSets, err := handler.DataStore.PlatformConfigSet().ReadAll(func(configSet portainer.PlatformConfigSet) bool {
+		if visibleProjectIDs != nil && !visibleProjectIDs[configSet.ProjectID] {
+			return false
+		}
 		if !withArchived && !isActive(configSet.PlatformLifecycle) {
 			return false
 		}
@@ -56,9 +68,9 @@ func (handler *Handler) configSetInspect(w http.ResponseWriter, r *http.Request)
 		return handlerErr
 	}
 
-	configSet, err := handler.DataStore.PlatformConfigSet().Read(portainer.PlatformConfigSetID(id))
-	if err != nil {
-		return handler.convertError(err)
+	configSet, handlerErr := handler.requireConfigSetPermission(r, portainer.PlatformConfigSetID(id), platformPermissionView)
+	if handlerErr != nil {
+		return handlerErr
 	}
 	if !includeArchived(r) && !isActive(configSet.PlatformLifecycle) {
 		return notFoundError("Config set is archived")
@@ -71,6 +83,9 @@ func (handler *Handler) configSetCreate(w http.ResponseWriter, r *http.Request) 
 	var payload createConfigSetPayload
 	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
 		return validationFailed(err)
+	}
+	if _, handlerErr := handler.requireProjectPermission(r, payload.ProjectID, platformPermissionManage); handlerErr != nil {
+		return handlerErr
 	}
 
 	now := time.Now().Unix()
@@ -108,6 +123,9 @@ func (handler *Handler) configSetCreate(w http.ResponseWriter, r *http.Request) 
 func (handler *Handler) configSetUpdate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "configSetId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireConfigSetPermission(r, portainer.PlatformConfigSetID(id), platformPermissionManage); handlerErr != nil {
 		return handlerErr
 	}
 
@@ -162,6 +180,9 @@ func (handler *Handler) configSetArchive(w http.ResponseWriter, r *http.Request)
 	if handlerErr != nil {
 		return handlerErr
 	}
+	if _, handlerErr := handler.requireConfigSetPermission(r, portainer.PlatformConfigSetID(id), platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
 	userID, err := currentUserID(r)
 	if err != nil {
 		return handler.convertError(err)
@@ -188,6 +209,9 @@ func (handler *Handler) configSetArchive(w http.ResponseWriter, r *http.Request)
 func (handler *Handler) serviceDeploymentEffectiveConfig(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	id, handlerErr := handler.routeID(r, "deploymentId")
 	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr := handler.requireServiceDeploymentPermission(r, portainer.PlatformServiceDeploymentID(id), platformPermissionView); handlerErr != nil {
 		return handlerErr
 	}
 
