@@ -496,7 +496,7 @@ func (handler *Handler) persistReleaseExecutionResult(r *http.Request, result pl
 			}
 		}
 
-		if action := releaseAuditActionForStatus(result.Release.Status); action != "" {
+		if action := releaseAuditActionForRelease(result.Release); action != "" {
 			var before map[string]any
 			if previous != nil {
 				before = releaseAuditSummary(*previous)

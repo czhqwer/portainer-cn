@@ -215,6 +215,7 @@ export interface PlatformRelease {
   ServiceDeploymentId: number;
   ArtifactId: number;
   Version: string;
+  TriggerType?: string;
   Status: PlatformReleaseStatus;
   Image?: string;
   ImageDigest?: string;
@@ -228,7 +229,32 @@ export interface PlatformRelease {
   ResolutionAction?: string;
   ResolvedAt?: number;
   ResolutionComment?: string;
+  PreviousReleaseId?: number;
+  RollbackSourceReleaseId?: number;
+  CanRollback?: boolean;
   Steps?: PlatformReleaseStep[];
+}
+
+// The rollback diff intentionally carries only identifiers and change metadata. Values and
+// ciphertext remain server-side so the release confirmation screen cannot disclose secrets.
+export interface PlatformReleaseRollbackDiff {
+  SourceReleaseId: number;
+  CurrentReleaseId?: number;
+  SourceImage: string;
+  CurrentImage?: string;
+  ImageChanged: boolean;
+  ConfigChanged: boolean;
+  PortsChanged: boolean;
+  EnvironmentChanged: boolean;
+  ChangedConfigKeys?: string[];
+  ChangedEnvironmentNames?: string[];
+  SensitiveVariables?: Array<{
+    Name: string;
+    SourceHasValue: boolean;
+    CurrentHasValue: boolean;
+    Changed: boolean;
+  }>;
+  Production: boolean;
 }
 
 export interface PlatformAuditLog {
@@ -348,6 +374,10 @@ export interface CreatePlatformReleasePayload {
     Type: string;
   };
   TriggerType?: string;
+}
+
+export interface RollbackPlatformReleasePayload {
+  ConfirmProduction: boolean;
 }
 
 export interface PlatformReleaseValidateResponse {

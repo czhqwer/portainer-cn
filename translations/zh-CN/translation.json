@@ -4418,6 +4418,20 @@
     "services": { "tableTitle": "服务" },
     "artifacts": { "tableTitle": "制品" },
     "releases": { "tableTitle": "发布记录" },
+    "rollback": {
+      "previewTitle": "回滚到发布 #{{id}}",
+      "imageSummary": "{{current}} -> {{source}}",
+      "changedSummary": "变更项：{{changes}}",
+      "changedImage": "镜像",
+      "changedConfig": "配置",
+      "changedPorts": "端口",
+      "changedEnvironment": "环境变量",
+      "configKeys": "配置键：{{keys}}",
+      "environmentNames": "环境变量：{{names}}",
+      "sensitiveNames": "敏感变量名称：{{names}}",
+      "alreadyServing": "该历史版本已是当前线上版本。",
+      "productionConfirm": "这是生产环境回滚。当前服务可能会被替换并短暂中断，是否继续？"
+    },
     "audit": {
       "tableTitle": "项目审计日志",
       "empty": "当前范围内暂无项目审计事件。",
@@ -4474,6 +4488,8 @@
       "createArtifact": "登记镜像制品",
       "validateRelease": "校验发布",
       "createRelease": "创建发布",
+      "previewRollback": "预览回滚",
+      "confirmRollback": "确认回滚",
       "acceptCurrent": "接受当前运行态",
       "markHandled": "标记已处理",
       "realReleaseDisabled": "Gate 0B 前禁用真实发布"

@@ -430,6 +430,28 @@ func releaseAuditActionForStatus(status portainer.PlatformReleaseStatus) portain
 	}
 }
 
+// releaseAuditActionForRelease keeps rollback outcomes distinguishable from normal deployment
+// lifecycle events. A manual rollback is a new Release fact, but its audit trail must remain
+// searchable as a rollback even when the executor reaches a recovery-failed terminal state.
+func releaseAuditActionForRelease(release portainer.PlatformRelease) portainer.PlatformAuditAction {
+	if release.TriggerType == portainer.PlatformReleaseTriggerRollback {
+		if release.Status == portainer.PlatformReleaseStatusSucceeded {
+			return portainer.PlatformAuditActionRollbackSucceeded
+		}
+		switch release.Status {
+		case portainer.PlatformReleaseStatusFailed,
+			portainer.PlatformReleaseStatusRecoveryFailed,
+			portainer.PlatformReleaseStatusCanceled,
+			portainer.PlatformReleaseStatusInterrupted,
+			portainer.PlatformReleaseStatusResolved:
+			return portainer.PlatformAuditActionRollbackFailed
+		}
+		return ""
+	}
+
+	return releaseAuditActionForStatus(release.Status)
+}
+
 func releaseAuditResultForStatus(status portainer.PlatformReleaseStatus) portainer.PlatformAuditResult {
 	switch status {
 	case portainer.PlatformReleaseStatusSucceeded,

@@ -18,8 +18,10 @@ import {
   PlatformProject,
   PlatformRelease,
   PlatformReleaseCreateResponse,
+  PlatformReleaseRollbackDiff,
   PlatformReleaseResolutionAction,
   PlatformReleaseValidateResponse,
+  RollbackPlatformReleasePayload,
   PlatformServiceDeployment,
   PlatformServiceDeploymentLogs,
   PlatformServiceDeploymentStatus,
@@ -44,6 +46,8 @@ export const platformQueryKeys = {
     [...platformQueryKeys.all, 'deployment-logs', deploymentId, tail] as const,
   artifacts: () => [...platformQueryKeys.all, 'artifacts'] as const,
   releases: () => [...platformQueryKeys.all, 'releases'] as const,
+  rollbackDiff: (releaseId?: number) =>
+    [...platformQueryKeys.all, 'rollback-diff', releaseId] as const,
   auditLogs: (projectId?: number) =>
     [...platformQueryKeys.all, 'audit-logs', projectId] as const,
 };
@@ -218,6 +222,30 @@ async function createRelease({
 }) {
   const response = await axios.post<PlatformReleaseCreateResponse>(
     '/platform/releases',
+    payload,
+    { headers: { 'Idempotency-Key': idempotencyKey } }
+  );
+  return response.data;
+}
+
+async function getReleaseRollbackDiff(releaseId: number) {
+  const response = await axios.get<PlatformReleaseRollbackDiff>(
+    `/platform/releases/${releaseId}/rollback-diff`
+  );
+  return response.data;
+}
+
+async function rollbackRelease({
+  releaseId,
+  payload,
+  idempotencyKey,
+}: {
+  releaseId: number;
+  payload: RollbackPlatformReleasePayload;
+  idempotencyKey: string;
+}) {
+  const response = await axios.post<PlatformReleaseCreateResponse>(
+    `/platform/releases/${releaseId}/rollback`,
     payload,
     { headers: { 'Idempotency-Key': idempotencyKey } }
   );
@@ -419,6 +447,15 @@ export function usePlatformReleases() {
   });
 }
 
+export function usePlatformReleaseRollbackDiff(releaseId?: number) {
+  return useQuery({
+    queryKey: platformQueryKeys.rollbackDiff(releaseId),
+    queryFn: () => getReleaseRollbackDiff(releaseId as number),
+    enabled: false,
+    ...withError('Failed loading platform release rollback diff'),
+  });
+}
+
 export function usePlatformAuditLogs(projectId?: number, enabled = true) {
   return useQuery({
     queryKey: platformQueryKeys.auditLogs(projectId),
@@ -436,5 +473,16 @@ export function useResolvePlatformReleaseMutation() {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
     ...withError('Failed resolving platform release'),
+  });
+}
+
+export function useRollbackPlatformReleaseMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: rollbackRelease,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
+    ...withError('Failed creating platform rollback release'),
   });
 }

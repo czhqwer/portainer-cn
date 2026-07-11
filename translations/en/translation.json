@@ -4359,6 +4359,20 @@
     "services": { "tableTitle": "Services" },
     "artifacts": { "tableTitle": "Artifacts" },
     "releases": { "tableTitle": "Release records" },
+    "rollback": {
+      "previewTitle": "Rollback to release #{{id}}",
+      "imageSummary": "{{current}} -> {{source}}",
+      "changedSummary": "Changes: {{changes}}",
+      "changedImage": "image",
+      "changedConfig": "config",
+      "changedPorts": "ports",
+      "changedEnvironment": "environment variables",
+      "configKeys": "Config keys: {{keys}}",
+      "environmentNames": "Environment variables: {{names}}",
+      "sensitiveNames": "Sensitive variable names: {{names}}",
+      "alreadyServing": "This historical release is already serving.",
+      "productionConfirm": "This is a production rollback. The current service can be replaced and briefly interrupted. Continue?"
+    },
     "audit": {
       "tableTitle": "Project audit log",
       "empty": "No project audit events match the current scope.",
@@ -4415,6 +4429,8 @@
       "createArtifact": "Register image artifact",
       "validateRelease": "Validate release",
       "createRelease": "Create release",
+      "previewRollback": "Preview rollback",
+      "confirmRollback": "Confirm rollback",
       "acceptCurrent": "Accept current",
       "markHandled": "Mark handled",
       "realReleaseDisabled": "Real release disabled before Gate 0B"

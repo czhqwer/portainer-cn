@@ -8,6 +8,7 @@ import {
   Package,
   Plus,
   RefreshCw,
+  RotateCcw,
   Rocket,
   Save,
   Wrench,
@@ -32,12 +33,14 @@ import {
   usePlatformArtifacts,
   usePlatformEnvironments,
   usePlatformProjects,
+  usePlatformReleaseRollbackDiff,
   usePlatformReleases,
   usePlatformServiceDeploymentLogs,
   usePlatformServiceDeployments,
   usePlatformServiceDeploymentStatus,
   usePlatformServices,
   useResolvePlatformReleaseMutation,
+  useRollbackPlatformReleaseMutation,
   useUpdatePlatformServiceDeploymentMutation,
   useValidatePlatformReleaseMutation,
 } from './queries';
@@ -52,6 +55,7 @@ import {
   PlatformProject,
   PlatformRelease,
   PlatformReleaseCreateResponse,
+  PlatformReleaseRollbackDiff,
   PlatformReleaseValidateResponse,
   PlatformReleaseResolutionAction,
   PlatformRuntimeRef,
@@ -2076,12 +2080,16 @@ function ReleasesTable({
             ports={release.RuntimeSnapshot?.PublishedPorts}
           />,
           <ReleaseExecutionSummary key="execution" release={release} />,
-          <ReleaseManualActions
+          <ReleaseActions
             key="actions"
             release={release}
             canManage={
               !!projects.find((project) => project.Id === release.ProjectId)
                 ?.Permissions?.CanManageResources
+            }
+            canRollback={
+              !!projects.find((project) => project.Id === release.ProjectId)
+                ?.Permissions?.CanDeploy
             }
           />,
         ],
@@ -2300,6 +2308,37 @@ function ReleaseExecutionSummary({ release }: { release: PlatformRelease }) {
   );
 }
 
+function ReleaseActions({
+  release,
+  canManage,
+  canRollback,
+}: {
+  release: PlatformRelease;
+  canManage: boolean;
+  canRollback: boolean;
+}) {
+  const requiresManualAction =
+    release.ManualActionRequired ||
+    release.Status === 'interrupted' ||
+    release.Status === 'recovery-failed';
+
+  if (
+    !requiresManualAction &&
+    !(canRollback && release.Status === 'succeeded')
+  ) {
+    return <span className="text-muted">-</span>;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {canRollback && release.Status === 'succeeded' && (
+        <ReleaseRollbackAction release={release} />
+      )}
+      <ReleaseManualActions release={release} canManage={canManage} />
+    </div>
+  );
+}
+
 function ReleaseManualActions({
   release,
   canManage,
@@ -2317,7 +2356,7 @@ function ReleaseManualActions({
     !!release.RuntimeSnapshot?.CurrentRuntimeRef?.ResourceId;
 
   if (!requiresManualAction || !canManage) {
-    return <span className="text-muted">-</span>;
+    return null;
   }
 
   function resolve(action: PlatformReleaseResolutionAction) {
@@ -2368,6 +2407,157 @@ function ReleaseManualActions({
           defaultValue: 'Mark handled',
         })}
       </Button>
+    </div>
+  );
+}
+
+function ReleaseRollbackAction({ release }: { release: PlatformRelease }) {
+  const { t } = useTranslation();
+  const diffQuery = usePlatformReleaseRollbackDiff(release.Id);
+  const rollbackMutation = useRollbackPlatformReleaseMutation();
+  const [diff, setDiff] = useState<PlatformReleaseRollbackDiff>();
+
+  async function previewRollback() {
+    const result = await diffQuery.refetch();
+    if (result.data) {
+      setDiff(result.data);
+    }
+  }
+
+  function confirmRollback() {
+    if (!diff || diff.SourceReleaseId === diff.CurrentReleaseId) {
+      return;
+    }
+    if (
+      diff.Production &&
+      !window.confirm(
+        t('platform.rollback.productionConfirm', {
+          defaultValue:
+            'This is a production rollback. The current service can be replaced and briefly interrupted. Continue?',
+        })
+      )
+    ) {
+      return;
+    }
+
+    rollbackMutation.mutate({
+      releaseId: release.Id,
+      payload: { ConfirmProduction: diff.Production },
+      idempotencyKey: createRollbackIdempotencyKey(release.Id),
+    });
+    setDiff(undefined);
+  }
+
+  if (!diff) {
+    return (
+      <Button
+        color="light"
+        size="xsmall"
+        icon={RotateCcw}
+        disabled={diffQuery.isFetching}
+        onClick={previewRollback}
+        data-cy={`platform-release-${release.Id}-preview-rollback`}
+      >
+        {t('platform.actions.previewRollback', {
+          defaultValue: 'Preview rollback',
+        })}
+      </Button>
+    );
+  }
+
+  const changedParts = [
+    diff.ImageChanged &&
+      t('platform.rollback.changedImage', { defaultValue: 'image' }),
+    diff.ConfigChanged &&
+      t('platform.rollback.changedConfig', { defaultValue: 'config' }),
+    diff.PortsChanged &&
+      t('platform.rollback.changedPorts', { defaultValue: 'ports' }),
+    diff.EnvironmentChanged &&
+      t('platform.rollback.changedEnvironment', {
+        defaultValue: 'environment variables',
+      }),
+  ].filter(Boolean);
+
+  return (
+    <div className="min-w-56 rounded border border-solid border-gray-5 bg-gray-1 p-2 text-xs th-dark:bg-gray-9">
+      <div className="font-semibold">
+        {t('platform.rollback.previewTitle', {
+          defaultValue: 'Rollback to release #{{id}}',
+          id: diff.SourceReleaseId,
+        })}
+      </div>
+      <div className="text-muted mt-1 break-all">
+        {t('platform.rollback.imageSummary', {
+          defaultValue: '{{current}} -> {{source}}',
+          current: diff.CurrentImage || '-',
+          source: diff.SourceImage,
+        })}
+      </div>
+      {changedParts.length > 0 && (
+        <div className="text-muted mt-1">
+          {t('platform.rollback.changedSummary', {
+            defaultValue: 'Changes: {{changes}}',
+            changes: changedParts.join(', '),
+          })}
+        </div>
+      )}
+      {diff.ChangedConfigKeys?.length ? (
+        <div className="text-muted mt-1">
+          {t('platform.rollback.configKeys', {
+            defaultValue: 'Config keys: {{keys}}',
+            keys: diff.ChangedConfigKeys.join(', '),
+          })}
+        </div>
+      ) : null}
+      {diff.ChangedEnvironmentNames?.length ? (
+        <div className="text-muted mt-1">
+          {t('platform.rollback.environmentNames', {
+            defaultValue: 'Environment variables: {{names}}',
+            names: diff.ChangedEnvironmentNames.join(', '),
+          })}
+        </div>
+      ) : null}
+      {diff.SensitiveVariables?.length ? (
+        <div className="text-muted mt-1">
+          {t('platform.rollback.sensitiveNames', {
+            defaultValue: 'Sensitive variable names: {{names}}',
+            names: diff.SensitiveVariables.map(
+              (variable) => variable.Name
+            ).join(', '),
+          })}
+        </div>
+      ) : null}
+      {diff.SourceReleaseId === diff.CurrentReleaseId ? (
+        <div className="text-muted mt-2">
+          {t('platform.rollback.alreadyServing', {
+            defaultValue: 'This historical release is already serving.',
+          })}
+        </div>
+      ) : (
+        <div className="mt-2 flex gap-2">
+          <Button
+            color="warninglight"
+            size="xsmall"
+            icon={RotateCcw}
+            disabled={rollbackMutation.isLoading}
+            onClick={confirmRollback}
+            data-cy={`platform-release-${release.Id}-confirm-rollback`}
+          >
+            {t('platform.actions.confirmRollback', {
+              defaultValue: 'Confirm rollback',
+            })}
+          </Button>
+          <Button
+            color="light"
+            size="xsmall"
+            disabled={rollbackMutation.isLoading}
+            onClick={() => setDiff(undefined)}
+            data-cy={`platform-release-${release.Id}-cancel-rollback`}
+          >
+            {t('platform.actions.cancel', { defaultValue: 'Cancel' })}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2996,6 +3186,15 @@ function createIdempotencyKey(payload: CreatePlatformReleasePayload) {
     payload.Version,
     randomId,
   ].join('-');
+}
+
+function createRollbackIdempotencyKey(releaseId: number) {
+  const randomId =
+    typeof window !== 'undefined' && window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return ['platform', 'rollback', releaseId, randomId].join('-');
 }
 
 function slugify(value: string) {

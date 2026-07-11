@@ -121,6 +121,10 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.releaseCreate))).Methods(http.MethodPost)
 	h.Handle("/platform/releases/{releaseId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.releaseInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/releases/{releaseId}/rollback-diff",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.releaseRollbackDiff))).Methods(http.MethodGet)
+	h.Handle("/platform/releases/{releaseId}/rollback",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.releaseRollback))).Methods(http.MethodPost)
 	h.Handle("/platform/releases/{releaseId}/resolve",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.releaseResolve))).Methods(http.MethodPost)
 	h.Handle("/platform/releases/{releaseId}/retry-recovery",
