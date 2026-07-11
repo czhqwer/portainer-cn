@@ -69,9 +69,14 @@ powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps
 # 执行本地 Docker socket 子集：公开镜像、随机端口 candidate、版本化命名、正式端口切换、旧容器恢复
 powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps1 -Apply
 
+# 指定证据目录，默认是 docs/spike/evidence/gate0b/S1-local-docker
+powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps1 -Apply -EvidenceRoot docs/spike/evidence/gate0b/S1-local-docker
+
 # 清理脚本创建的测试容器
 powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps1 -Cleanup -Apply
 ```
+
+`-Apply` 执行时，脚本会在证据目录写入 `metadata.txt`、`commands.txt`、`transcript.txt`、`docker-version.txt`、`docker-context.txt`、`containers-before.txt`、`containers-after.txt`、candidate / official inspect 摘要和健康检查结果。提交证据前必须检查并移除 registry 密码、token、私钥、完整认证头或生产环境敏感地址。
 
 该脚本只覆盖 S1、S5、S6 的本地公开镜像子集，不覆盖容器化 Portainer、Agent、远程 Agent、私有 registry 和 digest 策略。完整 Gate 0B 通过仍必须补齐 S1 到 S7 的真实记录。
 

@@ -2,7 +2,8 @@ param(
     [switch]$Apply,
     [switch]$Cleanup,
     [string]$Image = "nginx:alpine",
-    [int]$OfficialPort = 18080
+    [int]$OfficialPort = 18080,
+    [string]$EvidenceRoot = "docs/spike/evidence/gate0b/S1-local-docker"
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,68 @@ $CandidateName = "$Prefix-candidate"
 $OldName = "$Prefix-r1"
 $NewName = "$Prefix-r2"
 $BadName = "$Prefix-r2-bad"
+$EvidencePath = if ([System.IO.Path]::IsPathRooted($EvidenceRoot)) {
+    $EvidenceRoot
+} else {
+    Join-Path (Get-Location) $EvidenceRoot
+}
+$TranscriptPath = Join-Path $EvidencePath "transcript.txt"
+$TranscriptStarted = $false
+
+function Start-Evidence {
+    if (-not $Apply) {
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $EvidencePath | Out-Null
+    Set-Content -Path (Join-Path $EvidencePath "metadata.txt") -Encoding UTF8 -Value @(
+        "scenario=S1-local-docker",
+        "image=$Image",
+        "official_port=$OfficialPort",
+        "started_at=$((Get-Date).ToString('s'))",
+        "cleanup=$Cleanup"
+    )
+    Start-Transcript -Path $TranscriptPath -Force | Out-Null
+    $script:TranscriptStarted = $true
+}
+
+function Stop-Evidence {
+    if ($script:TranscriptStarted) {
+        Stop-Transcript | Out-Null
+        $script:TranscriptStarted = $false
+    }
+}
+
+function Save-CommandOutput {
+    param(
+        [string]$FileName,
+        [string]$Command,
+        [string[]]$Args
+    )
+
+    if (-not $Apply) {
+        return
+    }
+
+    $line = "$Command $($Args -join ' ')"
+    Write-Host $line
+    Add-Content -Path (Join-Path $EvidencePath "commands.txt") -Encoding UTF8 -Value $line
+    $output = & $Command @Args 2>&1
+    $exitCode = $LASTEXITCODE
+    $text = ($output | Out-String)
+    if ($text.Trim()) {
+        Write-Host $text.TrimEnd()
+    }
+    Set-Content -Path (Join-Path $EvidencePath $FileName) -Encoding UTF8 -Value $text
+    if ($exitCode -ne 0) {
+        throw "$line failed with exit code $exitCode"
+    }
+}
+
+trap {
+    Stop-Evidence
+    throw
+}
 
 function Write-Step {
     param([string]$Message)
@@ -41,7 +104,16 @@ function Invoke-Docker {
 
     Write-Host "docker $($Args -join ' ')"
     if ($Apply) {
-        & docker @Args
+        Add-Content -Path (Join-Path $EvidencePath "commands.txt") -Encoding UTF8 -Value "docker $($Args -join ' ')"
+        $output = & docker @Args 2>&1
+        $exitCode = $LASTEXITCODE
+        $text = ($output | Out-String)
+        if ($text.Trim()) {
+            Write-Host $text.TrimEnd()
+        }
+        if ($exitCode -ne 0) {
+            throw "docker $($Args -join ' ') failed with exit code $exitCode"
+        }
     }
 }
 
@@ -69,11 +141,23 @@ function Get-HostPort {
 }
 
 function Test-Http {
-    param([string]$Url)
+    param(
+        [string]$Url,
+        [string]$FileName = "healthcheck.txt"
+    )
 
     Write-Host "GET $Url"
     $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 10
     Write-Host "status=$($response.StatusCode)"
+    if ($Apply) {
+        Set-Content -Path (Join-Path $EvidencePath $FileName) -Encoding UTF8 -Value @(
+            "url=$Url",
+            "status=$($response.StatusCode)",
+            "checked_at=$((Get-Date).ToString('s'))",
+            "",
+            $response.Content
+        )
+    }
     if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 400) {
         throw "Unexpected HTTP status $($response.StatusCode)"
     }
@@ -84,6 +168,7 @@ Write-Host "Apply mode: $Apply"
 Write-Host "Cleanup mode: $Cleanup"
 Write-Host "Image: $Image"
 Write-Host "OfficialPort: $OfficialPort"
+Write-Host "EvidenceRoot: $EvidenceRoot"
 
 if (-not $Apply) {
     Write-Host ""
@@ -91,18 +176,24 @@ if (-not $Apply) {
     Write-Host "Use -Cleanup -Apply to remove containers created by this helper."
 }
 
+Start-Evidence
+
 if ($Cleanup) {
     Invoke-Step "Remove helper-created containers" {
         Remove-SpikeContainer $CandidateName
         Remove-SpikeContainer $NewName
         Remove-SpikeContainer $BadName
         Remove-SpikeContainer $OldName
+        Save-CommandOutput "containers-after-cleanup.txt" "docker" @("ps", "-a", "--filter", "label=$LabelKey=$LabelValue", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}")
     }
+    Stop-Evidence
     return
 }
 
 Invoke-Step "Check Docker version" {
-    & docker version
+    Save-CommandOutput "docker-version.txt" "docker" @("version")
+    Save-CommandOutput "docker-context.txt" "docker" @("context", "ls")
+    Save-CommandOutput "containers-before.txt" "docker" @("ps", "-a", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}")
 }
 
 Invoke-Step "Pull public image" {
@@ -121,7 +212,8 @@ Invoke-Step "Create candidate with random host port" {
     )
     $candidatePort = Get-HostPort $CandidateName 80
     Write-Host "candidate_url=http://127.0.0.1:$candidatePort/"
-    Test-Http "http://127.0.0.1:$candidatePort/"
+    Save-CommandOutput "candidate-inspect.json" "docker" @("inspect", $CandidateName)
+    Test-Http "http://127.0.0.1:$candidatePort/" "candidate-healthcheck.txt"
 }
 
 Invoke-Step "Stop and remove candidate after validation" {
@@ -139,7 +231,8 @@ Invoke-Step "Create old official container on the fixed port" {
         "-p", "$OfficialPort`:80",
         $Image
     )
-    Test-Http "http://127.0.0.1:$OfficialPort/"
+    Save-CommandOutput "official-r1-inspect.json" "docker" @("inspect", $OldName)
+    Test-Http "http://127.0.0.1:$OfficialPort/" "official-r1-healthcheck.txt"
 }
 
 Invoke-Step "Switch fixed port from old official container to new versioned official container" {
@@ -152,7 +245,8 @@ Invoke-Step "Switch fixed port from old official container to new versioned offi
         "-p", "$OfficialPort`:80",
         $Image
     )
-    Test-Http "http://127.0.0.1:$OfficialPort/"
+    Save-CommandOutput "official-r2-inspect.json" "docker" @("inspect", $NewName)
+    Test-Http "http://127.0.0.1:$OfficialPort/" "official-r2-healthcheck.txt"
 }
 
 Invoke-Step "Simulate new official start failure and recover old container" {
@@ -177,12 +271,15 @@ Invoke-Step "Simulate new official start failure and recover old container" {
     }
 
     Invoke-Docker @("start", $OldName)
-    Test-Http "http://127.0.0.1:$OfficialPort/"
+    Save-CommandOutput "official-r1-recovered-inspect.json" "docker" @("inspect", $OldName)
+    Test-Http "http://127.0.0.1:$OfficialPort/" "official-r1-recovered-healthcheck.txt"
 }
 
 Invoke-Step "Collect final helper container state" {
-    & docker ps -a --filter "label=$LabelKey=$LabelValue" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+    Save-CommandOutput "containers-after.txt" "docker" @("ps", "-a", "--filter", "label=$LabelKey=$LabelValue", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}")
 }
+
+Stop-Evidence
 
 Write-Host ""
 Write-Host "Local Docker Spike subset completed. Run with -Cleanup -Apply to remove helper-created containers."

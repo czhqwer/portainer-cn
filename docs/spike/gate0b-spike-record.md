@@ -24,6 +24,8 @@
 实测证据建议放在 `docs/spike/evidence/gate0b/<场景编号>/` 下。证据文件可包含：
 
 - `commands.txt`：执行命令或 API 请求。
+- `metadata.txt`：场景、镜像、端口、执行时间等脚本元信息。
+- `transcript.txt`：PowerShell 执行 transcript。
 - `docker-version.txt`：Docker client/server 版本。
 - `docker-context.txt`：Docker context 或 endpoint 信息。
 - `containers-before.txt`、`containers-after.txt`：测试前后容器列表。
