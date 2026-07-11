@@ -111,6 +111,7 @@ func (handler *Handler) projectUpdate(w http.ResponseWriter, r *http.Request) *h
 		if err := requireResourceVersion(project.ResourceVersion, payload.ResourceVersion); err != nil {
 			return err
 		}
+		previous := *project
 
 		if payload.Name != nil {
 			project.Name = *payload.Name
@@ -133,7 +134,14 @@ func (handler *Handler) projectUpdate(w http.ResponseWriter, r *http.Request) *h
 		project.TeamPolicies = teamPolicies
 		touchLifecycle(&project.PlatformLifecycle, now)
 
-		return tx.PlatformProject().Update(project.ID, project)
+		if err := tx.PlatformProject().Update(project.ID, project); err != nil {
+			return err
+		}
+		if payload.MemberPolicies != nil || payload.TeamPolicies != nil {
+			return handler.createProjectPermissionsAuditLog(tx, r, previous, *project)
+		}
+
+		return nil
 	})
 	if err != nil {
 		return handler.convertError(err)

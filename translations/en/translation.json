@@ -4359,6 +4359,18 @@
     "services": { "tableTitle": "Services" },
     "artifacts": { "tableTitle": "Artifacts" },
     "releases": { "tableTitle": "Release records" },
+    "audit": {
+      "tableTitle": "Project audit log",
+      "empty": "No project audit events match the current scope.",
+      "sensitiveFields": "Sensitive fields: {{fields}}",
+      "columns": {
+        "time": "Time",
+        "action": "Action",
+        "result": "Result",
+        "operator": "Operator",
+        "details": "Details"
+      }
+    },
     "filters": {
       "project": "Project",
       "application": "Application",

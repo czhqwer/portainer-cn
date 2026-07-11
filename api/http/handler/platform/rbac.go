@@ -70,6 +70,7 @@ func (handler *Handler) requireGlobalAdmin(r *http.Request) *httperror.HandlerEr
 		return handler.convertError(err)
 	}
 	if !context.IsAdmin {
+		handler.recordPlatformDeniedAudit(r, 0, 0, "global-admin", "global administrator permission is required")
 		return platformAccessDenied()
 	}
 
@@ -92,6 +93,7 @@ func (handler *Handler) requireProjectPermission(r *http.Request, projectID port
 	if projectRoleAllows(role, permission) {
 		return project, nil
 	}
+	handler.recordPlatformDeniedAudit(r, project.ID, 0, platformPermissionName(permission), "project role does not grant this operation")
 	if permission == platformPermissionView {
 		return nil, notFoundError("Platform project is unavailable")
 	}
@@ -215,7 +217,12 @@ func (handler *Handler) requireEnvironmentEndpointAccess(r *http.Request, enviro
 		return platformAccessDenied()
 	}
 
-	return handler.requireEndpointAccessForTargets(r, environment.Targets)
+	handlerErr := handler.requireEndpointAccessForTargets(r, environment.Targets)
+	if handlerErr != nil {
+		handler.recordPlatformDeniedAudit(r, environment.ProjectID, environment.ID, "endpoint-runtime", "Portainer Endpoint permission is required")
+	}
+
+	return handlerErr
 }
 
 // requireReleaseRequestPermission 在创建或预检发布前同时确认项目角色、环境归属和
@@ -318,6 +325,23 @@ func projectRoleAllows(role portainer.PlatformProjectRole, permission platformPe
 		return role == portainer.PlatformProjectRoleAdmin || role == portainer.PlatformProjectRoleDeveloper
 	default:
 		return false
+	}
+}
+
+func platformPermissionName(permission platformPermission) string {
+	switch permission {
+	case platformPermissionView:
+		return "view"
+	case platformPermissionManage:
+		return "manage"
+	case platformPermissionDeployment:
+		return "deployment"
+	case platformPermissionArtifactRelease:
+		return "artifact-release"
+	case platformPermissionSensitiveConfig:
+		return "sensitive-config"
+	default:
+		return "unknown"
 	}
 }
 

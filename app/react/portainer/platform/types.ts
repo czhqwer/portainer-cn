@@ -231,6 +231,26 @@ export interface PlatformRelease {
   Steps?: PlatformReleaseStep[];
 }
 
+export interface PlatformAuditLog {
+  Id: number;
+  Timestamp: number;
+  OperatorUserId: number;
+  OperatorUsername?: string;
+  Action: string;
+  Result: 'success' | 'failed' | 'denied';
+  ProjectId: number;
+  EnvironmentId?: number;
+  ApplicationId?: number;
+  ServiceDefinitionId?: number;
+  ServiceDeploymentId?: number;
+  ArtifactId?: number;
+  ReleaseId?: number;
+  BeforeSummary?: Record<string, unknown>;
+  AfterSummary?: Record<string, unknown>;
+  FailureReason?: string;
+  SensitiveFields?: string[];
+}
+
 export interface PlatformServiceDeploymentStatus {
   ServiceDeploymentId: number;
   CurrentServingReleaseId?: number;

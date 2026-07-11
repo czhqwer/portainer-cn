@@ -111,6 +111,12 @@ func (handler *Handler) configSetCreate(w http.ResponseWriter, r *http.Request) 
 		if err := tx.PlatformConfigSet().Create(&configSet); err != nil {
 			return err
 		}
+		if err := handler.createConfigSetAuditLog(tx, r, portainer.PlatformAuditActionConfigSetCreated, portainer.PlatformAuditResultSuccess, configSet, nil, nil); err != nil {
+			return err
+		}
+		if err := handler.createSensitiveConfigAuditLog(tx, r, portainer.PlatformAuditActionSecretCreated, configSet, sensitiveConfigEntryKeys(configSet.Entries)); err != nil {
+			return err
+		}
 		return refreshProjectConfigDrift(tx, configSet.ProjectID)
 	})
 	if err != nil {
@@ -145,6 +151,8 @@ func (handler *Handler) configSetUpdate(w http.ResponseWriter, r *http.Request) 
 		if err := requireResourceVersion(configSet.ResourceVersion, payload.ResourceVersion); err != nil {
 			return err
 		}
+		before := *configSet
+		before.Entries = append([]portainer.PlatformConfigEntry(nil), configSet.Entries...)
 		existingEntries := append([]portainer.PlatformConfigEntry(nil), configSet.Entries...)
 		if payload.Name != nil {
 			configSet.Name = *payload.Name
@@ -165,6 +173,19 @@ func (handler *Handler) configSetUpdate(w http.ResponseWriter, r *http.Request) 
 		touchLifecycle(&configSet.PlatformLifecycle, now)
 		if err := tx.PlatformConfigSet().Update(configSet.ID, configSet); err != nil {
 			return err
+		}
+		if err := handler.createConfigSetAuditLog(tx, r, portainer.PlatformAuditActionConfigSetUpdated, portainer.PlatformAuditResultSuccess, *configSet, configSetAuditSummary(before), nil); err != nil {
+			return err
+		}
+		changes := sensitiveConfigChanges(before.Entries, configSet.Entries)
+		for _, action := range []portainer.PlatformAuditAction{
+			portainer.PlatformAuditActionSecretCreated,
+			portainer.PlatformAuditActionSecretUpdated,
+			portainer.PlatformAuditActionSecretDeleted,
+		} {
+			if err := handler.createSensitiveConfigAuditLog(tx, r, action, *configSet, changes[action]); err != nil {
+				return err
+			}
 		}
 		return refreshProjectConfigDrift(tx, configSet.ProjectID)
 	})
@@ -193,8 +214,16 @@ func (handler *Handler) configSetArchive(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			return err
 		}
+		before := *configSet
+		before.Entries = append([]portainer.PlatformConfigEntry(nil), configSet.Entries...)
 		archiveLifecycle(&configSet.PlatformLifecycle, time.Now().Unix(), userID)
 		if err := tx.PlatformConfigSet().Update(configSet.ID, configSet); err != nil {
+			return err
+		}
+		if err := handler.createConfigSetAuditLog(tx, r, portainer.PlatformAuditActionConfigSetArchived, portainer.PlatformAuditResultSuccess, *configSet, configSetAuditSummary(before), nil); err != nil {
+			return err
+		}
+		if err := handler.createSensitiveConfigAuditLog(tx, r, portainer.PlatformAuditActionSecretDeleted, *configSet, sensitiveConfigEntryKeys(before.Entries)); err != nil {
 			return err
 		}
 		return refreshProjectConfigDrift(tx, configSet.ProjectID)

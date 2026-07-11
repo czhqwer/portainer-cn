@@ -4418,6 +4418,18 @@
     "services": { "tableTitle": "服务" },
     "artifacts": { "tableTitle": "制品" },
     "releases": { "tableTitle": "发布记录" },
+    "audit": {
+      "tableTitle": "项目审计日志",
+      "empty": "当前范围内暂无项目审计事件。",
+      "sensitiveFields": "敏感字段：{{fields}}",
+      "columns": {
+        "time": "时间",
+        "action": "操作",
+        "result": "结果",
+        "operator": "操作者",
+        "details": "详情"
+      }
+    },
     "filters": {
       "project": "项目",
       "application": "应用",

@@ -13,6 +13,7 @@ import {
   CreatePlatformServiceDeploymentPayload,
   PlatformEnvironment,
   PlatformApplication,
+  PlatformAuditLog,
   PlatformArtifact,
   PlatformProject,
   PlatformRelease,
@@ -43,6 +44,8 @@ export const platformQueryKeys = {
     [...platformQueryKeys.all, 'deployment-logs', deploymentId, tail] as const,
   artifacts: () => [...platformQueryKeys.all, 'artifacts'] as const,
   releases: () => [...platformQueryKeys.all, 'releases'] as const,
+  auditLogs: (projectId?: number) =>
+    [...platformQueryKeys.all, 'audit-logs', projectId] as const,
 };
 
 async function getProjects() {
@@ -188,6 +191,13 @@ async function createImageReferenceArtifact(
 
 async function getReleases() {
   const response = await axios.get<PlatformRelease[]>('/platform/releases');
+  return response.data;
+}
+
+async function getAuditLogs(projectId: number) {
+  const response = await axios.get<PlatformAuditLog[]>('/platform/audit-logs', {
+    params: { projectId },
+  });
   return response.data;
 }
 
@@ -406,6 +416,15 @@ export function usePlatformReleases() {
     queryKey: platformQueryKeys.releases(),
     queryFn: getReleases,
     ...withError('Failed loading platform releases'),
+  });
+}
+
+export function usePlatformAuditLogs(projectId?: number, enabled = true) {
+  return useQuery({
+    queryKey: platformQueryKeys.auditLogs(projectId),
+    queryFn: () => getAuditLogs(projectId as number),
+    enabled: !!projectId && enabled,
+    ...withError('Failed loading platform audit logs'),
   });
 }
 

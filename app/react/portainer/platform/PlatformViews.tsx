@@ -28,6 +28,7 @@ import {
   useCreatePlatformServiceDefinitionMutation,
   useCreatePlatformServiceDeploymentMutation,
   usePlatformApplications,
+  usePlatformAuditLogs,
   usePlatformArtifacts,
   usePlatformEnvironments,
   usePlatformProjects,
@@ -43,6 +44,7 @@ import {
 import {
   CreatePlatformReleasePayload,
   PlatformApplication,
+  PlatformAuditLog,
   PlatformArtifact,
   PlatformDeploymentDesiredSpec,
   PlatformEnvironment,
@@ -69,8 +71,14 @@ export function PlatformProjectsView() {
     projects.find((project) => project.Id === selectedProjectId) ?? projects[0];
   const canManageCurrentProject =
     !!currentProject?.Permissions?.CanManageResources;
+  const canViewProjectAudit = !!currentProject?.Permissions?.CanManageProject;
   const environmentsQuery = usePlatformEnvironments(currentProject?.Id);
   const environments = environmentsQuery.data ?? [];
+  const auditLogsQuery = usePlatformAuditLogs(
+    currentProject?.Id,
+    canViewProjectAudit
+  );
+  const auditLogs = auditLogsQuery.data ?? [];
 
   return (
     <PlatformPage
@@ -192,6 +200,16 @@ export function PlatformProjectsView() {
       >
         <EnvironmentsTable environments={environments} />
       </DataSection>
+      {canViewProjectAudit && (
+        <DataSection
+          title={t('platform.audit.tableTitle')}
+          isLoading={auditLogsQuery.isLoading}
+          empty={auditLogs.length === 0}
+          emptyMessage={t('platform.audit.empty')}
+        >
+          <AuditLogsTable logs={auditLogs} />
+        </DataSection>
+      )}
     </PlatformPage>
   );
 }
@@ -1959,6 +1977,40 @@ function ServicesTable({
           service.Type,
           service.Slug,
           service.LifecycleStatus,
+        ],
+      }))}
+    />
+  );
+}
+
+function AuditLogsTable({ logs }: { logs: PlatformAuditLog[] }) {
+  const { t } = useTranslation();
+  return (
+    <PlatformTable
+      columns={[
+        t('platform.audit.columns.time'),
+        t('platform.audit.columns.action'),
+        t('platform.audit.columns.result'),
+        t('platform.audit.columns.operator'),
+        t('platform.audit.columns.details'),
+      ]}
+      rows={logs.map((log) => ({
+        key: String(log.Id),
+        cells: [
+          formatUnixTime(log.Timestamp),
+          log.Action,
+          <StatusPill key="result" value={log.Result} />,
+          log.OperatorUsername ?? String(log.OperatorUserId),
+          [
+            log.FailureReason,
+            log.SensitiveFields?.length
+              ? t('platform.audit.sensitiveFields', {
+                  fields: log.SensitiveFields.join(', '),
+                })
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' / '),
         ],
       }))}
     />

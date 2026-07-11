@@ -44,8 +44,14 @@ func TestPlatformSensitiveConfigEncryptsRedactsAuditsAndInjectsReleaseSnapshot(t
 	require.Equal(t, sensitiveValue, copied.Value)
 
 	audits := doJSON[[]portainer.PlatformAuditLog](t, ctx, http.MethodGet, fmt.Sprintf("/platform/audit-logs?projectId=%d", project.ID), nil, http.StatusOK)
-	require.Len(t, audits, 2)
+	secretReadAudits := make([]portainer.PlatformAuditLog, 0, 2)
 	for _, audit := range audits {
+		if audit.Action == portainer.PlatformAuditActionSecretRevealed || audit.Action == portainer.PlatformAuditActionSecretCopied {
+			secretReadAudits = append(secretReadAudits, audit)
+		}
+	}
+	require.Len(t, secretReadAudits, 2)
+	for _, audit := range secretReadAudits {
 		require.NotContains(t, fmt.Sprint(audit.AfterSummary), sensitiveValue)
 		require.Equal(t, []string{"API_TOKEN"}, audit.SensitiveFields)
 	}
