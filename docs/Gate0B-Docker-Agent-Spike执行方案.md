@@ -56,6 +56,25 @@
 | 9 | 新正式容器启动失败模拟 | Docker 错误摘要、恢复动作、旧容器状态 | 尝试恢复旧容器，reason=`RUNTIME_START_FAILED` 或 `RECOVERY_FAILED` |
 | 10 | 端口冲突模拟 | Docker 错误摘要、旧容器状态 | reason=`PORT_CONFLICT`，旧容器不受影响 |
 
+### 4.1 本地 Docker socket 辅助脚本
+
+本地 Docker socket 的公开镜像子集可以使用 `docs/spike/gate0b-local-docker-spike.ps1` 辅助执行。脚本默认 dry-run，不会运行 Docker；必须显式传入 `-Apply` 才会创建测试容器。
+
+示例：
+
+```powershell
+# 预览将要执行的步骤，不触碰 Docker
+powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps1
+
+# 执行本地 Docker socket 子集：公开镜像、随机端口 candidate、版本化命名、正式端口切换、旧容器恢复
+powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps1 -Apply
+
+# 清理脚本创建的测试容器
+powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps1 -Cleanup -Apply
+```
+
+该脚本只覆盖 S1、S5、S6 的本地公开镜像子集，不覆盖容器化 Portainer、Agent、远程 Agent、私有 registry 和 digest 策略。完整 Gate 0B 通过仍必须补齐 S1 到 S7 的真实记录。
+
 ## 5. 默认策略待决项
 
 Spike 必须给出以下默认策略，不能只记录“可配置”：
