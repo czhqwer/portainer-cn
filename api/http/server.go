@@ -228,7 +228,9 @@ func (server *Server) Start(ctx context.Context) error {
 	platformHandler.DataStore = server.DataStore
 	if server.DockerClientFactory != nil {
 		dockerRuntimeDriver := platform.NewDockerRuntimeDriver(server.DataStore, server.DockerClientFactory)
-		platformHandler.ReleaseExecutor = platform.NewSingleTargetExecutor(dockerRuntimeDriver)
+		releaseExecutor := platform.NewSingleTargetExecutor(dockerRuntimeDriver)
+		platformHandler.ReleaseExecutor = releaseExecutor
+		platformHandler.ReleaseRecoveryExecutor = releaseExecutor
 		platformHandler.RuntimeInspector = dockerRuntimeDriver
 	}
 

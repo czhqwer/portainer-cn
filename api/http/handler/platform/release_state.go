@@ -49,6 +49,7 @@ var platformReleaseTransitions = map[portainer.PlatformReleaseStatus]map[portain
 		portainer.PlatformReleaseStatusRecoveryFailed: true,
 	},
 	portainer.PlatformReleaseStatusInterrupted: {
+		portainer.PlatformReleaseStatusRecovering:     true,
 		portainer.PlatformReleaseStatusFailed:         true,
 		portainer.PlatformReleaseStatusRecoveryFailed: true,
 		portainer.PlatformReleaseStatusResolved:       true,

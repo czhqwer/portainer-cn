@@ -164,6 +164,55 @@ func TestSingleTargetExecutorDeletesFailedCurrentBeforeRecovering(t *testing.T) 
 	require.Less(t, indexOfCall(driver.calls, "delete-current"), indexOfCall(driver.calls, "recover"))
 }
 
+func TestSingleTargetExecutorRetryRecoveryRestoresPreviousAndReleasesManualAction(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	executor := NewSingleTargetExecutor(driver)
+	request := sampleReleaseExecutionRequest()
+	request.Release.Status = portainer.PlatformReleaseStatusRecoveryFailed
+	request.Release.FailureReason = ReleaseFailureReasonRecoveryFailed
+	request.Release.ManualActionRequired = true
+
+	result, err := executor.RetryRecovery(context.Background(), request)
+	require.NoError(t, err)
+
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.False(t, result.Release.ManualActionRequired)
+	require.Empty(t, result.Release.LeaseOwner)
+	require.Zero(t, result.Release.LeaseExpiresAt)
+	require.NotNil(t, result.Deployment)
+	require.Equal(t, portainer.PlatformDeploymentDriftNone, result.Deployment.DriftStatus)
+	require.Contains(t, driver.calls, "recover")
+	require.Equal(t, "retry-recovery", result.Release.Steps[len(result.Release.Steps)-1].Name)
+	require.Equal(t, portainer.PlatformReleaseStepStatusSucceeded, result.Release.Steps[len(result.Release.Steps)-1].Status)
+}
+
+func TestSingleTargetExecutorCleanupRuntimeSkipsServingRuntime(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	executor := NewSingleTargetExecutor(driver)
+	request := sampleReleaseExecutionRequest()
+	request.Deployment.CurrentRuntimeRef = portainer.RuntimeRef{ResourceID: "serving"}
+	request.Release.RuntimeSnapshot = portainer.PlatformRuntimeSnapshot{
+		CandidateRuntimeRef: portainer.RuntimeRef{ResourceID: "candidate"},
+		CurrentRuntimeRef:   portainer.RuntimeRef{ResourceID: "serving"},
+		RetainedRuntimeRefs: []portainer.RuntimeRef{
+			{ResourceID: "retained"},
+			{ResourceID: "candidate"},
+		},
+	}
+
+	result, err := executor.CleanupRuntime(context.Background(), ReleaseCleanupRequest{
+		Release:    request.Release,
+		Deployment: request.Deployment,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"delete-candidate", "delete-retained"}, driver.calls)
+	require.Len(t, result.DeletedRuntimeRefs, 2)
+	require.Empty(t, result.FailedRuntimeRefs)
+	require.Equal(t, "cleanup-runtime", result.Release.Steps[len(result.Release.Steps)-1].Name)
+	require.Equal(t, portainer.PlatformReleaseStepStatusSucceeded, result.Release.Steps[len(result.Release.Steps)-1].Status)
+}
+
 func sampleReleaseExecutionRequest() ReleaseExecutionRequest {
 	spec := portainer.NewPlatformDeploymentDesiredSpec()
 	spec.Image.Image = "registry.example.com/orders-api:1.0.0"

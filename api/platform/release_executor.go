@@ -13,6 +13,7 @@ const (
 	ReleaseFailureReasonExecutorUnavailable        = "EXECUTOR_UNAVAILABLE"
 	ReleaseFailureReasonTargetNotConfigured        = "TARGET_NOT_CONFIGURED"
 	ReleaseFailureReasonTargetModeUnsupported      = "TARGET_MODE_UNSUPPORTED"
+	ReleaseFailureReasonRuntimeCleanupFailed       = "RUNTIME_CLEANUP_FAILED"
 	ReleaseFailureReasonProductionRequiresVerify   = "PRODUCTION_REQUIRES_VERIFIED"
 	ReleaseFailureReasonImagePullFailed            = "IMAGE_PULL_FAILED"
 	ReleaseFailureReasonCandidateStartFailed       = "CANDIDATE_START_FAILED"
@@ -32,6 +33,11 @@ type ReleaseExecutor interface {
 	Execute(ctx context.Context, request ReleaseExecutionRequest) (ReleaseExecutionResult, error)
 }
 
+type ReleaseRecoveryExecutor interface {
+	RetryRecovery(ctx context.Context, request ReleaseExecutionRequest) (ReleaseExecutionResult, error)
+	CleanupRuntime(ctx context.Context, request ReleaseCleanupRequest) (ReleaseCleanupResult, error)
+}
+
 type ReleaseExecutionRequest struct {
 	Project           portainer.PlatformProject
 	Environment       portainer.PlatformEnvironment
@@ -45,6 +51,17 @@ type ReleaseExecutionRequest struct {
 type ReleaseExecutionResult struct {
 	Release    portainer.PlatformRelease
 	Deployment *portainer.PlatformServiceDeployment
+}
+
+type ReleaseCleanupRequest struct {
+	Release    portainer.PlatformRelease
+	Deployment portainer.PlatformServiceDeployment
+}
+
+type ReleaseCleanupResult struct {
+	Release            portainer.PlatformRelease
+	DeletedRuntimeRefs []portainer.RuntimeRef
+	FailedRuntimeRefs  []portainer.RuntimeRef
 }
 
 type RuntimeDriver interface {
@@ -238,6 +255,127 @@ func (executor *SingleTargetExecutor) recover(ctx context.Context, request Relea
 	deployment.DriftStatus = portainer.PlatformDeploymentDriftNone
 
 	return ReleaseExecutionResult{Release: release}, nil
+}
+
+// RetryRecovery 用于人工处置 recovery-failed/interrupted 发布时重试恢复上一版运行时；
+// 它不把失败发布改写为成功发布，只在恢复成功后释放锁，让服务回到旧版本继续服务。
+func (executor *SingleTargetExecutor) RetryRecovery(ctx context.Context, request ReleaseExecutionRequest) (ReleaseExecutionResult, error) {
+	release := request.Release
+	deployment := request.Deployment
+	now := executor.unixNow()
+
+	release.Status = portainer.PlatformReleaseStatusRecovering
+	release.ManualActionRequired = false
+	release.LeaseOwner = "platform-single-target-executor"
+	release.LeaseExpiresAt = now + 15*60
+
+	if executor.driver == nil {
+		markRecoveryRetryFailed(&release, ReleaseFailureReasonExecutorUnavailable, "Docker release executor is not configured.", now)
+		return ReleaseExecutionResult{Release: release}, nil
+	}
+
+	target, err := selectSingleWorkloadTarget(request.Environment)
+	if err != nil {
+		release.TargetSnapshot = targetSnapshotFromTarget(target, request.Deployment.DesiredSpec.Runtime.RuntimeDriver)
+		markRecoveryRetryFailed(&release, failureReasonForError(err), err.Error(), now)
+		return ReleaseExecutionResult{Release: release}, nil
+	}
+	release.TargetSnapshot = targetSnapshotFromTarget(target, request.Deployment.DesiredSpec.Runtime.RuntimeDriver)
+
+	// 恢复重试只负责把上一版运行时重新拉起；原发布仍然按失败态收口，
+	// 这样锁会释放，但不会误把这次失败发布记录成一次成功上线。
+	stepStart := executor.unixNow()
+	if err := executor.driver.Recover(ctx, request, target); err != nil {
+		appendStep(&release, "retry-recovery", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonRecoveryFailed, err.Error(), stepStart, executor.unixNow(), request.Deployment.CurrentRuntimeRef)
+		release.Status = portainer.PlatformReleaseStatusRecoveryFailed
+		release.FailureReason = ReleaseFailureReasonRecoveryFailed
+		release.ManualActionRequired = true
+		release.FinishedAt = executor.unixNow()
+		return ReleaseExecutionResult{Release: release}, nil
+	}
+
+	now = executor.unixNow()
+	appendStep(&release, "retry-recovery", portainer.PlatformReleaseStepStatusSucceeded, "", "Previous runtime restored by manual retry.", stepStart, now, request.Deployment.CurrentRuntimeRef)
+	release.Status = portainer.PlatformReleaseStatusFailed
+	release.ManualActionRequired = false
+	release.FinishedAt = now
+	release.LeaseOwner = ""
+	release.LeaseExpiresAt = 0
+	deployment.DriftStatus = portainer.PlatformDeploymentDriftNone
+	deployment.UpdatedAt = now
+	deployment.ResourceVersion++
+
+	return ReleaseExecutionResult{Release: release, Deployment: &deployment}, nil
+}
+
+// CleanupRuntime 清理发布失败后快照里记录的孤儿运行时资源；
+// 当前仍被 ServiceDeployment 引用的 runtime 会被跳过，避免手工处置误删正在服务的容器。
+func (executor *SingleTargetExecutor) CleanupRuntime(ctx context.Context, request ReleaseCleanupRequest) (ReleaseCleanupResult, error) {
+	release := request.Release
+	now := executor.unixNow()
+	stepStart := now
+	refs := cleanupRuntimeRefs(release, request.Deployment.CurrentRuntimeRef)
+
+	if executor.driver == nil {
+		appendStep(&release, "cleanup-runtime", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonExecutorUnavailable, "Docker release executor is not configured.", stepStart, now, portainer.RuntimeRef{})
+		release.ManualActionRequired = true
+		return ReleaseCleanupResult{Release: release, FailedRuntimeRefs: refs}, nil
+	}
+	if len(refs) == 0 {
+		appendStep(&release, "cleanup-runtime", portainer.PlatformReleaseStepStatusSkipped, "", "No orphan runtime references require cleanup.", stepStart, now, portainer.RuntimeRef{})
+		return ReleaseCleanupResult{Release: release}, nil
+	}
+
+	deletedRefs := make([]portainer.RuntimeRef, 0, len(refs))
+	failedRefs := make([]portainer.RuntimeRef, 0)
+	for _, ref := range refs {
+		// 清理动作逐个执行并记录失败集合，避免一个孤儿容器删除失败时吞掉其它可清理对象。
+		if err := executor.driver.DeleteRuntime(ctx, ref); err != nil {
+			failedRefs = append(failedRefs, ref)
+			continue
+		}
+		deletedRefs = append(deletedRefs, ref)
+	}
+
+	now = executor.unixNow()
+	if len(failedRefs) > 0 {
+		appendStep(&release, "cleanup-runtime", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonRuntimeCleanupFailed, "One or more runtime resources failed to clean up.", stepStart, now, failedRefs[0])
+		release.ManualActionRequired = true
+		return ReleaseCleanupResult{Release: release, DeletedRuntimeRefs: deletedRefs, FailedRuntimeRefs: failedRefs}, nil
+	}
+
+	appendStep(&release, "cleanup-runtime", portainer.PlatformReleaseStepStatusSucceeded, "", "Orphan runtime resources cleaned up.", stepStart, now, portainer.RuntimeRef{})
+
+	return ReleaseCleanupResult{Release: release, DeletedRuntimeRefs: deletedRefs}, nil
+}
+
+func markRecoveryRetryFailed(release *portainer.PlatformRelease, reason string, message string, now int64) {
+	appendStep(release, "retry-recovery", portainer.PlatformReleaseStepStatusFailed, reason, message, now, now, release.RuntimeSnapshot.PreviousRuntimeRef)
+	release.Status = portainer.PlatformReleaseStatusRecoveryFailed
+	release.FailureReason = reason
+	release.HealthCheckResult.ErrorMessage = message
+	release.ManualActionRequired = true
+	release.FinishedAt = now
+}
+
+func cleanupRuntimeRefs(release portainer.PlatformRelease, servingRef portainer.RuntimeRef) []portainer.RuntimeRef {
+	refs := make([]portainer.RuntimeRef, 0, 2+len(release.RuntimeSnapshot.RetainedRuntimeRefs))
+	seen := map[string]bool{}
+	appendCleanable := func(ref portainer.RuntimeRef) {
+		if ref.ResourceID == "" || ref.ResourceID == servingRef.ResourceID || seen[ref.ResourceID] {
+			return
+		}
+		seen[ref.ResourceID] = true
+		refs = append(refs, ref)
+	}
+
+	appendCleanable(release.RuntimeSnapshot.CandidateRuntimeRef)
+	appendCleanable(release.RuntimeSnapshot.CurrentRuntimeRef)
+	for _, ref := range release.RuntimeSnapshot.RetainedRuntimeRefs {
+		appendCleanable(ref)
+	}
+
+	return refs
 }
 
 func (executor *SingleTargetExecutor) unixNow() int64 {

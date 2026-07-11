@@ -13,9 +13,10 @@ import (
 // Handler manages the private deployment platform control-plane endpoints.
 type Handler struct {
 	*mux.Router
-	DataStore        dataservices.DataStore
-	ReleaseExecutor  platformservice.ReleaseExecutor
-	RuntimeInspector platformservice.RuntimeInspector
+	DataStore               dataservices.DataStore
+	ReleaseExecutor         platformservice.ReleaseExecutor
+	ReleaseRecoveryExecutor platformservice.ReleaseRecoveryExecutor
+	RuntimeInspector        platformservice.RuntimeInspector
 }
 
 // NewHandler registers V0.1 platform endpoints. Every business endpoint stays
@@ -107,6 +108,10 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/releases/{releaseId}/resolve",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseResolve))).Methods(http.MethodPost)
+	h.Handle("/platform/releases/{releaseId}/retry-recovery",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseRetryRecovery))).Methods(http.MethodPost)
+	h.Handle("/platform/releases/{releaseId}/cleanup-runtime",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseCleanupRuntime))).Methods(http.MethodPost)
 
 	h.Handle("/platform/audit-logs",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.auditLogList))).Methods(http.MethodGet)

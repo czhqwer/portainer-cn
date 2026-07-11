@@ -115,6 +115,48 @@ func (inspector fakeRuntimeInspector) RuntimeLogs(_ context.Context, runtimeRef 
 	return result, nil
 }
 
+type fakeReleaseRecoveryExecutor struct {
+	retryRequest  platformservice.ReleaseExecutionRequest
+	cleanupResult platformservice.ReleaseCleanupResult
+}
+
+func (executor *fakeReleaseRecoveryExecutor) RetryRecovery(_ context.Context, request platformservice.ReleaseExecutionRequest) (platformservice.ReleaseExecutionResult, error) {
+	executor.retryRequest = request
+	now := time.Now().Unix()
+	release := request.Release
+	release.Status = portainer.PlatformReleaseStatusFailed
+	release.ManualActionRequired = false
+	release.FinishedAt = now
+	release.LeaseOwner = ""
+	release.LeaseExpiresAt = 0
+	release.Steps = append(release.Steps, portainer.PlatformReleaseStep{
+		Name:       "retry-recovery",
+		Status:     portainer.PlatformReleaseStepStatusSucceeded,
+		RuntimeRef: request.Deployment.CurrentRuntimeRef,
+		StartedAt:  now,
+		FinishedAt: now,
+	})
+
+	deployment := request.Deployment
+	deployment.DriftStatus = portainer.PlatformDeploymentDriftNone
+
+	return platformservice.ReleaseExecutionResult{Release: release, Deployment: &deployment}, nil
+}
+
+func (executor *fakeReleaseRecoveryExecutor) CleanupRuntime(_ context.Context, request platformservice.ReleaseCleanupRequest) (platformservice.ReleaseCleanupResult, error) {
+	now := time.Now().Unix()
+	result := executor.cleanupResult
+	result.Release = request.Release
+	result.Release.Steps = append(result.Release.Steps, portainer.PlatformReleaseStep{
+		Name:       "cleanup-runtime",
+		Status:     portainer.PlatformReleaseStepStatusSucceeded,
+		StartedAt:  now,
+		FinishedAt: now,
+	})
+
+	return result, nil
+}
+
 func TestPlatformReleaseCreateIsIdempotentAndExecutes(t *testing.T) {
 	ctx, project, application, service, deployment := createPlatformReleaseFixture(t)
 	ctx.handler.ReleaseExecutor = fakeReleaseExecutor{}
@@ -355,6 +397,71 @@ func TestPlatformReleaseResolveAcceptsCurrentAndAudits(t *testing.T) {
 	require.Equal(t, portainer.PlatformAuditResultSuccess, audits[0].Result)
 }
 
+func TestPlatformReleaseRetryRecoveryReleasesLockAndAudits(t *testing.T) {
+	ctx, project, application, service, deployment := createPlatformReleaseFixture(t)
+	executor := &fakeReleaseRecoveryExecutor{}
+	ctx.handler.ReleaseRecoveryExecutor = executor
+	deployment.CurrentRuntimeRef = portainer.RuntimeRef{ResourceID: "previous-container", Name: "orders-api-previous"}
+	require.NoError(t, ctx.handler.DataStore.PlatformServiceDeployment().Update(deployment.ID, &deployment))
+
+	artifact := createImageReferenceArtifact(t, ctx, createImageReferenceArtifactPayload{
+		ProjectID:           project.ID,
+		ApplicationID:       application.ID,
+		ServiceDefinitionID: service.ID,
+		Name:                "orders-api",
+		Version:             "1.0.0",
+		ImageRef:            "registry.example.com/orders-api:1.0.0",
+	})
+	release := createRecoveryFailedRelease(t, ctx, project, application, service, deployment, artifact)
+
+	retried := doJSON[portainer.PlatformRelease](t, ctx, http.MethodPost, fmt.Sprintf("/platform/releases/%d/retry-recovery", release.ID), nil, http.StatusOK)
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, retried.Status)
+	require.False(t, retried.ManualActionRequired)
+	require.Equal(t, release.ID, executor.retryRequest.Release.ID)
+	require.Equal(t, "previous-container", executor.retryRequest.Deployment.CurrentRuntimeRef.ResourceID)
+
+	_, err := ctx.handler.DataStore.PlatformReleaseLock().Read(platformreleaselock.LockIDForServiceDeployment(deployment.ID))
+	require.Error(t, err)
+	require.True(t, ctx.handler.DataStore.IsErrObjectNotFound(err))
+
+	audits := doJSON[[]portainer.PlatformAuditLog](t, ctx, http.MethodGet, fmt.Sprintf("/platform/audit-logs?releaseId=%d&action=%s", release.ID, portainer.PlatformAuditActionReleaseRetryRecovery), nil, http.StatusOK)
+	require.Len(t, audits, 1)
+	require.Equal(t, portainer.PlatformAuditResultSuccess, audits[0].Result)
+}
+
+func TestPlatformReleaseCleanupRuntimeKeepsRecoveryLockAndAudits(t *testing.T) {
+	ctx, project, application, service, deployment := createPlatformReleaseFixture(t)
+	executor := &fakeReleaseRecoveryExecutor{
+		cleanupResult: platformservice.ReleaseCleanupResult{
+			DeletedRuntimeRefs: []portainer.RuntimeRef{{ResourceID: "candidate-container"}, {ResourceID: "failed-current"}},
+		},
+	}
+	ctx.handler.ReleaseRecoveryExecutor = executor
+
+	artifact := createImageReferenceArtifact(t, ctx, createImageReferenceArtifactPayload{
+		ProjectID:           project.ID,
+		ApplicationID:       application.ID,
+		ServiceDefinitionID: service.ID,
+		Name:                "orders-api",
+		Version:             "1.0.0",
+		ImageRef:            "registry.example.com/orders-api:1.0.0",
+	})
+	release := createRecoveryFailedRelease(t, ctx, project, application, service, deployment, artifact)
+
+	result := doJSON[platformservice.ReleaseCleanupResult](t, ctx, http.MethodPost, fmt.Sprintf("/platform/releases/%d/cleanup-runtime", release.ID), nil, http.StatusOK)
+	require.Equal(t, portainer.PlatformReleaseStatusRecoveryFailed, result.Release.Status)
+	require.Len(t, result.DeletedRuntimeRefs, 2)
+	require.Equal(t, "cleanup-runtime", result.Release.Steps[len(result.Release.Steps)-1].Name)
+
+	lock, err := ctx.handler.DataStore.PlatformReleaseLock().Read(platformreleaselock.LockIDForServiceDeployment(deployment.ID))
+	require.NoError(t, err)
+	require.Equal(t, release.ID, lock.ReleaseID)
+
+	audits := doJSON[[]portainer.PlatformAuditLog](t, ctx, http.MethodGet, fmt.Sprintf("/platform/audit-logs?releaseId=%d&action=%s", release.ID, portainer.PlatformAuditActionReleaseCleanupRuntime), nil, http.StatusOK)
+	require.Len(t, audits, 1)
+	require.Equal(t, portainer.PlatformAuditResultSuccess, audits[0].Result)
+}
+
 func createPlatformReleaseFixture(t *testing.T) (platformTestContext, portainer.PlatformProject, portainer.PlatformApplication, portainer.PlatformServiceDefinition, portainer.PlatformServiceDeployment) {
 	t.Helper()
 
@@ -373,6 +480,43 @@ func createPlatformReleaseFixture(t *testing.T) (platformTestContext, portainer.
 	})
 
 	return ctx, project, application, service, deployment
+}
+
+func createRecoveryFailedRelease(t *testing.T, ctx platformTestContext, project portainer.PlatformProject, application portainer.PlatformApplication, service portainer.PlatformServiceDefinition, deployment portainer.PlatformServiceDeployment, artifact portainer.PlatformArtifact) *portainer.PlatformRelease {
+	t.Helper()
+
+	release := &portainer.PlatformRelease{
+		ProjectID:            project.ID,
+		EnvironmentID:        deployment.EnvironmentID,
+		ApplicationID:        application.ID,
+		ServiceDefinitionID:  service.ID,
+		ServiceDeploymentID:  deployment.ID,
+		ArtifactID:           artifact.ID,
+		Version:              "manual",
+		TriggerType:          portainer.PlatformReleaseTriggerDeploy,
+		Strategy:             portainer.NewPlatformReleaseStrategy(),
+		Status:               portainer.PlatformReleaseStatusRecoveryFailed,
+		ExpectedSpecRevision: deployment.SpecRevision,
+		Image:                artifact.ImageRef,
+		ConfigSnapshot:       portainer.PlatformServiceConfigSnapshot{SpecRevision: deployment.SpecRevision, DesiredSpecSnapshot: deployment.DesiredSpec},
+		RuntimeSnapshot: portainer.PlatformRuntimeSnapshot{
+			CandidateRuntimeRef: portainer.RuntimeRef{ResourceID: "candidate-container"},
+			CurrentRuntimeRef:   portainer.RuntimeRef{ResourceID: "failed-current"},
+		},
+		FailureReason:        platformservice.ReleaseFailureReasonRecoveryFailed,
+		ManualActionRequired: true,
+		LeaseOwner:           "executor",
+		LeaseExpiresAt:       time.Now().Unix() + 600,
+	}
+	require.NoError(t, ctx.handler.DataStore.PlatformRelease().Create(release))
+	require.NoError(t, ctx.handler.DataStore.PlatformReleaseLock().Create(&portainer.PlatformReleaseLock{
+		ServiceDeploymentID: deployment.ID,
+		ReleaseID:           release.ID,
+		LeaseOwner:          "executor",
+		LeaseExpiresAt:      release.LeaseExpiresAt,
+	}))
+
+	return release
 }
 
 func createImageReferenceArtifact(t *testing.T, ctx platformTestContext, payload createImageReferenceArtifactPayload) portainer.PlatformArtifact {
