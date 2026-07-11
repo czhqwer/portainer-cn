@@ -81,6 +81,9 @@ func (handler *Handler) configSetCreate(w http.ResponseWriter, r *http.Request) 
 	configSet.Name = payload.Name
 	configSet.Entries = payload.Entries
 	configSet.PlatformLifecycle = newLifecycle(now)
+	if err := handler.encryptSensitiveConfigEntries(configSet.Entries, nil); err != nil {
+		return validationFailed(err)
+	}
 	portainer.NormalizePlatformConfigSet(&configSet)
 
 	err := handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
@@ -124,6 +127,7 @@ func (handler *Handler) configSetUpdate(w http.ResponseWriter, r *http.Request) 
 		if err := requireResourceVersion(configSet.ResourceVersion, payload.ResourceVersion); err != nil {
 			return err
 		}
+		existingEntries := append([]portainer.PlatformConfigEntry(nil), configSet.Entries...)
 		if payload.Name != nil {
 			configSet.Name = *payload.Name
 		}
@@ -131,6 +135,9 @@ func (handler *Handler) configSetUpdate(w http.ResponseWriter, r *http.Request) 
 			configSet.Entries = *payload.Entries
 		}
 		portainer.NormalizePlatformConfigSet(configSet)
+		if err := handler.encryptSensitiveConfigEntries(configSet.Entries, existingEntries); err != nil {
+			return validationFailedError(err.Error())
+		}
 		if err := portainer.ValidatePlatformConfigSet(*configSet); err != nil {
 			return validationFailedError(err.Error())
 		}
@@ -210,14 +217,26 @@ func (handler *Handler) serviceDeploymentEffectiveConfig(w http.ResponseWriter, 
 // effectiveConfigForDeployment loads only active project-local sets before invoking the
 // pure resolver. 这样 handler 负责对象可见性和 datastore 边界，合并顺序保持可单测并可供发布链路复用。
 func effectiveConfigForDeployment(tx dataservices.DataStoreTx, deployment portainer.PlatformServiceDeployment) (portainer.PlatformEffectiveConfigSnapshot, error) {
-	configSets, err := tx.PlatformConfigSet().ReadAll(func(configSet portainer.PlatformConfigSet) bool {
-		return configSet.ProjectID == deployment.ProjectID && isActive(configSet.PlatformLifecycle)
-	})
+	configSets, err := configSetsForDeployment(tx, deployment)
 	if err != nil {
 		return portainer.PlatformEffectiveConfigSnapshot{}, err
 	}
 
 	return platformservice.BuildEffectiveConfigSnapshot(deployment, configSets)
+}
+
+func secretSnapshotsForDeployment(tx dataservices.DataStoreTx, deployment portainer.PlatformServiceDeployment) ([]portainer.PlatformSecretSnapshot, error) {
+	configSets, err := configSetsForDeployment(tx, deployment)
+	if err != nil {
+		return nil, err
+	}
+	return platformservice.BuildSecretSnapshots(deployment, configSets)
+}
+
+func configSetsForDeployment(tx dataservices.DataStoreTx, deployment portainer.PlatformServiceDeployment) ([]portainer.PlatformConfigSet, error) {
+	return tx.PlatformConfigSet().ReadAll(func(configSet portainer.PlatformConfigSet) bool {
+		return configSet.ProjectID == deployment.ProjectID && isActive(configSet.PlatformLifecycle)
+	})
 }
 
 func validateConfigSetScope(tx dataservices.DataStoreTx, configSet *portainer.PlatformConfigSet) error {
@@ -380,6 +399,7 @@ func redactConfigSet(configSet portainer.PlatformConfigSet) portainer.PlatformCo
 		if result.Entries[i].Sensitive {
 			result.Entries[i].Value = ""
 		}
+		result.Entries[i].CipherText = ""
 	}
 	return result
 }

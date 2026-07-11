@@ -102,6 +102,10 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.AdminAccess(httperror.LoggerHandler(h.configSetUpdate))).Methods(http.MethodPut)
 	h.Handle("/platform/config-sets/{configSetId}",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.configSetArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/config-sets/{configSetId}/entries/{key}/reveal",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.configSecretReveal))).Methods(http.MethodPost)
+	h.Handle("/platform/config-sets/{configSetId}/entries/{key}/copy",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.configSecretCopy))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/image-reference",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactImageReferenceCreate))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/{artifactId}",

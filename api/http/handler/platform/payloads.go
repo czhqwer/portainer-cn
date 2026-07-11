@@ -242,7 +242,7 @@ func (payload *createConfigSetPayload) Validate(_ *http.Request) error {
 	configSet.Name = payload.Name
 	configSet.Entries = payload.Entries
 	portainer.NormalizePlatformConfigSet(&configSet)
-	if err := portainer.ValidatePlatformConfigSet(configSet); err != nil {
+	if err := portainer.ValidatePlatformConfigSetInput(configSet); err != nil {
 		return err
 	}
 

@@ -99,9 +99,14 @@ func TestDockerEnvUsesEffectivePlainConfigAndKeepsLegacyFallback(t *testing.T) {
 		},
 	}
 
-	require.Equal(t, []string{"APP_ENV=production"}, dockerEnv(request))
+	driver := &DockerRuntimeDriver{}
+	env, err := driver.dockerEnv(request)
+	require.NoError(t, err)
+	require.Equal(t, []string{"APP_ENV=production"}, env)
 	request.Release.ConfigSnapshot.EffectiveConfigSnapshot = portainer.PlatformEffectiveConfigSnapshot{}
-	require.Equal(t, []string{"LEGACY=legacy"}, dockerEnv(request))
+	env, err = driver.dockerEnv(request)
+	require.NoError(t, err)
+	require.Equal(t, []string{"LEGACY=legacy"}, env)
 }
 
 func configSet(

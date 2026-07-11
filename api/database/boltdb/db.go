@@ -321,6 +321,14 @@ func (connection *DbConnection) getEncryptionKey() []byte {
 	return connection.EncryptionKey
 }
 
+// PlatformSecretEncryptionKey returns a copy of the active database key for platform
+// secret-field encryption. 复制避免调用方持有或修改连接内部密钥；未启用数据库加密时
+// 返回 nil，调用方必须拒绝保存需要额外字段加密的敏感值。
+func (connection *DbConnection) PlatformSecretEncryptionKey() []byte {
+	key := connection.getEncryptionKey()
+	return append([]byte(nil), key...)
+}
+
 // UpdateObject is a generic function used to update an object inside a database.
 func (connection *DbConnection) UpdateObject(bucketName string, key []byte, object any) error {
 	return connection.UpdateTx(func(tx portainer.Transaction) error {

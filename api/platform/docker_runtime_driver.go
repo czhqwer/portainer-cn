@@ -269,7 +269,7 @@ func (driver *DockerRuntimeDriver) createAndStartContainer(ctx context.Context, 
 	defer logs.CloseAndLogErr(cli)
 
 	name := dockerContainerName(request, candidate)
-	config, hostConfig, networkingConfig, err := dockerContainerCreateOptions(request, target, candidate)
+	config, hostConfig, networkingConfig, err := driver.dockerContainerCreateOptions(request, target, candidate)
 	if err != nil {
 		return portainer.RuntimeRef{}, nil, err
 	}
@@ -505,8 +505,12 @@ func (driver *DockerRuntimeDriver) clientForRuntime(runtimeRef portainer.Runtime
 	return driver.clientFactory.CreateClient(endpoint, nodeName, nil)
 }
 
-func dockerContainerCreateOptions(request ReleaseExecutionRequest, target portainer.PlatformDeploymentTarget, candidate bool) (*dockercontainer.Config, *dockercontainer.HostConfig, *network.NetworkingConfig, error) {
+func (driver *DockerRuntimeDriver) dockerContainerCreateOptions(request ReleaseExecutionRequest, target portainer.PlatformDeploymentTarget, candidate bool) (*dockercontainer.Config, *dockercontainer.HostConfig, *network.NetworkingConfig, error) {
 	ports, err := dockerPortBindings(request.Deployment.DesiredSpec.Ports, candidate)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	env, err := driver.dockerEnv(request)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -518,7 +522,7 @@ func dockerContainerCreateOptions(request ReleaseExecutionRequest, target portai
 
 	config := &dockercontainer.Config{
 		Image:        request.Artifact.ImageRef,
-		Env:          dockerEnv(request),
+		Env:          env,
 		ExposedPorts: ports.exposed,
 		Labels:       dockerLabels(request, target, candidate),
 		StopTimeout:  &stopTimeout,
@@ -580,7 +584,7 @@ func dockerPortBindings(specs []portainer.PlatformPortSpec, candidate bool) (doc
 	return result, nil
 }
 
-func dockerEnv(request ReleaseExecutionRequest) []string {
+func (driver *DockerRuntimeDriver) dockerEnv(request ReleaseExecutionRequest) ([]string, error) {
 	effective := request.Release.ConfigSnapshot.EffectiveConfigSnapshot
 	if effective.Hash != "" || len(effective.Entries) > 0 {
 		env := make([]string, 0, len(effective.Entries))
@@ -592,12 +596,36 @@ func dockerEnv(request ReleaseExecutionRequest) []string {
 			}
 			env = append(env, entry.Key+"="+entry.Value)
 		}
-		return env
+		if len(request.Release.ConfigSnapshot.SecretSnapshots) == 0 {
+			return env, nil
+		}
+		if driver == nil || driver.dataStore == nil {
+			return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Docker runtime driver is not configured."}
+		}
+		cipher, err := NewSecretCipher(driver.dataStore.Connection())
+		if err != nil {
+			return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Encrypted platform secret storage is unavailable."}
+		}
+		for _, secret := range request.Release.ConfigSnapshot.SecretSnapshots {
+			if !secret.HasValue || secret.Name == "" {
+				continue
+			}
+			if secret.EncryptionVersion != PlatformSecretEncryptionVersion {
+				return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Platform secret encryption version is unavailable."}
+			}
+			value, err := cipher.Decrypt(secret.CipherText)
+			if err != nil {
+				return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Platform secret snapshot cannot be decrypted."}
+			}
+			env = append(env, secret.Name+"="+value)
+		}
+
+		return env, nil
 	}
 
 	// 旧 Release 没有有效配置快照时保留阶段 1 的字面量环境变量路径，保证恢复和
 	// 清理等历史运行资源操作不会因阶段 2 快照字段为空而改变容器配置。
-	return dockerEnvOverrides(request.Deployment.DesiredSpec.EnvOverrides)
+	return dockerEnvOverrides(request.Deployment.DesiredSpec.EnvOverrides), nil
 }
 
 func dockerEnvOverrides(vars []portainer.PlatformEnvVar) []string {

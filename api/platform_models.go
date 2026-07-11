@@ -219,6 +219,8 @@ const (
 	PlatformAuditActionReleaseRetryRecovery  PlatformAuditAction = "release.retry_recovery"
 	PlatformAuditActionReleaseCleanupRuntime PlatformAuditAction = "release.cleanup_runtime"
 	PlatformAuditActionReleaseDenied         PlatformAuditAction = "release.denied"
+	PlatformAuditActionSecretRevealed        PlatformAuditAction = "secret.revealed"
+	PlatformAuditActionSecretCopied          PlatformAuditAction = "secret.copied"
 
 	PlatformAuditResultSuccess PlatformAuditResult = "success"
 	PlatformAuditResultFailed  PlatformAuditResult = "failed"
@@ -401,12 +403,16 @@ type PlatformConfigSet struct {
 }
 
 type PlatformConfigEntry struct {
-	Key       string                    `json:"Key" example:"APP_ENV"`
-	ValueType PlatformConfigValueType   `json:"ValueType" example:"plain"`
-	Value     string                    `json:"Value,omitempty"`
-	Sensitive bool                      `json:"Sensitive" example:"false"`
-	Required  bool                      `json:"Required" example:"false"`
-	Source    PlatformConfigEntrySource `json:"Source" example:"service-deployment"`
+	Key               string                    `json:"Key" example:"APP_ENV"`
+	ValueType         PlatformConfigValueType   `json:"ValueType" example:"plain"`
+	Value             string                    `json:"Value,omitempty"`
+	CipherText        string                    `json:"CipherText,omitempty" swaggerignore:"true"`
+	EncryptionVersion string                    `json:"EncryptionVersion,omitempty"`
+	Hash              string                    `json:"Hash,omitempty"`
+	HasValue          bool                      `json:"HasValue,omitempty"`
+	Sensitive         bool                      `json:"Sensitive" example:"false"`
+	Required          bool                      `json:"Required" example:"false"`
+	Source            PlatformConfigEntrySource `json:"Source" example:"service-deployment"`
 }
 
 type PlatformEffectiveConfigSnapshot struct {
@@ -690,6 +696,16 @@ func NormalizePlatformConfigSet(configSet *PlatformConfigSet) {
 // ValidatePlatformConfigSet 在配置 API 尚未开放时守住阶段 2 的存储边界。
 // 在敏感变量专属批次接入加密字段和密钥版本服务前，必须拒绝敏感 plain 值，避免明文进入 BoltDB。
 func ValidatePlatformConfigSet(configSet PlatformConfigSet) error {
+	return validatePlatformConfigSet(configSet, false)
+}
+
+// ValidatePlatformConfigSetInput 只用于 handler 在加密前校验用户输入结构。
+// 它允许敏感 plain 值暂存于请求内存，调用方必须在进入 dataservice 前加密并清空 Value。
+func ValidatePlatformConfigSetInput(configSet PlatformConfigSet) error {
+	return validatePlatformConfigSet(configSet, true)
+}
+
+func validatePlatformConfigSet(configSet PlatformConfigSet, allowSensitivePlainValue bool) error {
 	NormalizePlatformConfigSet(&configSet)
 
 	if configSet.ProjectID <= 0 {
@@ -723,7 +739,7 @@ func ValidatePlatformConfigSet(configSet PlatformConfigSet) error {
 			entry.ValueType != PlatformConfigValueRedisRef {
 			return fmt.Errorf("config entry %q value type %q is invalid", entry.Key, entry.ValueType)
 		}
-		if entry.Sensitive && entry.ValueType == PlatformConfigValuePlain && entry.Value != "" {
+		if !allowSensitivePlainValue && entry.Sensitive && entry.ValueType == PlatformConfigValuePlain && entry.Value != "" {
 			return fmt.Errorf("sensitive config entry %q cannot store a plain value before encrypted storage is enabled", entry.Key)
 		}
 	}

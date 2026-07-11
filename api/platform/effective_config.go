@@ -87,6 +87,83 @@ func BuildEffectiveConfigSnapshot(
 	return result, nil
 }
 
+// BuildSecretSnapshots selects the same winning entries as effective-config resolution,
+// then retains only encrypted sensitive plain values for the immutable Release snapshot.
+// 服务级旧 EnvOverrides 不能承载敏感明文；要求调用方改用加密 ConfigSet，避免新发布继续
+// 扩散阶段 1 遗留的明文表达方式。
+func BuildSecretSnapshots(
+	deployment portainer.PlatformServiceDeployment,
+	configSets []portainer.PlatformConfigSet,
+) ([]portainer.PlatformSecretSnapshot, error) {
+	selected, _, err := selectConfigSets(deployment, configSets)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(selected, func(i, j int) bool {
+		leftScope := configScopePriority(selected[i].configSet.ScopeType)
+		rightScope := configScopePriority(selected[j].configSet.ScopeType)
+		if leftScope != rightScope {
+			return leftScope < rightScope
+		}
+		if selected[i].configSet.Name != selected[j].configSet.Name {
+			return selected[i].configSet.Name < selected[j].configSet.Name
+		}
+		return selected[i].configSet.ID < selected[j].configSet.ID
+	})
+
+	winningEntries := make(map[string]portainer.PlatformConfigEntry)
+	for _, selection := range selected {
+		for _, entry := range selection.configSet.Entries {
+			if !selection.all {
+				if _, selected := selection.keys[entry.Key]; !selected {
+					continue
+				}
+			}
+			winningEntries[entry.Key] = entry
+		}
+	}
+	for _, override := range deployment.DesiredSpec.EnvOverrides {
+		if !override.IsSecret {
+			continue
+		}
+		if override.Value != "" || override.HasValue {
+			return nil, fmt.Errorf("sensitive EnvOverrides must be migrated to an encrypted config set")
+		}
+	}
+
+	keys := make([]string, 0, len(winningEntries))
+	for key := range winningEntries {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := make([]portainer.PlatformSecretSnapshot, 0)
+	for _, key := range keys {
+		entry := winningEntries[key]
+		if !entry.Sensitive || entry.ValueType != portainer.PlatformConfigValuePlain {
+			continue
+		}
+		if entry.CipherText == "" {
+			if entry.Required {
+				return nil, fmt.Errorf("required sensitive config entry %q has no encrypted value", entry.Key)
+			}
+			continue
+		}
+		if entry.EncryptionVersion == "" || entry.Hash == "" {
+			return nil, fmt.Errorf("sensitive config entry %q has an invalid encrypted snapshot", entry.Key)
+		}
+		result = append(result, portainer.PlatformSecretSnapshot{
+			Name:              entry.Key,
+			CipherText:        entry.CipherText,
+			EncryptionVersion: entry.EncryptionVersion,
+			Hash:              entry.Hash,
+			HasValue:          entry.HasValue,
+		})
+	}
+
+	return result, nil
+}
+
 func selectConfigSets(
 	deployment portainer.PlatformServiceDeployment,
 	configSets []portainer.PlatformConfigSet,
@@ -191,15 +268,21 @@ func configEntrySnapshot(entry portainer.PlatformConfigEntry) portainer.Platform
 		Sensitive: entry.Sensitive,
 		Required:  entry.Required,
 		Source:    entry.Source,
-		HasValue:  entry.Value != "",
+		HasValue:  entry.HasValue || entry.Value != "" || entry.CipherText != "",
 	}
 	if entry.Sensitive {
-		snapshot.Hash = configValueHash(entry.Value)
+		snapshot.Hash = entry.Hash
+		if snapshot.Hash == "" {
+			snapshot.Hash = configValueHash(entry.Value)
+		}
 		return snapshot
 	}
 
 	snapshot.Value = entry.Value
-	snapshot.Hash = configValueHash(entry.Value)
+	snapshot.Hash = entry.Hash
+	if snapshot.Hash == "" {
+		snapshot.Hash = configValueHash(entry.Value)
+	}
 	return snapshot
 }
 

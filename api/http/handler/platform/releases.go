@@ -90,7 +90,7 @@ func (handler *Handler) releaseList(w http.ResponseWriter, r *http.Request) *htt
 		return handler.convertError(err)
 	}
 
-	return response.JSON(w, releases)
+	return response.JSON(w, redactReleases(releases))
 }
 
 func (handler *Handler) releaseInspect(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
@@ -104,7 +104,7 @@ func (handler *Handler) releaseInspect(w http.ResponseWriter, r *http.Request) *
 		return handler.convertError(err)
 	}
 
-	return response.JSON(w, release)
+	return response.JSON(w, redactRelease(*release))
 }
 
 func (handler *Handler) releaseValidate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
@@ -119,6 +119,10 @@ func (handler *Handler) releaseValidate(w http.ResponseWriter, r *http.Request) 
 			return err
 		}
 		_, err = effectiveConfigForDeployment(tx, *deployment)
+		if err != nil {
+			return validationFailedError(err.Error())
+		}
+		_, err = secretSnapshotsForDeployment(tx, *deployment)
 		if err != nil {
 			return validationFailedError(err.Error())
 		}
@@ -254,8 +258,12 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 		if err != nil {
 			return validationFailedError(err.Error())
 		}
+		secretSnapshots, err := secretSnapshotsForDeployment(tx, *refs.deployment)
+		if err != nil {
+			return validationFailedError(err.Error())
+		}
 
-		release = newQueuedRelease(payload, refs.deployment, refs.artifact, effectiveConfig, userID, idempotencyKeyHash, payloadHash, now)
+		release = newQueuedRelease(payload, refs.deployment, refs.artifact, effectiveConfig, secretSnapshots, userID, idempotencyKeyHash, payloadHash, now)
 
 		if err := tx.PlatformRelease().Create(release); err != nil {
 			return err
@@ -420,7 +428,7 @@ func findIdempotentRelease(tx dataservices.DataStoreTx, serviceDeploymentID port
 	return &releases[0], nil
 }
 
-func newQueuedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, effectiveConfig portainer.PlatformEffectiveConfigSnapshot, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
+func newQueuedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, effectiveConfig portainer.PlatformEffectiveConfigSnapshot, secretSnapshots []portainer.PlatformSecretSnapshot, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
 	return &portainer.PlatformRelease{
 		ProjectID:            payload.ProjectID,
 		EnvironmentID:        payload.EnvironmentID,
@@ -444,6 +452,7 @@ func newQueuedRelease(payload createReleasePayload, deployment *portainer.Platfo
 			SpecRevision:            deployment.SpecRevision,
 			DesiredSpecSnapshot:     deployment.DesiredSpec,
 			EffectiveConfigSnapshot: effectiveConfig,
+			SecretSnapshots:         secretSnapshots,
 			ConfigHash:              effectiveConfig.Hash,
 		},
 		TargetSnapshot:    targetSnapshotFromDeployment(deployment),
