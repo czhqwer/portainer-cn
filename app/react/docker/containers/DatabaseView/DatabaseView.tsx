@@ -17,7 +17,6 @@ import {
   FlaskConical,
   History,
   KeyRound,
-  ListTree,
   Pencil,
   Play,
   Plus,
@@ -832,12 +831,68 @@ function ConnectionSidebar({
   onToggleRedisFolder: (path: string) => void;
 }) {
   const { t } = useTranslation();
-  const [isConnectionListOpen, setIsConnectionListOpen] = useState(true);
+  const [isConnectionPickerOpen, setIsConnectionPickerOpen] = useState(false);
+  const [connectionSearch, setConnectionSearch] = useState('');
+  const connectionPickerRef = useRef<HTMLDivElement>(null);
   const isRedisConnection = activeConnection?.Type === 'redis';
+  const filteredConnections = useMemo(
+    () =>
+      connections.filter((connection) =>
+        isConnectionMatched(connection, connectionSearch)
+      ),
+    [connections, connectionSearch]
+  );
+
+  // 连接选择器是临时弹层：点击外部或按 Escape 时收起，避免遮挡库表树继续操作。
+  useEffect(() => {
+    if (!isConnectionPickerOpen) {
+      return undefined;
+    }
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (
+        event.target instanceof Node &&
+        !connectionPickerRef.current?.contains(event.target)
+      ) {
+        setIsConnectionPickerOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsConnectionPickerOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isConnectionPickerOpen]);
+
+  function toggleConnectionPicker() {
+    if (connections.length === 0) {
+      return;
+    }
+
+    if (!isConnectionPickerOpen) {
+      setConnectionSearch('');
+    }
+    setIsConnectionPickerOpen((isOpen) => !isOpen);
+  }
+
+  function chooseConnection(connection: DatabaseConnection) {
+    onSelectConnection(connection);
+    setConnectionSearch('');
+    setIsConnectionPickerOpen(false);
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0">
+      <div ref={connectionPickerRef} className="relative shrink-0 pb-2">
         <div className="flex items-center gap-2 pb-2">
           <Icon icon={Database} className="lucide" />
           <span className="font-semibold">
@@ -851,16 +906,24 @@ function ConnectionSidebar({
               defaultValue: 'Select database connection',
             })}
             disabled={connections.length === 0}
-            onClick={() => setIsConnectionListOpen((isOpen) => !isOpen)}
+            onClick={toggleConnectionPicker}
             data-cy="database-select-connection-button"
           >
-            <Icon icon={ListTree} className="lucide" />
+            <Icon
+              icon={ChevronDown}
+              className={`lucide transition-transform ${
+                isConnectionPickerOpen ? 'rotate-180' : ''
+              }`}
+            />
           </Button>
           <Button
             type="button"
             color="default"
             size="small"
             className="ml-auto"
+            title={t('buttonTitles.Add database connection', {
+              defaultValue: 'Add database connection',
+            })}
             onClick={onCreate}
             data-cy="database-add-connection-button"
           >
@@ -868,40 +931,117 @@ function ConnectionSidebar({
           </Button>
         </div>
 
-        {isConnectionListOpen && (
-          <div className="max-h-[200px] shrink-0 overflow-y-auto">
-            {isLoading && (
-              <span className="text-muted">
-                {t('common.Loading...', { defaultValue: 'Loading...' })}
-              </span>
-            )}
-            {!isLoading && connections.length === 0 && (
-              <span className="text-muted">
-                {t('legacyText.No saved connections', {
-                  defaultValue: 'No saved connections',
+        <div
+          role="button"
+          tabIndex={connections.length > 0 ? 0 : -1}
+          aria-label={t('buttonTitles.Select database connection', {
+            defaultValue: 'Select database connection',
+          })}
+          className={`flex w-full items-center gap-2 rounded border px-2 py-2 text-left transition ${
+            connections.length > 0
+              ? 'cursor-pointer border-blue-8 bg-blue-8 text-white hover:bg-blue-9'
+              : 'border-gray-5 bg-white text-gray-7 th-dark:bg-gray-iron-11 th-dark:text-gray-4'
+          }`}
+          onClick={toggleConnectionPicker}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleConnectionPicker();
+            }
+          }}
+        >
+          {activeConnection ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-semibold">
+                    {activeConnection.Name}
+                  </span>
+                  <span className="label label-default shrink-0">
+                    {activeConnection.Type}
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate text-[11px] opacity-80">
+                  {connectionSourceLabel(activeConnection, t)}
+                  {' - '}
+                  {connectionTargetLabel(activeConnection)}
+                </div>
+              </div>
+              <Icon icon={ChevronDown} className="lucide shrink-0 opacity-80" />
+            </>
+          ) : (
+            <span className="text-sm">
+              {isLoading
+                ? t('common.Loading...', { defaultValue: 'Loading...' })
+                : t('legacyText.No saved connections', {
+                    defaultValue: 'No saved connections',
+                  })}
+            </span>
+          )}
+        </div>
+
+        {isConnectionPickerOpen && (
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded border border-gray-5 bg-white shadow-xl th-dark:bg-gray-iron-11">
+            <div className="border-b border-gray-5 p-2">
+              <input
+                className="form-control h-8 w-full"
+                value={connectionSearch}
+                onChange={(event) => setConnectionSearch(event.target.value)}
+                placeholder={t('placeholders.Search database connections', {
+                  defaultValue: 'Search connections',
                 })}
-              </span>
-            )}
-            <div className="space-y-1">
-              {connections.map((connection) => (
-                <div
-                  key={connection.Id}
-                  role="button"
-                  tabIndex={0}
-                  className={`w-full rounded border px-2 py-2 text-left transition ${
-                    activeConnection?.Id === connection.Id
-                      ? 'border-blue-8 bg-blue-8 text-white'
-                      : 'border-gray-5 bg-white text-gray-10 hover:bg-gray-2 th-dark:bg-gray-iron-11 th-dark:text-white th-dark:hover:bg-gray-iron-10'
-                  }`}
-                  onClick={() => onSelectConnection(connection)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onSelectConnection(connection);
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-2">
+                aria-label={t('placeholders.Search database connections', {
+                  defaultValue: 'Search connections',
+                })}
+              />
+            </div>
+
+            <div className="max-h-[320px] overflow-y-auto p-1 [color-scheme:light] th-dark:[color-scheme:dark]">
+              {isLoading && (
+                <span className="text-muted block px-2 py-1">
+                  {t('common.Loading...', { defaultValue: 'Loading...' })}
+                </span>
+              )}
+              {!isLoading && connections.length === 0 && (
+                <span className="text-muted block px-2 py-1">
+                  {t('legacyText.No saved connections', {
+                    defaultValue: 'No saved connections',
+                  })}
+                </span>
+              )}
+              {!isLoading &&
+                connections.length > 0 &&
+                filteredConnections.length === 0 && (
+                  <span className="text-muted block px-2 py-1">
+                    {t('legacyText.No matching connections', {
+                      defaultValue: 'No matching connections',
+                    })}
+                  </span>
+                )}
+              {filteredConnections.map((connection) => {
+                const isActive = activeConnection?.Id === connection.Id;
+
+                return (
+                  <div
+                    key={connection.Id}
+                    role="button"
+                    tabIndex={0}
+                    className={`group mb-1 flex w-full items-center gap-2 rounded border px-2 py-2 text-left transition ${
+                      isActive
+                        ? 'border-blue-8 bg-blue-2 text-blue-10 th-dark:bg-gray-iron-10 th-dark:text-gray-1'
+                        : 'border-transparent text-gray-10 hover:border-gray-5 hover:bg-gray-2 th-dark:text-gray-2 th-dark:hover:bg-gray-iron-10'
+                    }`}
+                    onClick={() => chooseConnection(connection)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) {
+                        return;
+                      }
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        chooseConnection(connection);
+                      }
+                    }}
+                  >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold">
@@ -912,49 +1052,52 @@ function ConnectionSidebar({
                         </span>
                       </div>
                       <div className="mt-0.5 truncate text-[11px] opacity-80">
-                        {connection.ContainerId
-                          ? t('legacyText.Container', {
-                              defaultValue: 'Container',
-                            })
-                          : t('legacyText.Custom address', {
-                              defaultValue: 'Custom address',
-                            })}
+                        {connectionSourceLabel(connection, t)}
                         {' - '}
-                        {connection.Host}:{connection.Port}
-                        {connection.Database ? ` / ${connection.Database}` : ''}
+                        {connectionTargetLabel(connection)}
                       </div>
                     </div>
-                    {activeConnection?.Id === connection.Id && (
-                      <div className="flex shrink-0 gap-1">
-                        <Button
-                          type="button"
-                          color="default"
-                          size="small"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onEdit(connection);
-                          }}
-                          data-cy="database-edit-connection-button"
-                        >
-                          <Icon icon={Pencil} className="lucide" />
-                        </Button>
-                        <Button
-                          type="button"
-                          color="dangerlight"
-                          size="small"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onDelete(connection);
-                          }}
-                          data-cy="database-delete-connection-button"
-                        >
-                          <Icon icon={Trash2} className="lucide" />
-                        </Button>
-                      </div>
+
+                    {isActive && (
+                      <Icon icon={Check} className="lucide shrink-0" />
                     )}
+                    <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                      <Button
+                        type="button"
+                        color="default"
+                        size="small"
+                        title={t('buttonTitles.Edit', {
+                          defaultValue: 'Edit',
+                        })}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setIsConnectionPickerOpen(false);
+                          onEdit(connection);
+                        }}
+                        data-cy="database-edit-connection-button"
+                      >
+                        <Icon icon={Pencil} className="lucide" />
+                      </Button>
+                      <Button
+                        type="button"
+                        color="dangerlight"
+                        size="small"
+                        title={t('buttons.Remove', {
+                          defaultValue: 'Remove',
+                        })}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setIsConnectionPickerOpen(false);
+                          onDelete(connection);
+                        }}
+                        data-cy="database-delete-connection-button"
+                      >
+                        <Icon icon={Trash2} className="lucide" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -990,6 +1133,44 @@ function ConnectionSidebar({
       </div>
     </div>
   );
+}
+
+function connectionSourceLabel(connection: DatabaseConnection, t: TranslateFn) {
+  return connection.ContainerId
+    ? t('legacyText.Container', {
+        defaultValue: 'Container',
+      })
+    : t('legacyText.Custom address', {
+        defaultValue: 'Custom address',
+      });
+}
+
+function connectionTargetLabel(connection: DatabaseConnection) {
+  const database = connection.Database ? ` / ${connection.Database}` : '';
+  return `${connection.Host}:${connection.Port}${database}`;
+}
+
+// 连接数量变多后，搜索需要同时覆盖名称、类型和连接目标；多关键字用空格分隔并全部命中。
+function isConnectionMatched(connection: DatabaseConnection, search: string) {
+  const keywords = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+  if (keywords.length === 0) {
+    return true;
+  }
+
+  const searchableText = [
+    connection.Name,
+    connection.Type,
+    connection.Host,
+    String(connection.Port),
+    connection.Database,
+    connection.ContainerId,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return keywords.every((keyword) => searchableText.includes(keyword));
 }
 
 function SchemaTree({
@@ -1130,7 +1311,9 @@ function SchemaTree({
                   }
                 >
                   <Icon icon={Table2} className="lucide" />
-                  <span className="truncate">{table.name}</span>
+                  <span className="truncate" data-legacy-i18n-skip="true">
+                    {table.name}
+                  </span>
                 </button>
                 {isSelected && (
                   <InlineTableStructure
@@ -1512,11 +1695,15 @@ function InlineTableStructure({
 
   return (
     <div className="mb-2 ml-5 rounded border border-gray-4 bg-gray-1 px-2 py-2 text-xs text-gray-10 th-dark:border-gray-iron-8 th-dark:bg-gray-iron-11 th-dark:text-gray-3">
-      <div className="truncate font-mono font-semibold" title={tableName}>
+      <div
+        className="truncate font-mono font-semibold"
+        title={tableName}
+        data-legacy-i18n-skip="true"
+      >
         {tableName}
       </div>
       <div className="my-1 border-t border-gray-4 th-dark:border-gray-iron-8" />
-      <div className="space-y-1">
+      <div className="space-y-1" data-legacy-i18n-skip="true">
         {details.Columns.map((column) => {
           const flags = [
             column.Nullable ? '' : 'NOT NULL',
@@ -1550,7 +1737,7 @@ function InlineTableStructure({
           <div className="mb-1 font-semibold">
             {t('panelTitles.Indexes', { defaultValue: 'Indexes' })}
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1" data-legacy-i18n-skip="true">
             {details.Indexes.map((index) => {
               const indexType = index.Primary
                 ? 'PK'
@@ -2537,7 +2724,10 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="table-hover nowrap-cells mb-0 table min-w-max">
-          <thead className="sticky top-0 z-10 bg-gray-2 text-gray-10 th-dark:bg-blue-11 th-dark:text-white">
+          <thead
+            className="sticky top-0 z-10 bg-gray-2 text-gray-10 th-dark:bg-blue-11 th-dark:text-white"
+            data-legacy-i18n-skip="true"
+          >
             <tr>
               {result.Columns.map((column) => (
                 <th key={column} className="min-w-[140px]">
@@ -2597,7 +2787,10 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
                   defaultValue: 'Cell details',
                 })}
               </span>
-              <span className="text-muted truncate text-sm">
+              <span
+                className="text-muted truncate text-sm"
+                data-legacy-i18n-skip="true"
+              >
                 {detail.column}
               </span>
             </div>
