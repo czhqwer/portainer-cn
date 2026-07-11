@@ -1,0 +1,4 @@
+﻿container=pcn-spike-gate0b-s3-candidate
+container_port=80
+host_port=55004
+healthcheck_host=127.0.0.1

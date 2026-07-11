@@ -1,0 +1,10 @@
+﻿checked_at=2026-07-11T18:25:40
+agent_image=portainer/agent:2.43.0
+agent_endpoint=https://127.0.0.1:19001
+agent_ping_status=204
+agent_version=2.43.0
+agent_platform=1
+node_name_default=blank-for-single-local-agent
+candidate_health_status=200
+candidate_healthcheck_host=127.0.0.1
+conclusion=LOCAL_AGENT_SPIKE_PASSED

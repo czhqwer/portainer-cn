@@ -1,0 +1,9 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:25:32
+
+docker.exe : Error response from daemon: No such container: pcn-spike-gate0b-s3-agent
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-local-agent-spike.ps1:101 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...gate0b-s3-agent:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

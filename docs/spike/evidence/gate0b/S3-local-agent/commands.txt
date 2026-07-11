@@ -1,0 +1,20 @@
+﻿docker version
+docker ps -a <helper-filter>
+docker pull portainer/agent:2.43.0
+docker pull nginx:alpine
+docker rm -f pcn-spike-gate0b-s3-agent
+docker run -d --name pcn-spike-gate0b-s3-agent --label com.portainer-cn.platform.spike=gate0b -p 19001:9001 -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/docker/volumes:/var/lib/docker/volumes portainer/agent:2.43.0
+docker inspect pcn-spike-gate0b-s3-agent
+docker logs --tail 120 pcn-spike-gate0b-s3-agent
+curl.exe -k -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ https://127.0.0.1:19001/ping
+docker rm -f pcn-spike-gate0b-s3-candidate
+docker run -d --name pcn-spike-gate0b-s3-candidate --label com.portainer-cn.platform.spike=gate0b -P nginx:alpine
+docker inspect pcn-spike-gate0b-s3-candidate
+curl.exe -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:55004/
+docker rm -f pcn-spike-gate0b-s3-candidate
+docker rm -f pcn-spike-gate0b-s3-agent
+docker ps -a <helper-filter>

@@ -122,6 +122,25 @@ Remove-Item Env:\GATE0B_REGISTRY_PASSWORD
 
 该脚本使用临时 Docker config 登录 registry，执行完会删除临时认证文件；证据中不得提交密码、token、认证头或 Docker config。实测至少要证明：正确凭据可 push/pull 私有镜像，错误凭据可稳定映射为 `REGISTRY_AUTH_FAILED`，镜像不存在可稳定映射为 `IMAGE_PULL_FAILED`，并能从拉取后的镜像记录 digest。
 
+### 4.4 本地 Agent 辅助脚本
+
+本地 Agent 子集可以使用 `docs/spike/gate0b-local-agent-spike.ps1` 辅助执行。脚本默认 dry-run，不会运行 Docker；必须显式传入 `-Apply` 才会启动本地 Agent helper 容器和 candidate。
+
+示例：
+
+```powershell
+# 预演，不执行 Docker
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agent-spike.ps1
+
+# 执行 S3 本地子集：Agent /ping、Docker Agent platform、candidate 随机端口从 Portainer 主机可达
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agent-spike.ps1 -Apply
+
+# 清理脚本创建的 helper 容器
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agent-spike.ps1 -Cleanup -Apply
+```
+
+该脚本启动本地 Portainer Agent，并通过 `/ping` 验证 Agent version 和 Docker platform header；随后创建 candidate 随机宿主机端口，并从当前 Portainer 主机视角验证健康检查可达性。它只覆盖 S3 的单机本地 Agent 子集；Agent Docker API 的签名请求、`X-PortainerAgent-Target` 多节点选择、远程 Agent 防火墙和跨主机端口可达性仍必须在真实 Portainer 后端或远程环境中补齐。
+
 ## 5. 默认策略待决项
 
 Spike 必须给出以下默认策略，不能只记录“可配置”：

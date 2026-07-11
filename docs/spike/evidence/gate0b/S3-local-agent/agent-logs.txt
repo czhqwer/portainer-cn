@@ -1,0 +1,20 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:25:38
+
+docker.exe : [90m2026/07/11 10:25:32.919AM[0m [32mINF[0m [1mgithub.com/portainer/agent/cmd/agent/main.go:99[0m[3
+6m >[0m agent running on Docker platform |
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-local-agent-spike.ps1:101 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90m2026/07/11...cker platform |:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[90m2026/07/11 10:25:32.992AM[0m [32mINF[0m [1mgithub.com/portainer/agent/edge/registry/server.go:99[0m[36m >[0
+m starting registry credential server |
+[90m2026/07/11 10:25:32.997AM[0m [32mINF[0m [1mgithub.com/portainer/agent/http/proxy/kubernetes.go:37[0m[36m >[
+0m kubernetes InClusterConfig reports not running in cluster |
+[90m2026/07/11 10:25:32.997AM[0m [32mINF[0m [1mgithub.com/portainer/agent/http/proxy/kubernetes.go:59[0m[36m >[
+0m using default transport for Kubernetes proxy |
+[90m2026/07/11 10:25:32.997AM[0m [32mINF[0m [1mgithub.com/portainer/agent/http/server.go:98[0m[36m >[0m startin
+g Agent API server | [36mapi_version=[0m2.43.0 [36mserver_addr=[0m0.0.0.0 [36mserver_port=[0m9001 [36muse_tls=[
+0mtrue

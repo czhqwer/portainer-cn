@@ -1,0 +1,6 @@
+﻿scenario=S3-local-agent
+agent_image=portainer/agent:2.43.0
+candidate_image=nginx:alpine
+agent_host_port=19001
+started_at=2026-07-11T18:24:23
+cleanup=False

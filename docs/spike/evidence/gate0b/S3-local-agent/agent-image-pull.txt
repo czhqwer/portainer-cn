@@ -1,0 +1,7 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:24:58
+
+2.43.0: Pulling from portainer/agent
+Digest: sha256:3e8cb049fc5fe8f7328dec3d5312d7da3f007127eb6f78f98f3e883d7c15e4b4
+Status: Image is up to date for portainer/agent:2.43.0
+docker.io/portainer/agent:2.43.0

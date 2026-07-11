@@ -1,0 +1,12 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:25:38
+url=https://127.0.0.1:19001/ping
+
+HTTP/1.1 204 No Content
+Portainer-Agent: 2.43.0
+Portainer-Agent-Api-Version: 2
+Portainer-Agent-Platform: 1
+Date: Sat, 11 Jul 2026 10:25:38 GMT
+
+
+status=204

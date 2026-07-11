@@ -2,7 +2,7 @@
 
 版本：v0.1
 日期：2026-07-11
-状态：未通过；S1/S2/S6 本地 Docker socket 子集已实测通过，S7 私有 registry 子集通过，S5 本地命名子集已部分验证，S3/S4 仍等待实测
+状态：未通过；S1/S2/S3/S6 本地子集已实测通过，S7 私有 registry 子集通过，S5 本地命名子集已部分验证，S4 仍等待实测
 关联方案：[Gate 0B Docker/Agent Spike 执行方案](../Gate0B-Docker-Agent-Spike执行方案.md)
 
 ## 1. 总览
@@ -13,7 +13,7 @@
 | --- | --- | --- | --- | --- |
 | S1 | Portainer 后端直接运行在宿主机 + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | Docker socket 可用，candidate 随机端口健康检查 200；清理证据见 `docs/spike/evidence/gate0b/S1-local-docker-cleanup/` |
 | S2 | 容器化 Portainer + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S2-containerized-docker/` | 容器内 Docker socket 可用；`127.0.0.1` 不可达，bridge gateway 和 `host.docker.internal` 均可访问 candidate 随机端口 |
-| S3 | 本地 Agent | 未执行 | - | 待定 |
+| S3 | 本地 Agent | 本地子集通过 | `docs/spike/evidence/gate0b/S3-local-agent/` | Agent `/ping` 返回 Docker platform，单节点 NodeName 可为空，candidate 随机端口从 Portainer 主机可访问 |
 | S4 | 远程 Agent | 未执行 | - | 待定 |
 | S5 | 版本化容器命名 | 部分通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 本地辅助容器 r1/r2 命名与固定端口冲突规避流程通过；正式 `project/env/service/release` 命名模板仍待实现前复核 |
 | S6 | 正式端口切换 | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 旧容器停止、新容器占用正式端口、坏镜像失败后旧容器恢复均完成；恢复后健康检查 200 |
@@ -44,7 +44,7 @@
 | 决策点 | 结论 | 证据 | 状态 |
 | --- | --- | --- | --- |
 | `HealthCheckHost` 默认值 | 宿主机后端场景可用 `127.0.0.1`；本地容器化 Docker socket 场景不能用容器内 `127.0.0.1`，可用 bridge gateway 或 `host.docker.internal`，但正式实现仍需支持显式配置 | `docs/spike/evidence/gate0b/S1-local-docker/*healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/containerized-health-summary.txt` | 部分通过 |
-| Agent `NodeName` 默认选择 | 待定 | - | 未执行 |
+| Agent `NodeName` 默认选择 | 单节点本地 Agent 可为空；多节点 Swarm、远程 Agent 和用户指定目标节点仍待 S4/真实环境验证 | `docs/spike/evidence/gate0b/S3-local-agent/local-agent-summary.txt` | 部分通过 |
 | candidate 随机端口解析 | 本地宿主机和容器化 Docker socket 场景均可通过 Docker 端口映射解析随机宿主机端口 | `docs/spike/evidence/gate0b/S1-local-docker/candidate-healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/candidate-port.txt` | 部分通过 |
 | 私有镜像凭据优先级 | V0.1 发布执行时优先使用 Artifact `RegistryID` 对应凭据；未显式绑定时再按镜像 registry host 匹配环境/系统 registry 配置，不能把明文凭据写入 Release snapshot 或证据 | `docs/spike/evidence/gate0b/S7-private-registry/login-success.txt`、`docs/spike/evidence/gate0b/S7-private-registry/notes.md` | 通过 |
 | digest 解析时机 | 对私有 registry，V0.1 以 pull 成功后的 `RepoDigests` 作为权威 digest；`docker manifest inspect` 在本地 HTTP registry 场景可能失败，不能作为唯一来源 | `docs/spike/evidence/gate0b/S7-private-registry/private-image-repodigests.txt`、`docs/spike/evidence/gate0b/S7-private-registry/manifest-inspect.json` | 通过 |
@@ -147,13 +147,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containeri
 
 ## 8. S3 本地 Agent
 
-状态：未执行
+状态：本地子集通过。
 
-待补证据：
+执行日期：2026-07-11
+执行命令：
 
-- Agent endpoint、目标节点名、`X-PortainerAgent-Target` 或等价后端配置。
-- candidate 随机端口从 Portainer 后端到 Agent 目标宿主机的可达性。
-- 不可达时是否要求用户选择 `startup-only` 后重试。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agent-spike.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agent-spike.ps1 -Apply
+```
+
+证据：
+
+- `docs/spike/evidence/gate0b/S3-local-agent/agent-ping.txt`
+- `docs/spike/evidence/gate0b/S3-local-agent/agent-logs.txt`
+- `docs/spike/evidence/gate0b/S3-local-agent/candidate-port.txt`
+- `docs/spike/evidence/gate0b/S3-local-agent/candidate-healthcheck-from-portainer-host.txt`
+- `docs/spike/evidence/gate0b/S3-local-agent/local-agent-summary.txt`
+- `docs/spike/evidence/gate0b/S3-local-agent/containers-after.txt`
+
+结论：
+
+- 本地 `portainer/agent:2.43.0` 可启动，`/ping` 返回 HTTP 204。
+- Agent 响应头包含 `Portainer-Agent: 2.43.0` 和 `Portainer-Agent-Platform: 1`，可识别为 Docker Agent。
+- 单节点本地 Agent 场景下 `NodeName` 默认可为空；多节点和远程 Agent 仍需实测。
+- candidate 随机宿主机端口可从当前 Portainer 主机用 `127.0.0.1` 访问，健康检查 HTTP 200。
+- 脚本完成后已删除 Agent 和 candidate helper 容器。
+- 本结论未覆盖真实 Portainer 后端签名 Docker API 调用，也未覆盖远程 Agent 防火墙场景。
 
 ## 9. S4 远程 Agent
 
@@ -233,7 +253,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-re
 
 当前结论：未通过。
 
-2026-07-11 已完成本地 Docker socket、容器化 Docker socket 和私有 registry 子集实测，S1/S2/S6/S7 可作为本地公开/私有镜像场景的正向证据，S5 仅完成辅助命名子集验证。S3 本地 Agent、S4 远程 Agent 和正式命名策略仍未完成，Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
+2026-07-11 已完成本地 Docker socket、容器化 Docker socket、本地 Agent 和私有 registry 子集实测，S1/S2/S3/S6/S7 可作为本地公开/私有镜像场景的正向证据，S5 仅完成辅助命名子集验证。S4 远程 Agent、多节点目标选择和正式命名策略仍未完成，Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
 
 通过前必须同时满足：
 
