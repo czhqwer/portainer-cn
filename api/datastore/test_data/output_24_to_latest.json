@@ -2,6 +2,7 @@
   "allowlist": null,
   "api_key": null,
   "customtemplates": null,
+  "database_connection": null,
   "dockerhub": [
     {
       "Authentication": false,
@@ -101,6 +102,14 @@
   "extension": null,
   "helm_user_repository": null,
   "pending_actions": null,
+  "platform_applications": null,
+  "platform_artifacts": null,
+  "platform_environments": null,
+  "platform_projects": null,
+  "platform_release_locks": null,
+  "platform_releases": null,
+  "platform_service_definitions": null,
+  "platform_service_deployments": null,
   "registries": [
     {
       "Authentication": true,
@@ -583,6 +592,7 @@
     "AllowHostNamespaceForRegularUsers": true,
     "AllowPrivilegedModeForRegularUsers": true,
     "AllowStackManagementForRegularUsers": true,
+    "AuditLogRetentionDays": 0,
     "AuthenticationMethod": 1,
     "BlackListedLabels": [],
     "Edge": {
@@ -858,6 +868,8 @@
   "tunnel_server": {
     "PrivateKeySeed": ""
   },
+  "user_activity_logs": null,
+  "user_authentication_logs": null,
   "users": [
     {
       "EndpointAuthorizations": null,

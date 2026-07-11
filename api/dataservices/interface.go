@@ -11,6 +11,14 @@ type (
 		AllowList() AllowListService
 		CustomTemplate() CustomTemplateService
 		DatabaseConnection() DatabaseConnectionService
+		PlatformProject() PlatformProjectService
+		PlatformEnvironment() PlatformEnvironmentService
+		PlatformApplication() PlatformApplicationService
+		PlatformServiceDefinition() PlatformServiceDefinitionService
+		PlatformServiceDeployment() PlatformServiceDeploymentService
+		PlatformArtifact() PlatformArtifactService
+		PlatformRelease() PlatformReleaseService
+		PlatformReleaseLock() PlatformReleaseLockService
 		EdgeGroup() EdgeGroupService
 		EdgeJob() EdgeJobService
 		EdgeStack() EdgeStackService
@@ -78,6 +86,59 @@ type (
 		GetNextIdentifier() int
 		ConnectionsByContainer(userID portainer.UserID, environmentID portainer.EndpointID, containerID string) ([]portainer.DatabaseConnection, error)
 		ConnectionsByEnvironment(userID portainer.UserID, environmentID portainer.EndpointID) ([]portainer.DatabaseConnection, error)
+	}
+
+	// PlatformProjectService represents a service to manage platform projects.
+	PlatformProjectService interface {
+		BaseCRUD[portainer.PlatformProject, portainer.PlatformProjectID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformEnvironmentService represents a service to manage platform environments.
+	PlatformEnvironmentService interface {
+		BaseCRUD[portainer.PlatformEnvironment, portainer.PlatformEnvironmentID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformApplicationService represents a service to manage platform applications.
+	PlatformApplicationService interface {
+		BaseCRUD[portainer.PlatformApplication, portainer.PlatformApplicationID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformServiceDefinitionService represents a service to manage platform service definitions.
+	PlatformServiceDefinitionService interface {
+		BaseCRUD[portainer.PlatformServiceDefinition, portainer.PlatformServiceDefinitionID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformServiceDeploymentService represents a service to manage platform service deployments.
+	PlatformServiceDeploymentService interface {
+		BaseCRUD[portainer.PlatformServiceDeployment, portainer.PlatformServiceDeploymentID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformArtifactService represents a service to manage platform artifacts.
+	PlatformArtifactService interface {
+		BaseCRUD[portainer.PlatformArtifact, portainer.PlatformArtifactID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformReleaseService represents a service to manage platform releases.
+	PlatformReleaseService interface {
+		BaseCRUD[portainer.PlatformRelease, portainer.PlatformReleaseID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformReleaseLockService represents the one-active-release lock per service deployment.
+	PlatformReleaseLockService interface {
+		Create(lock *portainer.PlatformReleaseLock) error
+		Read(id string) (*portainer.PlatformReleaseLock, error)
+		Exists(id string) (bool, error)
+		ReadAll(predicates ...func(portainer.PlatformReleaseLock) bool) ([]portainer.PlatformReleaseLock, error)
+		Update(id string, lock *portainer.PlatformReleaseLock) error
+		Delete(id string) error
+		BucketName() string
 	}
 
 	// EdgeGroupService represents a service to manage Edge groups

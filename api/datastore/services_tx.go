@@ -26,6 +26,38 @@ func (tx *StoreTx) DatabaseConnection() dataservices.DatabaseConnectionService {
 	return tx.store.DatabaseConnectionService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformProject() dataservices.PlatformProjectService {
+	return tx.store.PlatformProjectService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformEnvironment() dataservices.PlatformEnvironmentService {
+	return tx.store.PlatformEnvironmentService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformApplication() dataservices.PlatformApplicationService {
+	return tx.store.PlatformApplicationService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformServiceDefinition() dataservices.PlatformServiceDefinitionService {
+	return tx.store.PlatformServiceDefinitionService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformServiceDeployment() dataservices.PlatformServiceDeploymentService {
+	return tx.store.PlatformServiceDeploymentService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformArtifact() dataservices.PlatformArtifactService {
+	return tx.store.PlatformArtifactService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformRelease() dataservices.PlatformReleaseService {
+	return tx.store.PlatformReleaseService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformReleaseLock() dataservices.PlatformReleaseLockService {
+	return tx.store.PlatformReleaseLockService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PendingActions() dataservices.PendingActionsService {
 	return tx.store.PendingActionsService.Tx(tx.tx)
 }
