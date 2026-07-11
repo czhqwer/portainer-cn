@@ -61,6 +61,14 @@ func (driver *DockerRuntimeDriver) PullImage(ctx context.Context, request Releas
 		return errors.Wrapf(err, "parse image %s", imageRef)
 	}
 
+	if request.Deployment.DesiredSpec.Image.PullPolicy != portainer.PlatformImagePullPolicyAlways {
+		if _, err := cli.ImageInspect(ctx, img.FullName()); err == nil {
+			return nil
+		} else if !errdefs.IsNotFound(err) {
+			return err
+		}
+	}
+
 	puller := images.NewPuller(cli, images.NewRegistryClient(driver.dataStore), driver.dataStore)
 	return puller.Pull(ctx, img)
 }
@@ -189,7 +197,7 @@ func (driver *DockerRuntimeDriver) createAndStartContainer(ctx context.Context, 
 		return portainer.RuntimeRef{}, nil, err
 	}
 
-	inspect, err := cli.ContainerInspect(ctx, createResponse.ID)
+	inspect, err := inspectContainerWithPublishedPorts(ctx, cli, createResponse.ID, request.Deployment.DesiredSpec.Ports)
 	if err != nil {
 		return portainer.RuntimeRef{}, nil, err
 	}
@@ -204,6 +212,38 @@ func (driver *DockerRuntimeDriver) createAndStartContainer(ctx context.Context, 
 	}
 
 	return ref, publishedPortsFromInspect(inspect.NetworkSettings.Ports, request.Deployment.DesiredSpec.Ports), nil
+}
+
+func inspectContainerWithPublishedPorts(ctx context.Context, cli *client.Client, containerID string, specs []portainer.PlatformPortSpec) (dockercontainer.InspectResponse, error) {
+	inspect, err := cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return inspect, err
+	}
+	if len(specs) == 0 || len(publishedPortsFromInspect(inspect.NetworkSettings.Ports, specs)) > 0 {
+		return inspect, nil
+	}
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return inspect, ctx.Err()
+		case <-timeout.C:
+			return inspect, nil
+		case <-ticker.C:
+			inspect, err = cli.ContainerInspect(ctx, containerID)
+			if err != nil {
+				return inspect, err
+			}
+			if len(publishedPortsFromInspect(inspect.NetworkSettings.Ports, specs)) > 0 {
+				return inspect, nil
+			}
+		}
+	}
 }
 
 func (driver *DockerRuntimeDriver) stopRuntime(ctx context.Context, runtimeRef portainer.RuntimeRef, timeoutSeconds int) error {
@@ -402,7 +442,8 @@ func dockerContainerCreateOptions(request ReleaseExecutionRequest, target portai
 	}
 
 	hostConfig := &dockercontainer.HostConfig{
-		PortBindings: ports.bindings,
+		PortBindings:    ports.bindings,
+		PublishAllPorts: ports.publishAll,
 		RestartPolicy: dockercontainer.RestartPolicy{
 			Name: restartPolicy,
 		},
@@ -412,8 +453,9 @@ func dockerContainerCreateOptions(request ReleaseExecutionRequest, target portai
 }
 
 type dockerPorts struct {
-	exposed  nat.PortSet
-	bindings nat.PortMap
+	exposed    nat.PortSet
+	bindings   nat.PortMap
+	publishAll bool
 }
 
 func dockerPortBindings(specs []portainer.PlatformPortSpec, candidate bool) (dockerPorts, error) {
@@ -441,7 +483,10 @@ func dockerPortBindings(specs []portainer.PlatformPortSpec, candidate bool) (doc
 		if !candidate && spec.HostPort > 0 {
 			hostPort = strconv.Itoa(spec.HostPort)
 		}
-		result.bindings[port] = []nat.PortBinding{{HostPort: hostPort}}
+		if hostPort == "" {
+			result.publishAll = true
+		}
+		result.bindings[port] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: hostPort}}
 	}
 
 	return result, nil
