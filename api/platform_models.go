@@ -692,10 +692,10 @@ func NormalizePlatformConfigSet(configSet *PlatformConfigSet) {
 func ValidatePlatformConfigSet(configSet PlatformConfigSet) error {
 	NormalizePlatformConfigSet(&configSet)
 
-	if configSet.ProjectID == 0 {
+	if configSet.ProjectID <= 0 {
 		return fmt.Errorf("config set project ID is required")
 	}
-	if configSet.ScopeID == 0 {
+	if configSet.ScopeID <= 0 {
 		return fmt.Errorf("config set scope ID is required")
 	}
 	if configSet.ScopeType != PlatformConfigScopeProject &&

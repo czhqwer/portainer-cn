@@ -518,7 +518,7 @@ func dockerContainerCreateOptions(request ReleaseExecutionRequest, target portai
 
 	config := &dockercontainer.Config{
 		Image:        request.Artifact.ImageRef,
-		Env:          dockerEnv(request.Deployment.DesiredSpec.EnvOverrides),
+		Env:          dockerEnv(request),
 		ExposedPorts: ports.exposed,
 		Labels:       dockerLabels(request, target, candidate),
 		StopTimeout:  &stopTimeout,
@@ -580,7 +580,27 @@ func dockerPortBindings(specs []portainer.PlatformPortSpec, candidate bool) (doc
 	return result, nil
 }
 
-func dockerEnv(vars []portainer.PlatformEnvVar) []string {
+func dockerEnv(request ReleaseExecutionRequest) []string {
+	effective := request.Release.ConfigSnapshot.EffectiveConfigSnapshot
+	if effective.Hash != "" || len(effective.Entries) > 0 {
+		env := make([]string, 0, len(effective.Entries))
+		for _, entry := range effective.Entries {
+			// 批次 3 只注入已合并的普通 plain 配置；敏感值与引用值必须等待批次 4
+			// 解密和专用注入路径，避免把密文、引用 ID 或敏感明文误写入 Docker 环境。
+			if entry.Sensitive || entry.ValueType != portainer.PlatformConfigValuePlain || entry.Key == "" {
+				continue
+			}
+			env = append(env, entry.Key+"="+entry.Value)
+		}
+		return env
+	}
+
+	// 旧 Release 没有有效配置快照时保留阶段 1 的字面量环境变量路径，保证恢复和
+	// 清理等历史运行资源操作不会因阶段 2 快照字段为空而改变容器配置。
+	return dockerEnvOverrides(request.Deployment.DesiredSpec.EnvOverrides)
+}
+
+func dockerEnvOverrides(vars []portainer.PlatformEnvVar) []string {
 	env := make([]string, 0, len(vars))
 	for _, variable := range vars {
 		if variable.Source != "" && variable.Source != portainer.PlatformEnvVarSourceLiteral {
@@ -589,8 +609,6 @@ func dockerEnv(vars []portainer.PlatformEnvVar) []string {
 		if variable.Name == "" {
 			continue
 		}
-		// V0.1 只把字面量环境变量写入容器；配置中心和密钥引用仍保留在控制面快照，
-		// 避免在执行器首版中误把未解析的敏感引用展开到 Docker 环境变量。
 		env = append(env, variable.Name+"="+variable.Value)
 	}
 

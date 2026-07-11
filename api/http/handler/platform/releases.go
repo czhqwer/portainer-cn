@@ -114,8 +114,15 @@ func (handler *Handler) releaseValidate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	err := handler.DataStore.ViewTx(func(tx dataservices.DataStoreTx) error {
-		_, _, err := validateReleaseReferences(tx, payload)
-		return err
+		deployment, _, err := validateReleaseReferences(tx, payload)
+		if err != nil {
+			return err
+		}
+		_, err = effectiveConfigForDeployment(tx, *deployment)
+		if err != nil {
+			return validationFailedError(err.Error())
+		}
+		return nil
 	})
 	if err != nil {
 		return handler.convertError(err)
@@ -243,8 +250,12 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 			return err
 		}
 		refs = releaseRefs
+		effectiveConfig, err := effectiveConfigForDeployment(tx, *refs.deployment)
+		if err != nil {
+			return validationFailedError(err.Error())
+		}
 
-		release = newQueuedRelease(payload, refs.deployment, refs.artifact, userID, idempotencyKeyHash, payloadHash, now)
+		release = newQueuedRelease(payload, refs.deployment, refs.artifact, effectiveConfig, userID, idempotencyKeyHash, payloadHash, now)
 
 		if err := tx.PlatformRelease().Create(release); err != nil {
 			return err
@@ -409,7 +420,7 @@ func findIdempotentRelease(tx dataservices.DataStoreTx, serviceDeploymentID port
 	return &releases[0], nil
 }
 
-func newQueuedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
+func newQueuedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, effectiveConfig portainer.PlatformEffectiveConfigSnapshot, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
 	return &portainer.PlatformRelease{
 		ProjectID:            payload.ProjectID,
 		EnvironmentID:        payload.EnvironmentID,
@@ -430,8 +441,10 @@ func newQueuedRelease(payload createReleasePayload, deployment *portainer.Platfo
 		Traceability:         artifact.Traceability,
 		ArtifactSnapshot:     artifactSnapshotFromArtifact(artifact),
 		ConfigSnapshot: portainer.PlatformServiceConfigSnapshot{
-			SpecRevision:        deployment.SpecRevision,
-			DesiredSpecSnapshot: deployment.DesiredSpec,
+			SpecRevision:            deployment.SpecRevision,
+			DesiredSpecSnapshot:     deployment.DesiredSpec,
+			EffectiveConfigSnapshot: effectiveConfig,
+			ConfigHash:              effectiveConfig.Hash,
 		},
 		TargetSnapshot:    targetSnapshotFromDeployment(deployment),
 		HealthCheckResult: portainer.PlatformHealthCheckResult{Status: portainer.PlatformHealthCheckStatusSkipped},

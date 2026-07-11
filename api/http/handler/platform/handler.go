@@ -82,6 +82,8 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentStatus))).Methods(http.MethodGet)
 	h.Handle("/platform/service-deployments/{deploymentId}/logs",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentLogs))).Methods(http.MethodGet)
+	h.Handle("/platform/service-deployments/{deploymentId}/effective-config",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentEffectiveConfig))).Methods(http.MethodGet)
 	h.Handle("/platform/service-deployments/{deploymentId}",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentUpdate))).Methods(http.MethodPut)
 	h.Handle("/platform/service-deployments/{deploymentId}",
@@ -89,6 +91,17 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 
 	h.Handle("/platform/artifacts",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactList))).Methods(http.MethodGet)
+
+	h.Handle("/platform/config-sets",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.configSetList))).Methods(http.MethodGet)
+	h.Handle("/platform/config-sets",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.configSetCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/config-sets/{configSetId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.configSetInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/config-sets/{configSetId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.configSetUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/config-sets/{configSetId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.configSetArchive))).Methods(http.MethodDelete)
 	h.Handle("/platform/artifacts/image-reference",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactImageReferenceCreate))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/{artifactId}",

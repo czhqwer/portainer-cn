@@ -226,6 +226,54 @@ func (payload *updateServiceDeploymentPayload) Validate(_ *http.Request) error {
 	return nil
 }
 
+type createConfigSetPayload struct {
+	ProjectID portainer.PlatformProjectID       `json:"ProjectId"`
+	ScopeType portainer.PlatformConfigScopeType `json:"ScopeType"`
+	ScopeID   int                               `json:"ScopeId"`
+	Name      string                            `json:"Name,omitempty"`
+	Entries   []portainer.PlatformConfigEntry   `json:"Entries,omitempty"`
+}
+
+func (payload *createConfigSetPayload) Validate(_ *http.Request) error {
+	configSet := portainer.NewPlatformConfigSet()
+	configSet.ProjectID = payload.ProjectID
+	configSet.ScopeType = payload.ScopeType
+	configSet.ScopeID = payload.ScopeID
+	configSet.Name = payload.Name
+	configSet.Entries = payload.Entries
+	portainer.NormalizePlatformConfigSet(&configSet)
+	if err := portainer.ValidatePlatformConfigSet(configSet); err != nil {
+		return err
+	}
+
+	payload.Name = configSet.Name
+	payload.Entries = configSet.Entries
+	return nil
+}
+
+type updateConfigSetPayload struct {
+	ResourceVersion int                              `json:"ResourceVersion"`
+	Name            *string                          `json:"Name,omitempty"`
+	Entries         *[]portainer.PlatformConfigEntry `json:"Entries,omitempty"`
+}
+
+func (payload *updateConfigSetPayload) Validate(_ *http.Request) error {
+	if err := validateResourceVersion(payload.ResourceVersion); err != nil {
+		return err
+	}
+	if payload.Name != nil {
+		name := strings.TrimSpace(*payload.Name)
+		payload.Name = &name
+		if name == "" {
+			return errors.New("Name is required")
+		}
+	}
+	if payload.Entries == nil && payload.Name == nil {
+		return errors.New("Name or Entries is required")
+	}
+	return nil
+}
+
 type resolveReleasePayload struct {
 	Action  portainer.PlatformReleaseResolution `json:"Action"`
 	Comment string                              `json:"Comment,omitempty"`
