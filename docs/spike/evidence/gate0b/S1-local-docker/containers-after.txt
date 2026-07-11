@@ -1,0 +1,3 @@
+﻿NAMES                 IMAGE          STATUS                  PORTS
+pcn-spike-gate0b-r1   nginx:alpine   Up Less than a second   0.0.0.0:18080->80/tcp
+

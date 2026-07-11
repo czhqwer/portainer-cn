@@ -1,0 +1,2 @@
+﻿docker rm -f pcn-spike-gate0b-r1
+docker ps -a --filter label=com.portainer-cn.platform.spike=gate0b --format table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}

@@ -1,0 +1,5 @@
+﻿scenario=S1-local-docker
+image=nginx:alpine
+official_port=18080
+started_at=2026-07-11T17:52:18
+cleanup=False

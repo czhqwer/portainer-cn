@@ -37,6 +37,7 @@ function Start-Evidence {
         "started_at=$((Get-Date).ToString('s'))",
         "cleanup=$Cleanup"
     )
+    Set-Content -Path (Join-Path $EvidencePath "commands.txt") -Encoding UTF8 -Value @()
     Start-Transcript -Path $TranscriptPath -Force | Out-Null
     $script:TranscriptStarted = $true
 }
@@ -52,17 +53,17 @@ function Save-CommandOutput {
     param(
         [string]$FileName,
         [string]$Command,
-        [string[]]$Args
+        [string[]]$CommandArgs
     )
 
     if (-not $Apply) {
         return
     }
 
-    $line = "$Command $($Args -join ' ')"
+    $line = "$Command $($CommandArgs -join ' ')"
     Write-Host $line
     Add-Content -Path (Join-Path $EvidencePath "commands.txt") -Encoding UTF8 -Value $line
-    $output = & $Command @Args 2>&1
+    $output = & $Command @CommandArgs 2>&1
     $exitCode = $LASTEXITCODE
     $text = ($output | Out-String)
     if ($text.Trim()) {
@@ -112,19 +113,19 @@ function Invoke-Step {
 }
 
 function Invoke-Docker {
-    param([string[]]$Args)
+    param([string[]]$DockerArgs)
 
-    Write-Host "docker $($Args -join ' ')"
+    Write-Host "docker $($DockerArgs -join ' ')"
     if ($Apply) {
-        Add-Content -Path (Join-Path $EvidencePath "commands.txt") -Encoding UTF8 -Value "docker $($Args -join ' ')"
-        $output = & docker @Args 2>&1
+        Add-Content -Path (Join-Path $EvidencePath "commands.txt") -Encoding UTF8 -Value "docker $($DockerArgs -join ' ')"
+        $output = & docker @DockerArgs 2>&1
         $exitCode = $LASTEXITCODE
         $text = ($output | Out-String)
         if ($text.Trim()) {
             Write-Host $text.TrimEnd()
         }
         if ($exitCode -ne 0) {
-            throw "docker $($Args -join ' ') failed with exit code $exitCode"
+            throw "docker $($DockerArgs -join ' ') failed with exit code $exitCode"
         }
     }
 }
@@ -144,9 +145,15 @@ function Get-HostPort {
         [string]$ContainerPort
     )
 
-    $port = & docker inspect $Name --format "{{(index (index .NetworkSettings.Ports `"$ContainerPort/tcp`") 0).HostPort}}"
-    if (-not $port) {
+    $mapping = & docker port $Name "$ContainerPort/tcp"
+    if (-not $mapping) {
         throw "Cannot resolve host port for $Name $ContainerPort/tcp"
+    }
+
+    $firstMapping = @($mapping)[0]
+    $port = ($firstMapping -split ":")[-1]
+    if (-not $port) {
+        throw "Cannot parse host port from mapping: $firstMapping"
     }
 
     return [int]$port

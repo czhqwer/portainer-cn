@@ -1,0 +1,28 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260711175426
+Username: LAPTOP-K3G7I15Q\czh
+RunAs User: LAPTOP-K3G7I15Q\czh
+Configuration Name: 
+Machine: LAPTOP-K3G7I15Q (Microsoft Windows NT 10.0.19045.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps1 -Cleanup -Apply -EvidenceRoot docs/spike/evidence/gate0b/S1-local-docker-cleanup
+Process ID: 27800
+PSVersion: 5.1.19041.6328
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6328
+BuildVersion: 10.0.19041.6328
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+==> Remove helper-created containers
+docker rm -f pcn-spike-gate0b-r1
+pcn-spike-gate0b-r1
+docker ps -a --filter label=com.portainer-cn.platform.spike=gate0b --format table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}
+NAMES     IMAGE     STATUS    PORTS
+**********************
+Windows PowerShell transcript end
+End time: 20260711175428
+**********************
