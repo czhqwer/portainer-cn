@@ -292,7 +292,7 @@ func (driver *DockerRuntimeDriver) validateContainerRunning(ctx context.Context,
 
 	result.Status = portainer.PlatformHealthCheckStatusFailed
 	result.ErrorMessage = "container is not running"
-	return result, codedRuntimeError{reason: ReleaseFailureReasonCandidateHealthFailed, message: result.ErrorMessage}
+	return result, codedRuntimeError{reason: ReleaseFailureReasonHealthcheckFailed, message: result.ErrorMessage}
 }
 
 func (driver *DockerRuntimeDriver) validateHTTP(ctx context.Context, request ReleaseExecutionRequest, target portainer.PlatformDeploymentTarget, ports []portainer.PlatformPublishedPort, result portainer.PlatformHealthCheckResult) (portainer.PlatformHealthCheckResult, error) {
@@ -316,6 +316,7 @@ func (driver *DockerRuntimeDriver) validateHTTP(ctx context.Context, request Rel
 	}
 
 	var lastErr error
+	reason := ReleaseFailureReasonHealthcheckHostUnreachable
 	for attempt := 0; attempt < retries; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, result.Target, nil)
 		if err != nil {
@@ -334,6 +335,7 @@ func (driver *DockerRuntimeDriver) validateHTTP(ctx context.Context, request Rel
 				return result, nil
 			}
 			lastErr = fmt.Errorf("HTTP health check returned status %d", resp.StatusCode)
+			reason = ReleaseFailureReasonHealthcheckFailed
 		} else {
 			lastErr = err
 		}
@@ -344,7 +346,7 @@ func (driver *DockerRuntimeDriver) validateHTTP(ctx context.Context, request Rel
 	result.Status = portainer.PlatformHealthCheckStatusFailed
 	result.ErrorMessage = lastErr.Error()
 
-	return result, codedRuntimeError{reason: ReleaseFailureReasonHealthcheckHostUnreachable, message: result.ErrorMessage}
+	return result, codedRuntimeError{reason: reason, message: result.ErrorMessage}
 }
 
 func (driver *DockerRuntimeDriver) validateTCP(ctx context.Context, request ReleaseExecutionRequest, target portainer.PlatformDeploymentTarget, ports []portainer.PlatformPublishedPort, result portainer.PlatformHealthCheckResult) (portainer.PlatformHealthCheckResult, error) {

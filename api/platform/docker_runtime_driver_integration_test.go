@@ -2,17 +2,31 @@ package platform
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	portainer "github.com/portainer/portainer/api"
+	"github.com/portainer/portainer/api/crypto"
 	"github.com/portainer/portainer/api/datastore"
 	dockerclient "github.com/portainer/portainer/api/docker/client"
+	"github.com/portainer/portainer/pkg/fips"
 
+	dockercontainer "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	fips.InitFIPS(false)
+	os.Exit(m.Run())
+}
 
 func TestDockerRuntimeDriverPublishesPublicImageIntegration(t *testing.T) {
 	if os.Getenv("PORTAINER_PLATFORM_DOCKER_IT") != "1" {
@@ -59,17 +73,56 @@ func TestDockerRuntimeDriverPublishesPrivateImageIntegration(t *testing.T) {
 	require.NotEmpty(t, result.Release.RuntimeSnapshot.CurrentRuntimeRef.ResourceID)
 }
 
+func TestDockerRuntimeDriverHealthFailureIntegration(t *testing.T) {
+	if os.Getenv("PORTAINER_PLATFORM_DOCKER_IT") != "1" {
+		t.Skip("set PORTAINER_PLATFORM_DOCKER_IT=1 to run the real Docker runtime driver integration test")
+	}
+
+	image := envOrDefault("PORTAINER_PLATFORM_DOCKER_PUBLIC_IMAGE", "nginx:alpine")
+	driver, request := newDockerRuntimeIntegration(t, image, nil)
+	request.Deployment.DesiredSpec.HealthCheck.Path = "/definitely-not-found"
+	request.Release.ConfigSnapshot.DesiredSpecSnapshot = request.Deployment.DesiredSpec
+
+	result := executeDockerRuntimeIntegration(t, driver, request)
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.Equal(t, ReleaseFailureReasonHealthcheckFailed, result.Release.FailureReason)
+	require.NotEmpty(t, result.Release.RuntimeSnapshot.CandidateRuntimeRef.ResourceID)
+	require.Empty(t, result.Release.RuntimeSnapshot.CurrentRuntimeRef.ResourceID)
+}
+
+func TestDockerRuntimeDriverPortConflictIntegration(t *testing.T) {
+	if os.Getenv("PORTAINER_PLATFORM_DOCKER_IT") != "1" {
+		t.Skip("set PORTAINER_PLATFORM_DOCKER_IT=1 to run the real Docker runtime driver integration test")
+	}
+
+	image := envOrDefault("PORTAINER_PLATFORM_DOCKER_PUBLIC_IMAGE", "nginx:alpine")
+	driver, request := newDockerRuntimeIntegration(t, image, nil)
+	hostPort := freeTCPPort(t)
+	request.Deployment.DesiredSpec.Ports[0].HostPort = hostPort
+	request.Release.ConfigSnapshot.DesiredSpecSnapshot = request.Deployment.DesiredSpec
+	cleanup := startPortBlockerContainer(t, driver, request, hostPort)
+	t.Cleanup(cleanup)
+
+	result := executeDockerRuntimeIntegration(t, driver, request)
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.Equal(t, ReleaseFailureReasonSwitchFailed, result.Release.FailureReason)
+	require.NotEmpty(t, result.Release.RuntimeSnapshot.CandidateRuntimeRef.ResourceID)
+	require.Empty(t, result.Release.RuntimeSnapshot.CurrentRuntimeRef.ResourceID)
+}
+
 func newDockerRuntimeIntegration(t *testing.T, image string, registry *portainer.Registry) (*DockerRuntimeDriver, ReleaseExecutionRequest) {
 	t.Helper()
 
 	_, store := datastore.MustNewTestStore(t, true, false)
+	endpointType := dockerIntegrationEndpointType()
 	endpoint := &portainer.Endpoint{
-		ID:      1,
-		Name:    "platform-it-docker",
-		Type:    portainer.DockerEnvironment,
-		URL:     dockerIntegrationEndpointURL(),
-		GroupID: 1,
-		Status:  portainer.EndpointStatusUp,
+		ID:        1,
+		Name:      "platform-it-docker",
+		Type:      endpointType,
+		URL:       dockerIntegrationEndpointURL(endpointType),
+		GroupID:   1,
+		Status:    portainer.EndpointStatusUp,
+		TLSConfig: dockerIntegrationEndpointTLSConfig(endpointType),
 	}
 	require.NoError(t, store.Endpoint().Create(endpoint))
 
@@ -79,7 +132,7 @@ func newDockerRuntimeIntegration(t *testing.T, image string, registry *portainer
 		registryID = registry.ID
 	}
 
-	factory := dockerclient.NewClientFactory(nil, nil)
+	factory := dockerclient.NewClientFactory(dockerIntegrationSignatureService(t, endpointType), nil)
 	driver := NewDockerRuntimeDriver(store, factory)
 	request := sampleReleaseExecutionRequest()
 	request.Project.Slug = "it-project"
@@ -111,7 +164,7 @@ func newDockerRuntimeIntegration(t *testing.T, image string, registry *portainer
 	request.Release.Image = image
 	request.Release.ArtifactSnapshot.ImageRef = image
 	request.Release.ArtifactSnapshot.RegistryID = registryID
-	request.Release.ConfigSnapshot.DesiredSpecSnapshot = request.Deployment.DesiredSpec
+	applyDockerIntegrationSpecOverrides(&request)
 
 	return driver, request
 }
@@ -129,9 +182,21 @@ func executeDockerRuntimeIntegration(t *testing.T, driver *DockerRuntimeDriver, 
 	return result
 }
 
-func dockerIntegrationEndpointURL() string {
+func dockerIntegrationEndpointType() portainer.EndpointType {
+	switch strings.ToLower(os.Getenv("PORTAINER_PLATFORM_DOCKER_ENDPOINT_TYPE")) {
+	case "agent", "agent-docker", "agent_on_docker":
+		return portainer.AgentOnDockerEnvironment
+	default:
+		return portainer.DockerEnvironment
+	}
+}
+
+func dockerIntegrationEndpointURL(endpointType portainer.EndpointType) string {
 	if value := os.Getenv("PORTAINER_PLATFORM_DOCKER_ENDPOINT_URL"); value != "" {
 		return value
+	}
+	if endpointType == portainer.AgentOnDockerEnvironment {
+		return "127.0.0.1:9001"
 	}
 	if runtime.GOOS == "windows" {
 		return "npipe:////./pipe/docker_engine"
@@ -140,10 +205,108 @@ func dockerIntegrationEndpointURL() string {
 	return "unix:///var/run/docker.sock"
 }
 
+func dockerIntegrationEndpointTLSConfig(endpointType portainer.EndpointType) portainer.TLSConfiguration {
+	tlsConfig := portainer.TLSConfiguration{}
+	if endpointType == portainer.AgentOnDockerEnvironment {
+		tlsConfig.TLS = true
+		tlsConfig.TLSSkipVerify = true
+	}
+	if value := os.Getenv("PORTAINER_PLATFORM_DOCKER_ENDPOINT_TLS"); value != "" {
+		enabled, err := strconv.ParseBool(value)
+		if err == nil {
+			tlsConfig.TLS = enabled
+		}
+	}
+	if value := os.Getenv("PORTAINER_PLATFORM_DOCKER_ENDPOINT_TLS_SKIP_VERIFY"); value != "" {
+		skip, err := strconv.ParseBool(value)
+		if err == nil {
+			tlsConfig.TLSSkipVerify = skip
+		}
+	}
+
+	return tlsConfig
+}
+
+func dockerIntegrationSignatureService(t *testing.T, endpointType portainer.EndpointType) portainer.DigitalSignatureService {
+	t.Helper()
+
+	if endpointType != portainer.AgentOnDockerEnvironment {
+		return nil
+	}
+
+	secret := os.Getenv("PORTAINER_PLATFORM_DOCKER_AGENT_SECRET")
+	if secret == "" && os.Getenv("PORTAINER_PLATFORM_DOCKER_AGENT_ALLOW_EPHEMERAL_KEY") != "1" {
+		t.Skip("set PORTAINER_PLATFORM_DOCKER_AGENT_SECRET, or PORTAINER_PLATFORM_DOCKER_AGENT_ALLOW_EPHEMERAL_KEY=1 for a disposable Agent pairing test")
+	}
+
+	signatureService := crypto.NewECDSAService(secret)
+	_, _, err := signatureService.GenerateKeyPair()
+	require.NoError(t, err)
+
+	return signatureService
+}
+
 func envOrDefault(name string, fallback string) string {
 	if value := os.Getenv(name); value != "" {
 		return value
 	}
 
 	return fallback
+}
+
+func applyDockerIntegrationSpecOverrides(request *ReleaseExecutionRequest) {
+	if request == nil {
+		return
+	}
+
+	if value := os.Getenv("PORTAINER_PLATFORM_DOCKER_HEALTH_VERIFICATION"); value != "" {
+		request.Deployment.DesiredSpec.HealthCheck.VerificationLevel = portainer.PlatformHealthVerification(value)
+	}
+	if value := os.Getenv("PORTAINER_PLATFORM_DOCKER_HEALTH_TYPE"); value != "" {
+		request.Deployment.DesiredSpec.HealthCheck.Type = portainer.PlatformHealthCheckType(value)
+	}
+	if value := os.Getenv("PORTAINER_PLATFORM_DOCKER_HOST_PORT"); value != "" && len(request.Deployment.DesiredSpec.Ports) > 0 {
+		hostPort, err := strconv.Atoi(value)
+		if err == nil {
+			request.Deployment.DesiredSpec.Ports[0].HostPort = hostPort
+		}
+	}
+
+	request.Release.ConfigSnapshot.DesiredSpecSnapshot = request.Deployment.DesiredSpec
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	return listener.Addr().(*net.TCPAddr).Port
+}
+
+func startPortBlockerContainer(t *testing.T, driver *DockerRuntimeDriver, request ReleaseExecutionRequest, hostPort int) func() {
+	t.Helper()
+
+	ctx := context.Background()
+	cli, err := driver.clientForTarget(request.Environment.Targets[0])
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cli.Close() })
+
+	port := nat.Port("80/tcp")
+	name := fmt.Sprintf("pcn-it-port-blocker-%d", hostPort)
+	_ = cli.ContainerRemove(ctx, name, dockercontainer.RemoveOptions{Force: true})
+	created, err := cli.ContainerCreate(ctx, &dockercontainer.Config{
+		Image:        request.Artifact.ImageRef,
+		ExposedPorts: nat.PortSet{port: struct{}{}},
+		Labels:       map[string]string{platformLabelPrefix + ".managed": "true"},
+	}, &dockercontainer.HostConfig{
+		PortBindings: nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(hostPort)}}},
+	}, &network.NetworkingConfig{}, nil, name)
+	require.NoError(t, err)
+	require.NoError(t, cli.ContainerStart(ctx, created.ID, dockercontainer.StartOptions{}))
+
+	return func() {
+		_ = cli.ContainerRemove(ctx, created.ID, dockercontainer.RemoveOptions{Force: true})
+	}
 }

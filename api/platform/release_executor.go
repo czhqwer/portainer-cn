@@ -21,6 +21,7 @@ const (
 	ReleaseFailureReasonSwitchFailed               = "SWITCH_FAILED"
 	ReleaseFailureReasonFinalHealthFailed          = "FINAL_HEALTH_FAILED"
 	ReleaseFailureReasonRecoveryFailed             = "RECOVERY_FAILED"
+	ReleaseFailureReasonHealthcheckFailed          = "HEALTHCHECK_FAILED"
 	ReleaseFailureReasonHealthcheckHostUnreachable = "HEALTHCHECK_HOST_UNREACHABLE"
 )
 
