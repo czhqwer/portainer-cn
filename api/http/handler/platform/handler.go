@@ -78,5 +78,25 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 	h.Handle("/platform/service-deployments/{deploymentId}",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentArchive))).Methods(http.MethodDelete)
 
+	h.Handle("/platform/artifacts",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactList))).Methods(http.MethodGet)
+	h.Handle("/platform/artifacts/image-reference",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactImageReferenceCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/artifacts/{artifactId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/artifacts/{artifactId}/validate",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactValidate))).Methods(http.MethodPost)
+	h.Handle("/platform/artifacts/{artifactId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.artifactArchive))).Methods(http.MethodDelete)
+
+	h.Handle("/platform/releases",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseList))).Methods(http.MethodGet)
+	h.Handle("/platform/releases/validate",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseValidate))).Methods(http.MethodPost)
+	h.Handle("/platform/releases",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/releases/{releaseId}",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseInspect))).Methods(http.MethodGet)
+
 	return h
 }

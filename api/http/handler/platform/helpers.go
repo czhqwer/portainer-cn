@@ -14,11 +14,14 @@ import (
 )
 
 const (
-	errPlatformInvalidRequest          = "PLATFORM_INVALID_REQUEST"
-	errPlatformNotFound                = "PLATFORM_NOT_FOUND"
-	errPlatformValidationFailed        = "PLATFORM_VALIDATION_FAILED"
-	errPlatformResourceVersionConflict = "PLATFORM_RESOURCE_VERSION_CONFLICT"
-	errPlatformInternalError           = "PLATFORM_INTERNAL_ERROR"
+	errPlatformInvalidRequest             = "PLATFORM_INVALID_REQUEST"
+	errPlatformNotFound                   = "PLATFORM_NOT_FOUND"
+	errPlatformValidationFailed           = "PLATFORM_VALIDATION_FAILED"
+	errPlatformResourceVersionConflict    = "PLATFORM_RESOURCE_VERSION_CONFLICT"
+	errPlatformReleaseConflict            = "PLATFORM_RELEASE_CONFLICT"
+	errPlatformIdempotencyPayloadMismatch = "PLATFORM_IDEMPOTENCY_PAYLOAD_MISMATCH"
+	errPlatformUnsupportedOperation       = "PLATFORM_UNSUPPORTED_OPERATION"
+	errPlatformInternalError              = "PLATFORM_INTERNAL_ERROR"
 )
 
 func (handler *Handler) routeID(r *http.Request, name string) (int, *httperror.HandlerError) {
