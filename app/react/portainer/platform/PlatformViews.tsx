@@ -1,6 +1,15 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Package, Rocket } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  Package,
+  RefreshCw,
+  Rocket,
+  Wrench,
+} from 'lucide-react';
 
 import { Alert } from '@@/Alert';
 import { Button } from '@@/buttons';
@@ -11,12 +20,20 @@ import {
   usePlatformArtifacts,
   usePlatformProjects,
   usePlatformReleases,
+  usePlatformServiceDeploymentLogs,
+  usePlatformServiceDeployments,
+  usePlatformServiceDeploymentStatus,
   usePlatformServices,
+  useResolvePlatformReleaseMutation,
 } from './queries';
 import {
   PlatformApplication,
   PlatformArtifact,
+  PlatformPublishedPort,
   PlatformRelease,
+  PlatformReleaseResolutionAction,
+  PlatformRuntimeRef,
+  PlatformServiceDeployment,
   PlatformServiceDefinition,
 } from './types';
 
@@ -26,7 +43,10 @@ export function PlatformProjectsView() {
   const projects = projectsQuery.data ?? [];
 
   return (
-    <PlatformPage titleKey="platform.pages.projects.title">
+    <PlatformPage
+      titleKey="platform.pages.projects.title"
+      titleDefault="Projects"
+    >
       <PlatformNoticeStack />
       <SummaryStrip
         items={[
@@ -68,12 +88,15 @@ export function PlatformProjectsView() {
               defaultValue: 'Resource version',
             }),
           ]}
-          rows={projects.map((project) => [
-            project.Name,
-            project.Slug,
-            project.LifecycleStatus,
-            String(project.ResourceVersion),
-          ])}
+          rows={projects.map((project) => ({
+            key: String(project.Id),
+            cells: [
+              project.Name,
+              project.Slug,
+              project.LifecycleStatus,
+              String(project.ResourceVersion),
+            ],
+          }))}
         />
       </DataSection>
     </PlatformPage>
@@ -85,34 +108,89 @@ export function PlatformApplicationsView() {
   const projectsQuery = usePlatformProjects();
   const projects = projectsQuery.data ?? [];
   const [selectedProjectId, setSelectedProjectId] = useState<number>();
+  const [selectedApplicationId, setSelectedApplicationId] = useState<number>();
+  const [selectedServiceId, setSelectedServiceId] = useState<number>();
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<number>();
   const currentProject = selectedProjectId
     ? projects.find((project) => project.Id === selectedProjectId)
     : projects[0];
   const applicationsQuery = usePlatformApplications(currentProject?.Id);
   const applications = applicationsQuery.data ?? [];
-  const firstApplication = applications[0];
-  const servicesQuery = usePlatformServices(firstApplication?.Id);
+  const currentApplication = selectedApplicationId
+    ? applications.find(
+        (application) => application.Id === selectedApplicationId
+      )
+    : applications[0];
+  const servicesQuery = usePlatformServices(currentApplication?.Id);
   const services = servicesQuery.data ?? [];
+  const currentService = selectedServiceId
+    ? services.find((service) => service.Id === selectedServiceId)
+    : services[0];
+  const deploymentsQuery = usePlatformServiceDeployments(currentService?.Id);
+  const deployments = deploymentsQuery.data ?? [];
+  const currentDeployment = selectedDeploymentId
+    ? deployments.find((deployment) => deployment.Id === selectedDeploymentId)
+    : deployments[0];
 
   return (
-    <PlatformPage titleKey="platform.pages.applications.title">
+    <PlatformPage
+      titleKey="platform.pages.applications.title"
+      titleDefault="Applications"
+    >
       <PlatformNoticeStack />
-      <div className="mx-4 mb-4 max-w-sm">
-        <label className="text-muted mb-1 block text-sm">
-          {t('platform.filters.project', { defaultValue: 'Project' })}
-        </label>
-        <select
-          className="form-control"
-          value={currentProject?.Id ?? ''}
-          onChange={(event) => setSelectedProjectId(Number(event.target.value))}
+      <div className="mx-4 mb-4 grid gap-3 lg:grid-cols-4">
+        <SelectField
+          label={t('platform.filters.project', { defaultValue: 'Project' })}
+          value={currentProject?.Id}
           disabled={projects.length === 0}
+          onChange={setSelectedProjectId}
         >
           {projects.map((project) => (
             <option key={project.Id} value={project.Id}>
               {project.Name}
             </option>
           ))}
-        </select>
+        </SelectField>
+        <SelectField
+          label={t('platform.filters.application', {
+            defaultValue: 'Application',
+          })}
+          value={currentApplication?.Id}
+          disabled={applications.length === 0}
+          onChange={setSelectedApplicationId}
+        >
+          {applications.map((application) => (
+            <option key={application.Id} value={application.Id}>
+              {application.Name}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label={t('platform.filters.service', { defaultValue: 'Service' })}
+          value={currentService?.Id}
+          disabled={services.length === 0}
+          onChange={setSelectedServiceId}
+        >
+          {services.map((service) => (
+            <option key={service.Id} value={service.Id}>
+              {service.Name}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label={t('platform.filters.deployment', {
+            defaultValue: 'Deployment config',
+          })}
+          value={currentDeployment?.Id}
+          disabled={deployments.length === 0}
+          onChange={setSelectedDeploymentId}
+        >
+          {deployments.map((deployment) => (
+            <option key={deployment.Id} value={deployment.Id}>
+              #{deployment.Id} / env {deployment.EnvironmentId}
+            </option>
+          ))}
+        </SelectField>
       </div>
       <div className="mx-4 grid gap-4 xl:grid-cols-2">
         <DataSection
@@ -142,6 +220,10 @@ export function PlatformApplicationsView() {
           <ServicesTable services={services} />
         </DataSection>
       </div>
+      <ServiceRuntimePanel
+        deployment={currentDeployment}
+        isDeploymentLoading={deploymentsQuery.isLoading}
+      />
     </PlatformPage>
   );
 }
@@ -152,7 +234,10 @@ export function PlatformArtifactsView() {
   const artifacts = artifactsQuery.data ?? [];
 
   return (
-    <PlatformPage titleKey="platform.pages.artifacts.title">
+    <PlatformPage
+      titleKey="platform.pages.artifacts.title"
+      titleDefault="Artifacts"
+    >
       <PlatformNoticeStack />
       <DataSection
         title={t('platform.artifacts.tableTitle', {
@@ -180,7 +265,10 @@ export function PlatformReleasesView() {
   ).length;
 
   return (
-    <PlatformPage titleKey="platform.pages.releases.title">
+    <PlatformPage
+      titleKey="platform.pages.releases.title"
+      titleDefault="Releases"
+    >
       <PlatformNoticeStack />
       <SummaryStrip
         items={[
@@ -245,7 +333,7 @@ export function PlatformDeployView() {
   );
 
   return (
-    <PlatformPage titleKey="platform.pages.deploy.title">
+    <PlatformPage titleKey="platform.pages.deploy.title" titleDefault="Deploy">
       <PlatformNoticeStack />
       <div className="mx-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
@@ -345,16 +433,22 @@ export function PlatformDeployView() {
 
 function PlatformPage({
   titleKey,
+  titleDefault,
   children,
 }: {
   titleKey: string;
+  titleDefault: string;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
+
   return (
     <>
       <PageHeader
-        title={`t('${titleKey}')`}
-        breadcrumbs="t('platform.navigation.section')"
+        title={t(titleKey, { defaultValue: titleDefault })}
+        breadcrumbs={t('platform.navigation.section', {
+          defaultValue: 'App Delivery',
+        })}
         reload
       />
       <main className="pb-6">{children}</main>
@@ -386,6 +480,36 @@ function PlatformNoticeStack() {
         })}
       </Alert>
     </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  disabled,
+  onChange,
+  children,
+}: {
+  label: string;
+  value?: number;
+  disabled: boolean;
+  onChange: (value: number | undefined) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="text-muted mb-1 block text-sm">{label}</span>
+      <select
+        className="form-control"
+        value={value ?? ''}
+        onChange={(event) =>
+          onChange(event.target.value ? Number(event.target.value) : undefined)
+        }
+        disabled={disabled}
+      >
+        {children}
+      </select>
+    </label>
   );
 }
 
@@ -447,7 +571,7 @@ function PlatformTable({
   rows,
 }: {
   columns: string[];
-  rows: string[][];
+  rows: Array<{ key: string; cells: ReactNode[] }>;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -461,13 +585,15 @@ function PlatformTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.join('-')}>
-              {row.map((cell, index) => (
+            <tr key={row.key}>
+              {row.cells.map((cell, index) => (
                 <td
-                  key={`${row[0]}-${index}`}
+                  key={`${row.key}-${index}`}
                   className="max-w-[360px] break-all"
                 >
-                  {cell || '-'}
+                  {cell === undefined || cell === null || cell === ''
+                    ? '-'
+                    : cell}
                 </td>
               ))}
             </tr>
@@ -491,11 +617,14 @@ function ApplicationsTable({
         t('platform.columns.slug', { defaultValue: 'Slug' }),
         t('platform.columns.status', { defaultValue: 'Status' }),
       ]}
-      rows={applications.map((application) => [
-        application.Name,
-        application.Slug,
-        application.LifecycleStatus,
-      ])}
+      rows={applications.map((application) => ({
+        key: String(application.Id),
+        cells: [
+          application.Name,
+          application.Slug,
+          application.LifecycleStatus,
+        ],
+      }))}
     />
   );
 }
@@ -514,12 +643,15 @@ function ServicesTable({
         t('platform.columns.slug', { defaultValue: 'Slug' }),
         t('platform.columns.status', { defaultValue: 'Status' }),
       ]}
-      rows={services.map((service) => [
-        service.Name,
-        service.Type,
-        service.Slug,
-        service.LifecycleStatus,
-      ])}
+      rows={services.map((service) => ({
+        key: String(service.Id),
+        cells: [
+          service.Name,
+          service.Type,
+          service.Slug,
+          service.LifecycleStatus,
+        ],
+      }))}
     />
   );
 }
@@ -535,13 +667,16 @@ function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
         t('platform.columns.image', { defaultValue: 'Image' }),
         t('platform.columns.sha256', { defaultValue: 'SHA256' }),
       ]}
-      rows={artifacts.map((artifact) => [
-        artifact.Name,
-        artifact.Version,
-        artifact.SourceType,
-        artifact.ImageRef ?? '',
-        artifact.SHA256 ?? artifact.ImageDigest ?? '',
-      ])}
+      rows={artifacts.map((artifact) => ({
+        key: String(artifact.Id),
+        cells: [
+          artifact.Name,
+          artifact.Version,
+          artifact.SourceType,
+          artifact.ImageRef ?? '',
+          artifact.SHA256 ?? artifact.ImageDigest ?? '',
+        ],
+      }))}
     />
   );
 }
@@ -556,15 +691,304 @@ function ReleasesTable({ releases }: { releases: PlatformRelease[] }) {
         t('platform.columns.status', { defaultValue: 'Status' }),
         t('platform.columns.image', { defaultValue: 'Image' }),
         t('platform.columns.failureReason', { defaultValue: 'Failure reason' }),
+        t('platform.columns.runtime', { defaultValue: 'Runtime' }),
+        t('platform.columns.execution', { defaultValue: 'Execution' }),
+        t('platform.columns.actions', { defaultValue: 'Actions' }),
       ]}
-      rows={releases.map((release) => [
-        String(release.Id),
-        release.Version,
-        release.Status,
-        release.Image ?? '',
-        release.FailureReason ?? '',
-      ])}
+      rows={releases.map((release) => ({
+        key: String(release.Id),
+        cells: [
+          String(release.Id),
+          release.Version,
+          <StatusPill key="status" value={release.Status} />,
+          release.Image ?? '',
+          release.FailureReason ?? '',
+          <RuntimeRefSummary
+            key="runtime"
+            runtimeRef={release.RuntimeSnapshot?.CurrentRuntimeRef}
+            ports={release.RuntimeSnapshot?.PublishedPorts}
+          />,
+          <ReleaseExecutionSummary key="execution" release={release} />,
+          <ReleaseManualActions key="actions" release={release} />,
+        ],
+      }))}
     />
+  );
+}
+
+function ServiceRuntimePanel({
+  deployment,
+  isDeploymentLoading,
+}: {
+  deployment?: PlatformServiceDeployment;
+  isDeploymentLoading: boolean;
+}) {
+  const { t } = useTranslation();
+  const statusQuery = usePlatformServiceDeploymentStatus(deployment?.Id);
+  const logsQuery = usePlatformServiceDeploymentLogs(deployment?.Id, 100);
+  const status = statusQuery.data;
+  const logs = logsQuery.data;
+  const runtimeRef = status?.RuntimeRef ?? deployment?.CurrentRuntimeRef;
+
+  return (
+    <DataSection
+      title={t('platform.runtime.title', {
+        defaultValue: 'Runtime status and logs',
+      })}
+      isLoading={
+        isDeploymentLoading || statusQuery.isLoading || logsQuery.isLoading
+      }
+      empty={!deployment}
+      emptyMessage={t('platform.empty.runtime', {
+        defaultValue:
+          'Select a service deployment config to inspect runtime status and recent logs.',
+      })}
+    >
+      <div className="space-y-4">
+        {status?.Reason === 'RUNTIME_MISSING' && (
+          <Alert
+            color="warn"
+            title={t('platform.runtime.runtimeMissing.title', {
+              defaultValue: 'Runtime missing',
+            })}
+          >
+            {t('platform.runtime.runtimeMissing.body', {
+              defaultValue:
+                'The current runtime reference no longer exists. Drift has been marked as runtime-missing so an operator can resolve or redeploy safely.',
+            })}
+          </Alert>
+        )}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-base font-semibold">
+              <Activity className="icon" />
+              {t('platform.runtime.status', { defaultValue: 'Status' })}
+            </div>
+            <SummaryList
+              rows={[
+                [
+                  t('platform.runtime.deploymentId', {
+                    defaultValue: 'Deployment ID',
+                  }),
+                  deployment ? String(deployment.Id) : '',
+                ],
+                [
+                  t('platform.runtime.image', {
+                    defaultValue: 'Current image',
+                  }),
+                  status?.CurrentImage ?? deployment?.CurrentImage ?? '',
+                ],
+                [
+                  t('platform.runtime.runtimeRef', {
+                    defaultValue: 'Runtime reference',
+                  }),
+                  runtimeRefLabel(runtimeRef),
+                ],
+                [
+                  t('platform.runtime.state', {
+                    defaultValue: 'Runtime state',
+                  }),
+                  status?.RuntimeState ?? status?.Reason ?? '',
+                ],
+                [
+                  t('platform.runtime.restartCount', {
+                    defaultValue: 'Restart count',
+                  }),
+                  status ? String(status.RestartCount) : '',
+                ],
+                [
+                  t('platform.runtime.drift', { defaultValue: 'Drift status' }),
+                  status?.DriftStatus ?? deployment?.DriftStatus ?? '',
+                ],
+                [
+                  t('platform.runtime.ports', {
+                    defaultValue: 'Published ports',
+                  }),
+                  formatPublishedPorts(
+                    status?.PublishedPorts ?? deployment?.DesiredSpec.Ports
+                  ),
+                ],
+                [
+                  t('platform.runtime.lastDeployedAt', {
+                    defaultValue: 'Last deployed at',
+                  }),
+                  formatUnixTime(status?.LastDeployedAt),
+                ],
+              ]}
+            />
+          </div>
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-base font-semibold">
+                <FileText className="icon" />
+                {t('platform.runtime.logs', { defaultValue: 'Recent logs' })}
+              </div>
+              <Button
+                color="light"
+                size="xsmall"
+                icon={RefreshCw}
+                onClick={() => logsQuery.refetch()}
+                disabled={!deployment || logsQuery.isFetching}
+                data-cy="platform-runtime-refresh-logs"
+              >
+                {t('platform.actions.refresh', { defaultValue: 'Refresh' })}
+              </Button>
+            </div>
+            <pre className="max-h-72 overflow-auto rounded border border-solid border-gray-5 bg-gray-1 p-3 text-xs th-highcontrast:bg-black th-dark:bg-gray-10">
+              {logs?.Logs ||
+                logs?.Reason ||
+                t('platform.runtime.logsEmpty', {
+                  defaultValue:
+                    'No logs are available for the selected runtime yet.',
+                })}
+            </pre>
+          </div>
+        </div>
+      </div>
+    </DataSection>
+  );
+}
+
+function StatusPill({ value }: { value?: string }) {
+  const label = value || '-';
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded border border-solid px-2 py-0.5 text-xs font-semibold ${statusPillClass(
+        label
+      )}`}
+    >
+      {statusIcon(label)}
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function RuntimeRefSummary({
+  runtimeRef,
+  ports,
+}: {
+  runtimeRef?: PlatformRuntimeRef;
+  ports?: PlatformPublishedPort[];
+}) {
+  return (
+    <div className="space-y-1 text-xs">
+      <div>{runtimeRefLabel(runtimeRef)}</div>
+      <div className="text-muted">{formatPublishedPorts(ports)}</div>
+    </div>
+  );
+}
+
+function ReleaseExecutionSummary({ release }: { release: PlatformRelease }) {
+  const { t } = useTranslation();
+  const recentSteps = release.Steps?.slice(-3) ?? [];
+  const health = release.HealthCheckResult;
+
+  return (
+    <div className="space-y-2 text-xs">
+      {health?.Status && (
+        <div className="space-y-1">
+          <StatusPill value={health.Status} />
+          <div className="text-muted break-all">
+            {[
+              health.Target,
+              health.StatusCode ? String(health.StatusCode) : '',
+              health.ErrorMessage,
+            ]
+              .filter(Boolean)
+              .join(' / ')}
+          </div>
+        </div>
+      )}
+      {recentSteps.length > 0 && (
+        <ol className="space-y-1">
+          {recentSteps.map((step) => (
+            <li key={`${step.Name}-${step.StartedAt ?? 0}`}>
+              <span className="font-medium">{step.Name}</span>{' '}
+              <StatusPill value={step.Status} />
+              {step.Reason && (
+                <span className="text-muted ml-1">{step.Reason}</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {release.ResolutionAction && (
+        <div className="text-muted">
+          {t('platform.release.resolvedByAction', {
+            defaultValue: 'Resolved by {{action}}',
+            action: release.ResolutionAction,
+          })}
+        </div>
+      )}
+      {!health?.Status && recentSteps.length === 0 && '-'}
+    </div>
+  );
+}
+
+function ReleaseManualActions({ release }: { release: PlatformRelease }) {
+  const { t } = useTranslation();
+  const mutation = useResolvePlatformReleaseMutation();
+  const requiresManualAction =
+    release.ManualActionRequired ||
+    release.Status === 'interrupted' ||
+    release.Status === 'recovery-failed';
+  const hasCurrentRuntime =
+    !!release.RuntimeSnapshot?.CurrentRuntimeRef?.ResourceId;
+
+  if (!requiresManualAction) {
+    return <span className="text-muted">-</span>;
+  }
+
+  function resolve(action: PlatformReleaseResolutionAction) {
+    const confirmed = window.confirm(
+      t('platform.release.resolveConfirm', {
+        defaultValue:
+          'This will mark the release as resolved and release the deployment lock. Continue?',
+      })
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    mutation.mutate({
+      releaseId: release.Id,
+      action,
+      comment: t('platform.release.resolveComment', {
+        defaultValue: 'Resolved from platform release page.',
+      }),
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {hasCurrentRuntime && (
+        <Button
+          color="warninglight"
+          size="xsmall"
+          icon={CheckCircle2}
+          disabled={mutation.isLoading}
+          onClick={() => resolve('accept-current')}
+          data-cy={`platform-release-${release.Id}-accept-current`}
+        >
+          {t('platform.actions.acceptCurrent', {
+            defaultValue: 'Accept current',
+          })}
+        </Button>
+      )}
+      <Button
+        color="light"
+        size="xsmall"
+        icon={Wrench}
+        disabled={mutation.isLoading}
+        onClick={() => resolve('mark-handled')}
+        data-cy={`platform-release-${release.Id}-mark-handled`}
+      >
+        {t('platform.actions.markHandled', {
+          defaultValue: 'Mark handled',
+        })}
+      </Button>
+    </div>
   );
 }
 
@@ -681,4 +1105,87 @@ function SummaryList({ rows }: { rows: string[][] }) {
       ))}
     </dl>
   );
+}
+
+function statusPillClass(value: string) {
+  const normalized = value.toLowerCase();
+
+  if (
+    ['succeeded', 'passed', 'running', 'active', 'resolved'].includes(
+      normalized
+    )
+  ) {
+    return 'border-green-5 bg-green-2 text-green-9 th-dark:bg-green-10 th-dark:text-white';
+  }
+
+  if (
+    normalized.includes('failed') ||
+    normalized.includes('missing') ||
+    normalized === 'interrupted'
+  ) {
+    return 'border-red-5 bg-red-2 text-red-9 th-dark:bg-red-10 th-dark:text-white';
+  }
+
+  if (normalized === 'canceled' || normalized === 'archived') {
+    return 'border-gray-5 bg-gray-2 text-gray-8 th-dark:bg-gray-10 th-dark:text-white';
+  }
+
+  return 'border-blue-5 bg-blue-2 text-blue-9 th-dark:bg-blue-10 th-dark:text-white';
+}
+
+function statusIcon(value: string) {
+  const normalized = value.toLowerCase();
+
+  if (['succeeded', 'passed', 'running', 'resolved'].includes(normalized)) {
+    return <CheckCircle2 className="h-3 w-3" />;
+  }
+
+  if (
+    normalized.includes('failed') ||
+    normalized.includes('missing') ||
+    normalized === 'interrupted'
+  ) {
+    return <AlertTriangle className="h-3 w-3" />;
+  }
+
+  return null;
+}
+
+function runtimeRefLabel(runtimeRef?: PlatformRuntimeRef) {
+  if (!runtimeRef?.ResourceId) {
+    return '';
+  }
+
+  return [
+    runtimeRef.Name || runtimeRef.ResourceId,
+    runtimeRef.DriverId,
+    runtimeRef.EndpointId ? `endpoint ${runtimeRef.EndpointId}` : '',
+  ]
+    .filter(Boolean)
+    .join(' / ');
+}
+
+function formatPublishedPorts(ports?: PlatformPublishedPort[]) {
+  if (!ports?.length) {
+    return '';
+  }
+
+  return ports
+    .map((port) => {
+      const host = [port.HostIP, port.HostPort].filter(Boolean).join(':');
+      const target = `${port.ContainerPort}/${port.Protocol || 'tcp'}`;
+      return host ? `${host}->${target}` : target;
+    })
+    .join(', ');
+}
+
+function formatUnixTime(value?: number) {
+  if (!value) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value * 1000));
 }
