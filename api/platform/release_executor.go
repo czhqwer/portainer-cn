@@ -193,6 +193,7 @@ func (executor *SingleTargetExecutor) Execute(ctx context.Context, request Relea
 			reason = failureReasonForError(err)
 		}
 		appendStep(&release, "check-current", portainer.PlatformReleaseStepStatusFailed, reason, message, stepStart, executor.unixNow(), switchResult.CurrentRuntimeRef)
+		_ = executor.driver.DeleteRuntime(ctx, switchResult.CurrentRuntimeRef)
 		return executor.recover(ctx, request, target, release, deployment, reason, errors.New(message))
 	}
 	appendStep(&release, "check-current", portainer.PlatformReleaseStepStatusSucceeded, "", "Formal container health check passed.", stepStart, executor.unixNow(), switchResult.CurrentRuntimeRef)

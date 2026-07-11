@@ -149,6 +149,21 @@ func TestSingleTargetExecutorKeepsLockWhenRecoveryFails(t *testing.T) {
 	require.Nil(t, result.Deployment)
 }
 
+func TestSingleTargetExecutorDeletesFailedCurrentBeforeRecovering(t *testing.T) {
+	driver := &fakeRuntimeDriver{finalHealthErr: errors.New("final health failed")}
+	executor := NewSingleTargetExecutor(driver)
+
+	result, err := executor.Execute(context.Background(), sampleReleaseExecutionRequest())
+	require.NoError(t, err)
+
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.Equal(t, "final health failed", result.Release.HealthCheckResult.ErrorMessage)
+	require.Nil(t, result.Deployment)
+	require.Contains(t, driver.calls, "delete-current")
+	require.Contains(t, driver.calls, "recover")
+	require.Less(t, indexOfCall(driver.calls, "delete-current"), indexOfCall(driver.calls, "recover"))
+}
+
 func sampleReleaseExecutionRequest() ReleaseExecutionRequest {
 	spec := portainer.NewPlatformDeploymentDesiredSpec()
 	spec.Image.Image = "registry.example.com/orders-api:1.0.0"
@@ -231,4 +246,14 @@ func sampleReleaseExecutionRequest() ReleaseExecutionRequest {
 			QueueExpiresAt:       time.Now().Unix() + 600,
 		},
 	}
+}
+
+func indexOfCall(calls []string, expected string) int {
+	for i, call := range calls {
+		if call == expected {
+			return i
+		}
+	}
+
+	return -1
 }
