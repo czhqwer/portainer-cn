@@ -1,0 +1,10 @@
+﻿exit_code=1
+captured_at=2026-07-11T18:17:38
+
+docker.exe : Error response from daemon: manifest for 127.0.0.1:5000/portainer-cn/gate0b-spike-missing:missing not foun
+d: manifest unknown: manifest unknown
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-private-registry-spike.ps1:105 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...anifest unknown:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

@@ -1,0 +1,11 @@
+﻿docker --config <temp-docker-config> login 127.0.0.1:5000 --username <redacted> --password-stdin
+docker --config <temp-docker-config> login 127.0.0.1:5000 --username <redacted> --password-stdin # wrong password
+docker pull nginx:alpine
+docker tag nginx:alpine 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker --config <temp-docker-config> push 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker image rm 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker --config <temp-docker-config> pull 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker image inspect 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1 --format <RepoDigests>
+docker --config <temp-docker-config> manifest inspect 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker --config <temp-docker-config> pull 127.0.0.1:5000/portainer-cn/gate0b-spike-missing:missing
+docker image rm 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1

@@ -1,0 +1,102 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260711181702
+Username: LAPTOP-K3G7I15Q\czh
+RunAs User: LAPTOP-K3G7I15Q\czh
+Configuration Name: 
+Machine: LAPTOP-K3G7I15Q (Microsoft Windows NT 10.0.19045.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-registry-spike.ps1 -Apply
+Process ID: 24312
+PSVersion: 5.1.19041.6328
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6328
+BuildVersion: 10.0.19041.6328
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+==> Login with correct credentials using temporary Docker config
+docker --config <temp-docker-config> login 127.0.0.1:5000 --username <redacted> --password-stdin
+Login Succeeded
+
+==> Verify wrong credentials fail with stable auth reason
+docker --config <temp-docker-config> login 127.0.0.1:5000 --username <redacted> --password-stdin # wrong password
+docker.exe : Error response from daemon: login attempt to http://127.0.0.1:5000/v2/ failed with status: 401 Unauthorize
+d
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-private-registry-spike.ps1:146 char:32
++         $output = $InputText | & docker @DockerArgs 2>&1
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...01 Unauthorized:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+==> Push public image into private registry
+docker pull nginx:alpine
+alpine: Pulling from library/nginx
+Digest: sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa
+Status: Image is up to date for nginx:alpine
+docker.io/library/nginx:alpine
+docker tag nginx:alpine 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker --config <temp-docker-config> push 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+The push refers to repository [127.0.0.1:5000/portainer-cn/gate0b-spike]
+afbf6a2e4dc8: Preparing
+4979493d808a: Preparing
+1876c8091457: Preparing
+d32a1b6bc05e: Preparing
+3c4c14c5eb84: Preparing
+c54525213cd0: Preparing
+c91b7a48dd9f: Preparing
+31ad4a471c68: Preparing
+c91b7a48dd9f: Waiting
+31ad4a471c68: Waiting
+c54525213cd0: Waiting
+4979493d808a: Layer already exists
+3c4c14c5eb84: Layer already exists
+1876c8091457: Layer already exists
+d32a1b6bc05e: Layer already exists
+c54525213cd0: Layer already exists
+afbf6a2e4dc8: Layer already exists
+c91b7a48dd9f: Layer already exists
+31ad4a471c68: Layer already exists
+v0.1: digest: sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17 size: 1989
+
+==> Pull private image with correct credentials and resolve digest
+docker image rm 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+Untagged: 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+Untagged: 127.0.0.1:5000/portainer-cn/gate0b-spike@sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17
+docker --config <temp-docker-config> pull 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+v0.1: Pulling from portainer-cn/gate0b-spike
+Digest: sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17
+Status: Downloaded newer image for 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker image inspect 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1 --format <RepoDigests>
+["127.0.0.1:5000/portainer-cn/gate0b-spike@sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17","nginx@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa"]
+docker --config <temp-docker-config> manifest inspect 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+docker.exe : no such manifest: 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-private-registry-spike.ps1:105 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (no such manifes...te0b-spike:v0.1:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+==> Verify missing private image maps to image pull failure
+docker --config <temp-docker-config> pull 127.0.0.1:5000/portainer-cn/gate0b-spike-missing:missing
+docker.exe : Error response from daemon: manifest for 127.0.0.1:5000/portainer-cn/gate0b-spike-missing:missing not foun
+d: manifest unknown: manifest unknown
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-private-registry-spike.ps1:105 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...anifest unknown:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+==> Write sanitized summary and remove temporary Docker config
+docker image rm 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+Untagged: 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+Untagged: 127.0.0.1:5000/portainer-cn/gate0b-spike@sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17
+
+Private registry Spike completed. Temporary Docker config removed.
+**********************
+Windows PowerShell transcript end
+End time: 20260711181738
+**********************

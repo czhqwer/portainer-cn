@@ -1,0 +1,24 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:17:36
+
+The push refers to repository [127.0.0.1:5000/portainer-cn/gate0b-spike]
+afbf6a2e4dc8: Preparing
+4979493d808a: Preparing
+1876c8091457: Preparing
+d32a1b6bc05e: Preparing
+3c4c14c5eb84: Preparing
+c54525213cd0: Preparing
+c91b7a48dd9f: Preparing
+31ad4a471c68: Preparing
+c91b7a48dd9f: Waiting
+31ad4a471c68: Waiting
+c54525213cd0: Waiting
+4979493d808a: Layer already exists
+3c4c14c5eb84: Layer already exists
+1876c8091457: Layer already exists
+d32a1b6bc05e: Layer already exists
+c54525213cd0: Layer already exists
+afbf6a2e4dc8: Layer already exists
+c91b7a48dd9f: Layer already exists
+31ad4a471c68: Layer already exists
+v0.1: digest: sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17 size: 1989

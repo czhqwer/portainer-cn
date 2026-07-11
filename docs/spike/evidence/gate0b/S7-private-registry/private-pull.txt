@@ -1,0 +1,7 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:17:37
+
+v0.1: Pulling from portainer-cn/gate0b-spike
+Digest: sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17
+Status: Downloaded newer image for 127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1

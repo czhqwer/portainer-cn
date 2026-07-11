@@ -1,0 +1,9 @@
+﻿scenario=S7-private-registry
+registry=127.0.0.1:5000
+username_provided=True
+password_provided=True
+source_image=nginx:alpine
+private_image=127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+missing_image=127.0.0.1:5000/portainer-cn/gate0b-spike-missing:missing
+started_at=2026-07-11T18:17:02
+cleanup=False

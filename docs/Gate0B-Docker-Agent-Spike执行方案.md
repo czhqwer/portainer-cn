@@ -102,6 +102,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containeri
 
 该脚本使用 Docker CLI 容器验证挂载 Docker socket 后的访问能力，并使用临时 probe 容器分别探测 `127.0.0.1`、Docker bridge gateway 与 `host.docker.internal` 对 candidate 随机宿主机端口的可达性。它只覆盖 S2 的本地容器网络子集，不覆盖真实 Portainer 镜像启动、Agent、远程 Agent、私有 registry 和 digest 策略。若没有任何地址可达，应记录 `NO_CONTAINERIZED_HEALTHCHECK_HOST_REACHABLE`，并要求用户显式配置 `HealthCheckHost` 或选择允许的降级验证策略。
 
+### 4.3 私有 Registry 辅助脚本
+
+私有 registry 认证、错误凭据、镜像缺失和 digest 解析子集可以使用 `docs/spike/gate0b-private-registry-spike.ps1` 辅助执行。脚本默认 dry-run，不会运行 Docker；必须显式传入 `-Apply` 才会登录 registry、push/pull 测试镜像。
+
+示例：
+
+```powershell
+# 预演，不执行 Docker
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-registry-spike.ps1
+
+# 执行 S7 子集；凭据通过父 shell 环境变量传入，避免写入 transcript 或 commands.txt
+$env:GATE0B_REGISTRY_USERNAME = '<registry-username>'
+$env:GATE0B_REGISTRY_PASSWORD = '<registry-password>'
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-registry-spike.ps1 -Apply
+Remove-Item Env:\GATE0B_REGISTRY_USERNAME
+Remove-Item Env:\GATE0B_REGISTRY_PASSWORD
+```
+
+该脚本使用临时 Docker config 登录 registry，执行完会删除临时认证文件；证据中不得提交密码、token、认证头或 Docker config。实测至少要证明：正确凭据可 push/pull 私有镜像，错误凭据可稳定映射为 `REGISTRY_AUTH_FAILED`，镜像不存在可稳定映射为 `IMAGE_PULL_FAILED`，并能从拉取后的镜像记录 digest。
+
 ## 5. 默认策略待决项
 
 Spike 必须给出以下默认策略，不能只记录“可配置”：

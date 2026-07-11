@@ -1,0 +1,12 @@
+﻿checked_at=2026-07-11T18:17:38
+registry=127.0.0.1:5000
+private_image=127.0.0.1:5000/portainer-cn/gate0b-spike:v0.1
+digest=127.0.0.1:5000/portainer-cn/gate0b-spike@sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17
+login_success_exit=0
+wrong_login_exit=1
+push_exit=0
+pull_exit=0
+missing_pull_exit=1
+wrong_login_reason=REGISTRY_AUTH_FAILED
+missing_image_reason=IMAGE_PULL_FAILED
+conclusion=PRIVATE_REGISTRY_SPIKE_PASSED

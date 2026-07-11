@@ -2,7 +2,7 @@
 
 版本：v0.1
 日期：2026-07-11
-状态：未通过；S1/S2/S6 本地 Docker socket 子集已实测通过，S5 本地命名子集已部分验证，S3/S4/S7 仍等待实测
+状态：未通过；S1/S2/S6 本地 Docker socket 子集已实测通过，S7 私有 registry 子集通过，S5 本地命名子集已部分验证，S3/S4 仍等待实测
 关联方案：[Gate 0B Docker/Agent Spike 执行方案](../Gate0B-Docker-Agent-Spike执行方案.md)
 
 ## 1. 总览
@@ -17,7 +17,7 @@
 | S4 | 远程 Agent | 未执行 | - | 待定 |
 | S5 | 版本化容器命名 | 部分通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 本地辅助容器 r1/r2 命名与固定端口冲突规避流程通过；正式 `project/env/service/release` 命名模板仍待实现前复核 |
 | S6 | 正式端口切换 | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 旧容器停止、新容器占用正式端口、坏镜像失败后旧容器恢复均完成；恢复后健康检查 200 |
-| S7 | 私有 registry 认证和 digest 解析 | 未执行 | - | 待定 |
+| S7 | 私有 registry 认证和 digest 解析 | 通过 | `docs/spike/evidence/gate0b/S7-private-registry/` | 正确凭据 push/pull 成功，错误凭据 401，缺失镜像 manifest unknown，pull 后 RepoDigests 可解析私有 digest |
 
 ## 2. 证据目录约定
 
@@ -46,8 +46,8 @@
 | `HealthCheckHost` 默认值 | 宿主机后端场景可用 `127.0.0.1`；本地容器化 Docker socket 场景不能用容器内 `127.0.0.1`，可用 bridge gateway 或 `host.docker.internal`，但正式实现仍需支持显式配置 | `docs/spike/evidence/gate0b/S1-local-docker/*healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/containerized-health-summary.txt` | 部分通过 |
 | Agent `NodeName` 默认选择 | 待定 | - | 未执行 |
 | candidate 随机端口解析 | 本地宿主机和容器化 Docker socket 场景均可通过 Docker 端口映射解析随机宿主机端口 | `docs/spike/evidence/gate0b/S1-local-docker/candidate-healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/candidate-port.txt` | 部分通过 |
-| 私有镜像凭据优先级 | 待定 | - | 未执行 |
-| digest 解析时机 | 待定 | - | 未执行 |
+| 私有镜像凭据优先级 | V0.1 发布执行时优先使用 Artifact `RegistryID` 对应凭据；未显式绑定时再按镜像 registry host 匹配环境/系统 registry 配置，不能把明文凭据写入 Release snapshot 或证据 | `docs/spike/evidence/gate0b/S7-private-registry/login-success.txt`、`docs/spike/evidence/gate0b/S7-private-registry/notes.md` | 通过 |
+| digest 解析时机 | 对私有 registry，V0.1 以 pull 成功后的 `RepoDigests` 作为权威 digest；`docker manifest inspect` 在本地 HTTP registry 场景可能失败，不能作为唯一来源 | `docs/spike/evidence/gate0b/S7-private-registry/private-image-repodigests.txt`、`docs/spike/evidence/gate0b/S7-private-registry/manifest-inspect.json` | 通过 |
 | 旧容器恢复状态映射 | 本地坏镜像启动失败后可恢复旧容器并重新通过健康检查；正式状态枚举和 reason 映射仍待执行器实现时固化 | `docs/spike/evidence/gate0b/S1-local-docker/official-r1-recovered-healthcheck.txt` | 部分通过 |
 
 ## 4. Reason 映射记录
@@ -56,8 +56,8 @@
 | --- | --- | --- | --- | --- |
 | candidate 地址不可达 | `HEALTHCHECK_HOST_UNREACHABLE` | 待定 | - | 未执行 |
 | 健康检查失败 | `HEALTHCHECK_FAILED` | 待定 | - | 未执行 |
-| 私有 registry 凭据错误 | `REGISTRY_AUTH_FAILED` | 待定 | - | 未执行 |
-| 镜像拉取失败 | `IMAGE_PULL_FAILED` | 本地坏 tag 镜像启动失败后未破坏旧容器；正式 reason 映射仍待执行器实现时固化 | `docs/spike/evidence/gate0b/S1-local-docker/commands.txt` | 部分通过 |
+| 私有 registry 凭据错误 | `REGISTRY_AUTH_FAILED` | 错误密码登录返回 401 Unauthorized | `docs/spike/evidence/gate0b/S7-private-registry/login-wrong-password.txt` | 通过 |
+| 镜像拉取失败 | `IMAGE_PULL_FAILED` | 本地坏 tag 镜像启动失败后未破坏旧容器；私有 registry 缺失镜像返回 manifest unknown | `docs/spike/evidence/gate0b/S1-local-docker/commands.txt`、`docs/spike/evidence/gate0b/S7-private-registry/missing-image-pull.txt` | 部分通过 |
 | 端口冲突 | `PORT_CONFLICT` | 待定 | - | 未执行 |
 | candidate 或正式容器启动失败 | `RUNTIME_START_FAILED` | 待定 | - | 未执行 |
 | 旧容器停止失败 | `RUNTIME_STOP_FAILED` | 待定 | - | 未执行 |
@@ -200,20 +200,40 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containeri
 
 ## 12. S7 私有 registry 认证和 digest 解析
 
-状态：未执行
+状态：通过。
 
-待补证据：
+执行日期：2026-07-11
+执行命令：
 
-- 正确凭据拉取私有镜像成功。
-- 错误凭据稳定映射为 `REGISTRY_AUTH_FAILED`。
-- 镜像不存在或网络失败稳定映射为 `IMAGE_PULL_FAILED`。
-- digest 解析成功、超时和失败策略。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-registry-spike.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-registry-spike.ps1 -Apply
+```
+
+证据：
+
+- `docs/spike/evidence/gate0b/S7-private-registry/login-success.txt`
+- `docs/spike/evidence/gate0b/S7-private-registry/login-wrong-password.txt`
+- `docs/spike/evidence/gate0b/S7-private-registry/private-push.txt`
+- `docs/spike/evidence/gate0b/S7-private-registry/private-pull.txt`
+- `docs/spike/evidence/gate0b/S7-private-registry/private-image-repodigests.txt`
+- `docs/spike/evidence/gate0b/S7-private-registry/missing-image-pull.txt`
+- `docs/spike/evidence/gate0b/S7-private-registry/registry-summary.txt`
+
+结论：
+
+- 正确凭据可登录 `127.0.0.1:5000` 并 push/pull 私有镜像。
+- 错误凭据返回 401 Unauthorized，映射为 `REGISTRY_AUTH_FAILED`。
+- 缺失镜像返回 `manifest unknown`，映射为 `IMAGE_PULL_FAILED`。
+- pull 成功后可从 `RepoDigests` 解析私有 registry digest：`127.0.0.1:5000/portainer-cn/gate0b-spike@sha256:2fabf6963cb8eb9f6806beac013d5b4c347dcb254e54aef4bdafd61fa6a06d17`。
+- 本地 HTTP registry 下 `docker manifest inspect` 返回 `no such manifest`，正式实现不能只依赖 manifest inspect，应以 pull 后 RepoDigests 为权威 digest 来源。
+- 脚本使用临时 Docker config，执行后已删除；证据中不包含密码、认证头或 Docker config。
 
 ## 13. Gate 0B 结论
 
 当前结论：未通过。
 
-2026-07-11 已完成本地 Docker socket 与容器化 Docker socket 子集实测，S1/S2/S6 可作为本地公开镜像场景的正向证据，S5 仅完成辅助命名子集验证。Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
+2026-07-11 已完成本地 Docker socket、容器化 Docker socket 和私有 registry 子集实测，S1/S2/S6/S7 可作为本地公开/私有镜像场景的正向证据，S5 仅完成辅助命名子集验证。S3 本地 Agent、S4 远程 Agent 和正式命名策略仍未完成，Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
 
 通过前必须同时满足：
 
