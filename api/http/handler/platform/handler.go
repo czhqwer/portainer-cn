@@ -6,16 +6,19 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/portainer/portainer/api/dataservices"
 	"github.com/portainer/portainer/api/http/security"
+	platformservice "github.com/portainer/portainer/api/platform"
 	httperror "github.com/portainer/portainer/pkg/libhttp/error"
 )
 
 // Handler manages the private deployment platform control-plane endpoints.
 type Handler struct {
 	*mux.Router
-	DataStore dataservices.DataStore
+	DataStore       dataservices.DataStore
+	ReleaseExecutor platformservice.ReleaseExecutor
 }
 
-// NewHandler registers only Gate 0A-safe CRUD endpoints.
+// NewHandler registers V0.1 platform endpoints. Every business endpoint stays
+// admin-only while project-level RBAC remains model-only.
 func NewHandler(bouncer security.BouncerService) *Handler {
 	h := &Handler{
 		Router: mux.NewRouter(),

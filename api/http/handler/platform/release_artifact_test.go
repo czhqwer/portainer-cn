@@ -2,6 +2,7 @@ package platform
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	portainer "github.com/portainer/portainer/api"
 	"github.com/portainer/portainer/api/dataservices/platformreleaselock"
 	"github.com/portainer/portainer/api/internal/testhelpers"
+	platformservice "github.com/portainer/portainer/api/platform"
 
 	"github.com/segmentio/encoding/json"
 	"github.com/stretchr/testify/require"
@@ -55,8 +57,49 @@ func TestPlatformArtifactImageReferenceLifecycle(t *testing.T) {
 	require.Equal(t, portainer.PlatformLifecycleStatusArchived, archivedArtifacts[0].LifecycleStatus)
 }
 
-func TestPlatformReleaseCreateIsIdempotentAndGate0BBlocked(t *testing.T) {
+type fakeReleaseExecutor struct{}
+
+func (fakeReleaseExecutor) Execute(_ context.Context, request platformservice.ReleaseExecutionRequest) (platformservice.ReleaseExecutionResult, error) {
+	now := time.Now().Unix()
+	release := request.Release
+	release.Status = portainer.PlatformReleaseStatusSucceeded
+	release.StartedAt = now
+	release.FinishedAt = now
+	release.HealthCheckResult = portainer.PlatformHealthCheckResult{
+		Level:      portainer.PlatformHealthVerificationVerified,
+		Type:       portainer.PlatformHealthCheckTypeHTTP,
+		Status:     portainer.PlatformHealthCheckStatusPassed,
+		Target:     "http://127.0.0.1:18080/health",
+		StartedAt:  now,
+		FinishedAt: now,
+	}
+	release.RuntimeSnapshot.CurrentRuntimeRef = portainer.RuntimeRef{
+		DriverID:     portainer.PlatformRuntimeDriverDockerContainer,
+		EndpointID:   1,
+		ResourceType: portainer.PlatformRuntimeResourceContainer,
+		ResourceID:   "container-1",
+		Name:         "pcn-customer-a-dev-orders-api-r1",
+	}
+	release.RuntimeSnapshot.PublishedPorts = []portainer.PlatformPublishedPort{{Name: "http", ContainerPort: 8080, HostPort: 18080, Protocol: portainer.PlatformPortProtocolTCP}}
+	release.Steps = []portainer.PlatformReleaseStep{{Name: "fake-execute", Status: portainer.PlatformReleaseStepStatusSucceeded, StartedAt: now, FinishedAt: now}}
+
+	deployment := request.Deployment
+	deployment.CurrentServingReleaseID = release.ID
+	deployment.CurrentArtifactID = request.Artifact.ID
+	deployment.CurrentRuntimeRef = release.RuntimeSnapshot.CurrentRuntimeRef
+	deployment.CurrentImage = request.Artifact.ImageRef
+	deployment.LastDeployedSpecRevision = deployment.SpecRevision
+	deployment.LastDeployedAt = now
+	deployment.DriftStatus = portainer.PlatformDeploymentDriftNone
+	deployment.ResourceVersion++
+	deployment.UpdatedAt = now
+
+	return platformservice.ReleaseExecutionResult{Release: release, Deployment: &deployment}, nil
+}
+
+func TestPlatformReleaseCreateIsIdempotentAndExecutes(t *testing.T) {
 	ctx, project, application, service, deployment := createPlatformReleaseFixture(t)
+	ctx.handler.ReleaseExecutor = fakeReleaseExecutor{}
 	artifact := createImageReferenceArtifact(t, ctx, createImageReferenceArtifactPayload{
 		ProjectID:           project.ID,
 		ApplicationID:       application.ID,
@@ -67,25 +110,35 @@ func TestPlatformReleaseCreateIsIdempotentAndGate0BBlocked(t *testing.T) {
 	})
 
 	payload := createReleasePayloadFor(project, application, service, deployment, artifact)
-	first := postReleaseExpectError(t, ctx, "same-key", payload, http.StatusBadRequest)
-	require.Equal(t, errPlatformUnsupportedOperation, first.Code)
-	require.Equal(t, releaseGate0BRequiredReason, first.Details.Reason)
-	require.True(t, first.Data.Blocked)
-	require.NotZero(t, first.Data.ReleaseID)
+	first := postReleaseExpectAccepted(t, ctx, "same-key", payload)
+	require.NotZero(t, first.ReleaseID)
+	require.Equal(t, portainer.PlatformReleaseStatusSucceeded, first.Status)
 
-	second := postReleaseExpectError(t, ctx, "same-key", payload, http.StatusBadRequest)
-	require.Equal(t, first.Data.ReleaseID, second.Data.ReleaseID)
+	second := postReleaseExpectAccepted(t, ctx, "same-key", payload)
+	require.Equal(t, first.ReleaseID, second.ReleaseID)
 
 	payload.Version = "1.0.1"
 	mismatch := postReleaseExpectError(t, ctx, "same-key", payload, http.StatusConflict)
 	require.Equal(t, errPlatformIdempotencyPayloadMismatch, mismatch.Code)
 	require.Equal(t, releaseIdempotencyMismatchReason, mismatch.Details.Reason)
 
-	release := doJSON[portainer.PlatformRelease](t, ctx, http.MethodGet, fmt.Sprintf("/platform/releases/%d", first.Data.ReleaseID), nil, http.StatusOK)
-	require.Equal(t, portainer.PlatformReleaseStatusFailed, release.Status)
-	require.Equal(t, releaseGate0BRequiredReason, release.FailureReason)
+	release := doJSON[portainer.PlatformRelease](t, ctx, http.MethodGet, fmt.Sprintf("/platform/releases/%d", first.ReleaseID), nil, http.StatusOK)
+	require.Equal(t, portainer.PlatformReleaseStatusSucceeded, release.Status)
+	require.Empty(t, release.FailureReason)
 	require.Len(t, release.Steps, 1)
-	require.Equal(t, releaseGate0BRequiredReason, release.Steps[0].Reason)
+	require.Equal(t, portainer.PlatformHealthCheckStatusPassed, release.HealthCheckResult.Status)
+	require.Equal(t, "container-1", release.RuntimeSnapshot.CurrentRuntimeRef.ResourceID)
+
+	updatedDeployment := doJSON[portainer.PlatformServiceDeployment](t, ctx, http.MethodGet, fmt.Sprintf("/platform/service-deployments/%d", deployment.ID), nil, http.StatusOK)
+	require.Equal(t, release.ID, updatedDeployment.CurrentServingReleaseID)
+	require.Equal(t, artifact.ID, updatedDeployment.CurrentArtifactID)
+	require.Equal(t, artifact.ImageRef, updatedDeployment.CurrentImage)
+	require.Equal(t, "container-1", updatedDeployment.CurrentRuntimeRef.ResourceID)
+
+	lockID := platformreleaselock.LockIDForServiceDeployment(deployment.ID)
+	_, err := ctx.handler.DataStore.PlatformReleaseLock().Read(lockID)
+	require.Error(t, err)
+	require.True(t, ctx.handler.DataStore.IsErrObjectNotFound(err))
 
 	releases := doJSON[[]portainer.PlatformRelease](t, ctx, http.MethodGet, fmt.Sprintf("/platform/releases?serviceDeploymentId=%d", deployment.ID), nil, http.StatusOK)
 	require.Len(t, releases, 1)
@@ -93,6 +146,7 @@ func TestPlatformReleaseCreateIsIdempotentAndGate0BBlocked(t *testing.T) {
 
 func TestPlatformReleaseConflictWithActiveLock(t *testing.T) {
 	ctx, project, application, service, deployment := createPlatformReleaseFixture(t)
+	ctx.handler.ReleaseExecutor = fakeReleaseExecutor{}
 	artifact := createImageReferenceArtifact(t, ctx, createImageReferenceArtifactPayload{
 		ProjectID:           project.ID,
 		ApplicationID:       application.ID,

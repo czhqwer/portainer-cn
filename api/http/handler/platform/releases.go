@@ -12,6 +12,7 @@ import (
 	portainer "github.com/portainer/portainer/api"
 	"github.com/portainer/portainer/api/dataservices"
 	"github.com/portainer/portainer/api/dataservices/platformreleaselock"
+	platformservice "github.com/portainer/portainer/api/platform"
 	httperror "github.com/portainer/portainer/pkg/libhttp/error"
 	"github.com/portainer/portainer/pkg/libhttp/request"
 	"github.com/portainer/portainer/pkg/libhttp/response"
@@ -20,7 +21,6 @@ import (
 )
 
 const (
-	releaseGate0BRequiredReason            = "GATE_0B_REQUIRED"
 	releaseIdempotencyMismatchReason       = "IDEMPOTENCY_PAYLOAD_MISMATCH"
 	releaseLockedReason                    = "RELEASE_LOCKED"
 	idempotencyKeyHeader                   = "Idempotency-Key"
@@ -121,12 +121,23 @@ func (handler *Handler) releaseValidate(w http.ResponseWriter, r *http.Request) 
 		return handler.convertError(err)
 	}
 
+	if handler.ReleaseExecutor == nil {
+		return response.JSON(w, releaseValidateResponse{
+			Valid:                true,
+			Executable:           false,
+			Code:                 errPlatformUnsupportedOperation,
+			Reason:               platformservice.ReleaseFailureReasonExecutorUnavailable,
+			Message:              "Docker release executor is not configured.",
+			ServiceDeploymentID:  payload.ServiceDeploymentID,
+			ArtifactID:           payload.ArtifactID,
+			ExpectedSpecRevision: payload.ExpectedSpecRevision,
+		})
+	}
+
 	return response.JSON(w, releaseValidateResponse{
 		Valid:                true,
-		Executable:           false,
-		Code:                 errPlatformUnsupportedOperation,
-		Reason:               releaseGate0BRequiredReason,
-		Message:              "Gate 0B Docker/Agent Spike is required before release execution.",
+		Executable:           true,
+		Message:              "Gate 0B has passed; release execution can start.",
 		ServiceDeploymentID:  payload.ServiceDeploymentID,
 		ArtifactID:           payload.ArtifactID,
 		ExpectedSpecRevision: payload.ExpectedSpecRevision,
@@ -148,6 +159,16 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 	if err != nil {
 		return handler.convertError(err)
 	}
+	if handler.ReleaseExecutor == nil {
+		return writePlatformError(
+			w,
+			http.StatusServiceUnavailable,
+			errPlatformUnsupportedOperation,
+			"Docker release executor is not configured.",
+			platformservice.ReleaseFailureReasonExecutorUnavailable,
+			nil,
+		)
+	}
 
 	payloadHash, err := releasePayloadHash(payload)
 	if err != nil {
@@ -156,9 +177,11 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 	idempotencyKeyHash := releaseIdempotencyHash(userID, payload.ServiceDeploymentID, idempotencyKey)
 	now := time.Now().Unix()
 	var release *portainer.PlatformRelease
+	var refs *releaseReferenceSet
+	shouldExecute := false
 
-	// Gate 0B 前仍写入失败 Release 事实，原因是幂等键需要有稳定返回值；
-	// 但不会创建 ReleaseLock、不会入队 worker，也不会触发任何 Docker 操作。
+	// 发布请求先持久化 Release 与 ReleaseLock，再交给执行器推进；
+	// 这样幂等复用和并发互斥不会依赖 Docker 操作是否已经开始。
 	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		existing, err := findIdempotentRelease(tx, payload.ServiceDeploymentID, userID, idempotencyKeyHash, now)
 		if err != nil {
@@ -215,14 +238,34 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 			}
 		}
 
-		deployment, artifact, err := validateReleaseReferences(tx, payload)
+		releaseRefs, err := validateReleaseReferenceSet(tx, payload)
 		if err != nil {
 			return err
 		}
+		refs = releaseRefs
 
-		release = newGate0BBlockedRelease(payload, deployment, artifact, userID, idempotencyKeyHash, payloadHash, now)
+		release = newQueuedRelease(payload, refs.deployment, refs.artifact, userID, idempotencyKeyHash, payloadHash, now)
 
-		return tx.PlatformRelease().Create(release)
+		if err := tx.PlatformRelease().Create(release); err != nil {
+			return err
+		}
+
+		lock = &portainer.PlatformReleaseLock{
+			ServiceDeploymentID: payload.ServiceDeploymentID,
+			ReleaseID:           release.ID,
+			IdempotencyKeyHash:  idempotencyKeyHash,
+			PayloadHash:         payloadHash,
+			LeaseOwner:          "platform-release-api",
+			LeaseExpiresAt:      now + 15*60,
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		}
+		if err := tx.PlatformReleaseLock().Create(lock); err != nil {
+			return err
+		}
+
+		shouldExecute = true
+		return nil
 	})
 	if err != nil {
 		var codedErr *platformCodedError
@@ -233,49 +276,73 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 		return handler.convertError(err)
 	}
 
-	createResponse := releaseResponse(release)
-	if release.FailureReason == releaseGate0BRequiredReason {
-		createResponse.Blocked = true
-		createResponse.Reason = releaseGate0BRequiredReason
-		return writePlatformError(
-			w,
-			http.StatusBadRequest,
-			errPlatformUnsupportedOperation,
-			"Gate 0B Docker/Agent Spike is required before release execution.",
-			releaseGate0BRequiredReason,
-			createResponse,
-		)
+	if shouldExecute {
+		result, err := handler.ReleaseExecutor.Execute(r.Context(), platformservice.ReleaseExecutionRequest{
+			Project:           *refs.project,
+			Environment:       *refs.environment,
+			Application:       *refs.application,
+			ServiceDefinition: *refs.service,
+			Deployment:        *refs.deployment,
+			Artifact:          *refs.artifact,
+			Release:           *release,
+		})
+		if err != nil {
+			return handler.convertError(err)
+		}
+		if err := handler.persistReleaseExecutionResult(result); err != nil {
+			return handler.convertError(err)
+		}
+		release = &result.Release
 	}
 
-	return response.JSONWithStatus(w, createResponse, http.StatusAccepted)
+	return response.JSONWithStatus(w, releaseResponse(release), http.StatusAccepted)
+}
+
+type releaseReferenceSet struct {
+	project     *portainer.PlatformProject
+	environment *portainer.PlatformEnvironment
+	application *portainer.PlatformApplication
+	service     *portainer.PlatformServiceDefinition
+	deployment  *portainer.PlatformServiceDeployment
+	artifact    *portainer.PlatformArtifact
 }
 
 func validateReleaseReferences(tx dataservices.DataStoreTx, payload createReleasePayload) (*portainer.PlatformServiceDeployment, *portainer.PlatformArtifact, error) {
-	if _, err := readActiveProject(tx, payload.ProjectID); err != nil {
+	refs, err := validateReleaseReferenceSet(tx, payload)
+	if err != nil {
 		return nil, nil, err
+	}
+
+	return refs.deployment, refs.artifact, nil
+}
+
+func validateReleaseReferenceSet(tx dataservices.DataStoreTx, payload createReleasePayload) (*releaseReferenceSet, error) {
+	project, err := readActiveProject(tx, payload.ProjectID)
+	if err != nil {
+		return nil, err
 	}
 	environment, err := readActiveEnvironment(tx, payload.EnvironmentID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	application, err := readActiveApplication(tx, payload.ApplicationID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	service, err := readActiveServiceDefinition(tx, payload.ServiceDefinitionID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	deployment, err := readActiveServiceDeployment(tx, payload.ServiceDeploymentID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	artifact, err := tx.PlatformArtifact().Read(payload.ArtifactID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if !isActive(artifact.PlatformLifecycle) {
-		return nil, nil, notFoundError("Artifact is archived")
+		return nil, notFoundError("Artifact is archived")
 	}
 
 	if environment.ProjectID != payload.ProjectID ||
@@ -283,35 +350,42 @@ func validateReleaseReferences(tx dataservices.DataStoreTx, payload createReleas
 		service.ProjectID != payload.ProjectID ||
 		deployment.ProjectID != payload.ProjectID ||
 		artifact.ProjectID != payload.ProjectID {
-		return nil, nil, validationFailedError("Release resources belong to different projects")
+		return nil, validationFailedError("Release resources belong to different projects")
 	}
 	if service.ApplicationID != payload.ApplicationID ||
 		deployment.ApplicationID != payload.ApplicationID {
-		return nil, nil, validationFailedError("Release resources belong to different applications")
+		return nil, validationFailedError("Release resources belong to different applications")
 	}
 	if deployment.ServiceDefinitionID != payload.ServiceDefinitionID {
-		return nil, nil, validationFailedError("ServiceDeployment does not belong to ServiceDefinition")
+		return nil, validationFailedError("ServiceDeployment does not belong to ServiceDefinition")
 	}
 	if deployment.EnvironmentID != payload.EnvironmentID {
-		return nil, nil, validationFailedError("ServiceDeployment does not belong to Environment")
+		return nil, validationFailedError("ServiceDeployment does not belong to Environment")
 	}
 	if artifact.ApplicationID != 0 && artifact.ApplicationID != payload.ApplicationID {
-		return nil, nil, validationFailedError("Artifact does not belong to Application")
+		return nil, validationFailedError("Artifact does not belong to Application")
 	}
 	if artifact.ServiceDefinitionID != 0 && artifact.ServiceDefinitionID != payload.ServiceDefinitionID {
-		return nil, nil, validationFailedError("Artifact does not belong to ServiceDefinition")
+		return nil, validationFailedError("Artifact does not belong to ServiceDefinition")
 	}
 	if artifact.Type != portainer.PlatformArtifactTypeImage || artifact.SourceType != portainer.PlatformArtifactSourceImageReference || artifact.ImageRef == "" {
-		return nil, nil, validationFailedError("Only image-reference artifacts are supported in V0.1")
+		return nil, validationFailedError("Only image-reference artifacts are supported in V0.1")
 	}
 	if deployment.SpecRevision != payload.ExpectedSpecRevision {
-		return nil, nil, validationFailedError("ExpectedSpecRevision does not match current deployment SpecRevision")
+		return nil, validationFailedError("ExpectedSpecRevision does not match current deployment SpecRevision")
 	}
 	if err := portainer.ValidatePlatformDeploymentDesiredSpecV01(deployment.DesiredSpec); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return deployment, artifact, nil
+	return &releaseReferenceSet{
+		project:     project,
+		environment: environment,
+		application: application,
+		service:     service,
+		deployment:  deployment,
+		artifact:    artifact,
+	}, nil
 }
 
 func findIdempotentRelease(tx dataservices.DataStoreTx, serviceDeploymentID portainer.PlatformServiceDeploymentID, userID portainer.UserID, idempotencyKeyHash string, now int64) (*portainer.PlatformRelease, error) {
@@ -331,7 +405,7 @@ func findIdempotentRelease(tx dataservices.DataStoreTx, serviceDeploymentID port
 	return &releases[0], nil
 }
 
-func newGate0BBlockedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
+func newQueuedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
 	return &portainer.PlatformRelease{
 		ProjectID:            payload.ProjectID,
 		EnvironmentID:        payload.EnvironmentID,
@@ -342,7 +416,7 @@ func newGate0BBlockedRelease(payload createReleasePayload, deployment *portainer
 		Version:              payload.Version,
 		TriggerType:          payload.TriggerType,
 		Strategy:             payload.Strategy,
-		Status:               portainer.PlatformReleaseStatusFailed,
+		Status:               portainer.PlatformReleaseStatusQueued,
 		OperatorUserID:       userID,
 		IdempotencyKeyHash:   idempotencyKeyHash,
 		PayloadHash:          payloadHash,
@@ -356,15 +430,46 @@ func newGate0BBlockedRelease(payload createReleasePayload, deployment *portainer
 			DesiredSpecSnapshot: deployment.DesiredSpec,
 		},
 		TargetSnapshot:    targetSnapshotFromDeployment(deployment),
-		HealthCheckResult: portainer.PlatformHealthCheckResult{Status: portainer.PlatformHealthCheckStatusSkipped, ErrorMessage: releaseGate0BRequiredReason},
-		Steps:             gate0BBlockedSteps(now),
-		FailureReason:     releaseGate0BRequiredReason,
+		HealthCheckResult: portainer.PlatformHealthCheckResult{Status: portainer.PlatformHealthCheckStatusSkipped},
 		ResolutionAction:  portainer.PlatformReleaseResolutionNone,
-		StartedAt:         now,
-		FinishedAt:        now,
 		CreatedAt:         now,
 		QueueExpiresAt:    now + 600,
 	}
+}
+
+func (handler *Handler) persistReleaseExecutionResult(result platformservice.ReleaseExecutionResult) error {
+	return handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		if err := tx.PlatformRelease().Update(result.Release.ID, &result.Release); err != nil {
+			return err
+		}
+		if result.Deployment != nil {
+			if err := tx.PlatformServiceDeployment().Update(result.Deployment.ID, result.Deployment); err != nil {
+				return err
+			}
+		}
+
+		lockID := platformreleaselock.LockIDForServiceDeployment(result.Release.ServiceDeploymentID)
+		if releaseStatusReleasesLock(result.Release.Status) {
+			if err := tx.PlatformReleaseLock().Delete(lockID); err != nil && !tx.IsErrObjectNotFound(err) {
+				return err
+			}
+			return nil
+		}
+
+		lock, err := tx.PlatformReleaseLock().Read(lockID)
+		if err != nil {
+			if tx.IsErrObjectNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		lock.ReleaseID = result.Release.ID
+		lock.LeaseOwner = result.Release.LeaseOwner
+		lock.LeaseExpiresAt = result.Release.LeaseExpiresAt
+		lock.UpdatedAt = time.Now().Unix()
+
+		return tx.PlatformReleaseLock().Update(lockID, lock)
+	})
 }
 
 func artifactSnapshotFromArtifact(artifact *portainer.PlatformArtifact) portainer.PlatformArtifactSnapshot {
@@ -388,19 +493,6 @@ func targetSnapshotFromDeployment(deployment *portainer.PlatformServiceDeploymen
 	return portainer.PlatformTargetSnapshot{
 		RuntimeDriver: deployment.DesiredSpec.Runtime.RuntimeDriver,
 		ExecutorMode:  portainer.PlatformExecutorModeSingle,
-	}
-}
-
-func gate0BBlockedSteps(now int64) []portainer.PlatformReleaseStep {
-	return []portainer.PlatformReleaseStep{
-		{
-			Name:       "gate-0b-check",
-			Status:     portainer.PlatformReleaseStepStatusFailed,
-			Reason:     releaseGate0BRequiredReason,
-			Message:    "Docker release executor is blocked until Gate 0B passes.",
-			StartedAt:  now,
-			FinishedAt: now,
-		},
 	}
 }
 

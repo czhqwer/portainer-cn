@@ -226,6 +226,9 @@ func (server *Server) Start(ctx context.Context) error {
 
 	var platformHandler = platformhandler.NewHandler(requestBouncer)
 	platformHandler.DataStore = server.DataStore
+	if server.DockerClientFactory != nil {
+		platformHandler.ReleaseExecutor = platform.NewSingleTargetExecutor(platform.NewDockerRuntimeDriver(server.DataStore, server.DockerClientFactory))
+	}
 
 	var registryHandler = registries.NewHandler(requestBouncer)
 	registryHandler.DataStore = server.DataStore
