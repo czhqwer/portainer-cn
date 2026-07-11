@@ -11,6 +11,7 @@ type (
 	PlatformConfigSetID         int
 	PlatformArtifactID          int
 	PlatformReleaseID           int
+	PlatformAuditLogID          int
 
 	PlatformProjectRole           string
 	PlatformLifecycleStatus       string
@@ -45,6 +46,8 @@ type (
 	PlatformReleaseTargetStatus   string
 	PlatformExecutorMode          string
 	PlatformDeploymentDriftStatus string
+	PlatformAuditAction           string
+	PlatformAuditResult           string
 )
 
 const (
@@ -200,6 +203,20 @@ const (
 	PlatformDeploymentDriftConfigChanged  PlatformDeploymentDriftStatus = "config-changed"
 	PlatformDeploymentDriftRuntimeMissing PlatformDeploymentDriftStatus = "runtime-missing"
 	PlatformDeploymentDriftRuntimeDrifted PlatformDeploymentDriftStatus = "runtime-drifted"
+
+	PlatformAuditActionReleaseCreated        PlatformAuditAction = "release.created"
+	PlatformAuditActionReleaseSucceeded      PlatformAuditAction = "release.succeeded"
+	PlatformAuditActionReleaseFailed         PlatformAuditAction = "release.failed"
+	PlatformAuditActionReleaseRecoveryFailed PlatformAuditAction = "release.recovery_failed"
+	PlatformAuditActionReleaseCanceled       PlatformAuditAction = "release.canceled"
+	PlatformAuditActionReleaseResolved       PlatformAuditAction = "release.resolved"
+	PlatformAuditActionReleaseRetryRecovery  PlatformAuditAction = "release.retry_recovery"
+	PlatformAuditActionReleaseCleanupRuntime PlatformAuditAction = "release.cleanup_runtime"
+	PlatformAuditActionReleaseDenied         PlatformAuditAction = "release.denied"
+
+	PlatformAuditResultSuccess PlatformAuditResult = "success"
+	PlatformAuditResultFailed  PlatformAuditResult = "failed"
+	PlatformAuditResultDenied  PlatformAuditResult = "denied"
 )
 
 // PlatformLifecycle keeps platform control-plane lifecycle separate from Docker runtime state;
@@ -595,6 +612,29 @@ type PlatformReleaseLock struct {
 	LeaseExpiresAt      int64                       `json:"LeaseExpiresAt" example:"0"`
 	CreatedAt           int64                       `json:"CreatedAt" example:"1783740000"`
 	UpdatedAt           int64                       `json:"UpdatedAt" example:"1783740000"`
+}
+
+type PlatformAuditLog struct {
+	ID                  PlatformAuditLogID          `json:"Id" example:"1"`
+	Timestamp           int64                       `json:"Timestamp" example:"1783740000"`
+	RequestID           string                      `json:"RequestId,omitempty"`
+	OperatorUserID      UserID                      `json:"OperatorUserId" example:"1"`
+	OperatorUsername    string                      `json:"OperatorUsername,omitempty"`
+	IPAddress           string                      `json:"IpAddress,omitempty"`
+	UserAgent           string                      `json:"UserAgent,omitempty"`
+	Action              PlatformAuditAction         `json:"Action" example:"release.created"`
+	Result              PlatformAuditResult         `json:"Result" example:"success"`
+	ProjectID           PlatformProjectID           `json:"ProjectId" example:"1"`
+	EnvironmentID       PlatformEnvironmentID       `json:"EnvironmentId" example:"1"`
+	ApplicationID       PlatformApplicationID       `json:"ApplicationId" example:"1"`
+	ServiceDefinitionID PlatformServiceDefinitionID `json:"ServiceDefinitionId" example:"1"`
+	ServiceDeploymentID PlatformServiceDeploymentID `json:"ServiceDeploymentId" example:"1"`
+	ReleaseID           PlatformReleaseID           `json:"ReleaseId" example:"1"`
+	ArtifactID          PlatformArtifactID          `json:"ArtifactId" example:"1"`
+	BeforeSummary       map[string]any              `json:"BeforeSummary,omitempty"`
+	AfterSummary        map[string]any              `json:"AfterSummary,omitempty"`
+	FailureReason       string                      `json:"FailureReason,omitempty"`
+	SensitiveFields     []string                    `json:"SensitiveFields,omitempty"`
 }
 
 func NewPlatformLifecycle() PlatformLifecycle {

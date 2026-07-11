@@ -226,6 +226,27 @@ func (payload *updateServiceDeploymentPayload) Validate(_ *http.Request) error {
 	return nil
 }
 
+type resolveReleasePayload struct {
+	Action  portainer.PlatformReleaseResolution `json:"Action"`
+	Comment string                              `json:"Comment,omitempty"`
+}
+
+func (payload *resolveReleasePayload) Validate(_ *http.Request) error {
+	payload.Comment = strings.TrimSpace(payload.Comment)
+	if len(payload.Comment) > 500 {
+		return errors.New("Comment must be 500 characters or fewer")
+	}
+
+	switch payload.Action {
+	case portainer.PlatformReleaseResolutionAcceptCurrent,
+		portainer.PlatformReleaseResolutionMarkHandled,
+		portainer.PlatformReleaseResolutionReleaseLockOnly:
+		return nil
+	default:
+		return errors.New("Action must be accept-current, mark-handled, or release-lock-only")
+	}
+}
+
 func validateResourceVersion(resourceVersion int) error {
 	if resourceVersion <= 0 {
 		return errors.New("ResourceVersion is required")

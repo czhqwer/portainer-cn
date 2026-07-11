@@ -264,6 +264,10 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 			return err
 		}
 
+		if err := handler.createReleaseAuditLog(tx, r, portainer.PlatformAuditActionReleaseCreated, portainer.PlatformAuditResultSuccess, *release, nil, releaseAuditSummary(*release), ""); err != nil {
+			return err
+		}
+
 		shouldExecute = true
 		return nil
 	})
@@ -289,7 +293,7 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 		if err != nil {
 			return handler.convertError(err)
 		}
-		if err := handler.persistReleaseExecutionResult(result); err != nil {
+		if err := handler.persistReleaseExecutionResult(r, result); err != nil {
 			return handler.convertError(err)
 		}
 		release = &result.Release
@@ -437,13 +441,27 @@ func newQueuedRelease(payload createReleasePayload, deployment *portainer.Platfo
 	}
 }
 
-func (handler *Handler) persistReleaseExecutionResult(result platformservice.ReleaseExecutionResult) error {
+func (handler *Handler) persistReleaseExecutionResult(r *http.Request, result platformservice.ReleaseExecutionResult) error {
 	return handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		previous, err := tx.PlatformRelease().Read(result.Release.ID)
+		if err != nil && !tx.IsErrObjectNotFound(err) {
+			return err
+		}
 		if err := tx.PlatformRelease().Update(result.Release.ID, &result.Release); err != nil {
 			return err
 		}
 		if result.Deployment != nil {
 			if err := tx.PlatformServiceDeployment().Update(result.Deployment.ID, result.Deployment); err != nil {
+				return err
+			}
+		}
+
+		if action := releaseAuditActionForStatus(result.Release.Status); action != "" {
+			var before map[string]any
+			if previous != nil {
+				before = releaseAuditSummary(*previous)
+			}
+			if err := handler.createReleaseAuditLog(tx, r, action, releaseAuditResultForStatus(result.Release.Status), result.Release, before, releaseAuditSummary(result.Release), result.Release.FailureReason); err != nil {
 				return err
 			}
 		}

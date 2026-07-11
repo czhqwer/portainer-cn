@@ -24,6 +24,7 @@ type testDatastore struct {
 	platformArtifact          dataservices.PlatformArtifactService
 	platformRelease           dataservices.PlatformReleaseService
 	platformReleaseLock       dataservices.PlatformReleaseLockService
+	platformAuditLog          dataservices.PlatformAuditLogService
 	edgeGroup                 dataservices.EdgeGroupService
 	edgeJob                   dataservices.EdgeJobService
 	edgeStack                 dataservices.EdgeStackService
@@ -93,6 +94,9 @@ func (d *testDatastore) PlatformRelease() dataservices.PlatformReleaseService {
 }
 func (d *testDatastore) PlatformReleaseLock() dataservices.PlatformReleaseLockService {
 	return d.platformReleaseLock
+}
+func (d *testDatastore) PlatformAuditLog() dataservices.PlatformAuditLogService {
+	return d.platformAuditLog
 }
 func (d *testDatastore) EdgeGroup() dataservices.EdgeGroupService { return d.edgeGroup }
 func (d *testDatastore) EdgeJob() dataservices.EdgeJobService     { return d.edgeJob }

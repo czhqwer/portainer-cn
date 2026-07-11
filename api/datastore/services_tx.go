@@ -58,6 +58,10 @@ func (tx *StoreTx) PlatformReleaseLock() dataservices.PlatformReleaseLockService
 	return tx.store.PlatformReleaseLockService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformAuditLog() dataservices.PlatformAuditLogService {
+	return tx.store.PlatformAuditLogService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PendingActions() dataservices.PendingActionsService {
 	return tx.store.PendingActionsService.Tx(tx.tx)
 }

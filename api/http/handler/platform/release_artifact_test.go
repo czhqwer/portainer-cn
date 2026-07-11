@@ -97,6 +97,24 @@ func (fakeReleaseExecutor) Execute(_ context.Context, request platformservice.Re
 	return platformservice.ReleaseExecutionResult{Release: release, Deployment: &deployment}, nil
 }
 
+type fakeRuntimeInspector struct {
+	inspection platformservice.RuntimeInspection
+	logs       platformservice.RuntimeLogResult
+}
+
+func (inspector fakeRuntimeInspector) InspectRuntime(context.Context, portainer.RuntimeRef) (platformservice.RuntimeInspection, error) {
+	return inspector.inspection, nil
+}
+
+func (inspector fakeRuntimeInspector) RuntimeLogs(_ context.Context, runtimeRef portainer.RuntimeRef, options platformservice.RuntimeLogOptions) (platformservice.RuntimeLogResult, error) {
+	result := inspector.logs
+	result.RuntimeRef = runtimeRef
+	if result.Tail == 0 {
+		result.Tail = options.Tail
+	}
+	return result, nil
+}
+
 func TestPlatformReleaseCreateIsIdempotentAndExecutes(t *testing.T) {
 	ctx, project, application, service, deployment := createPlatformReleaseFixture(t)
 	ctx.handler.ReleaseExecutor = fakeReleaseExecutor{}
@@ -142,6 +160,11 @@ func TestPlatformReleaseCreateIsIdempotentAndExecutes(t *testing.T) {
 
 	releases := doJSON[[]portainer.PlatformRelease](t, ctx, http.MethodGet, fmt.Sprintf("/platform/releases?serviceDeploymentId=%d", deployment.ID), nil, http.StatusOK)
 	require.Len(t, releases, 1)
+
+	audits := doJSON[[]portainer.PlatformAuditLog](t, ctx, http.MethodGet, fmt.Sprintf("/platform/audit-logs?releaseId=%d", first.ReleaseID), nil, http.StatusOK)
+	require.Len(t, audits, 2)
+	require.Equal(t, portainer.PlatformAuditActionReleaseCreated, audits[0].Action)
+	require.Equal(t, portainer.PlatformAuditActionReleaseSucceeded, audits[1].Action)
 }
 
 func TestPlatformReleaseConflictWithActiveLock(t *testing.T) {
@@ -213,6 +236,123 @@ func TestPlatformReleaseStateTransitions(t *testing.T) {
 	require.True(t, releaseStatusReleasesLock(portainer.PlatformReleaseStatusFailed))
 	require.False(t, releaseStatusReleasesLock(portainer.PlatformReleaseStatusRecoveryFailed))
 	require.False(t, releaseStatusReleasesLock(portainer.PlatformReleaseStatusInterrupted))
+}
+
+func TestPlatformServiceDeploymentStatusMarksRuntimeMissing(t *testing.T) {
+	ctx, _, _, _, deployment := createPlatformReleaseFixture(t)
+	deployment.CurrentRuntimeRef = portainer.RuntimeRef{
+		DriverID:     portainer.PlatformRuntimeDriverDockerContainer,
+		EndpointID:   1,
+		ResourceType: portainer.PlatformRuntimeResourceContainer,
+		ResourceID:   "missing-container",
+		Name:         "missing",
+	}
+	require.NoError(t, ctx.handler.DataStore.PlatformServiceDeployment().Update(deployment.ID, &deployment))
+	ctx.handler.RuntimeInspector = fakeRuntimeInspector{inspection: platformservice.RuntimeInspection{
+		RuntimeRef: deployment.CurrentRuntimeRef,
+		Found:      false,
+		Message:    "No such container",
+	}}
+
+	status := doJSON[serviceDeploymentStatusResponse](t, ctx, http.MethodGet, fmt.Sprintf("/platform/service-deployments/%d/status", deployment.ID), nil, http.StatusOK)
+	require.False(t, status.RuntimeFound)
+	require.Equal(t, runtimeReasonMissing, status.Reason)
+	require.Equal(t, portainer.PlatformDeploymentDriftRuntimeMissing, status.DriftStatus)
+
+	updated, err := ctx.handler.DataStore.PlatformServiceDeployment().Read(deployment.ID)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformDeploymentDriftRuntimeMissing, updated.DriftStatus)
+}
+
+func TestPlatformServiceDeploymentLogsReturnsTail(t *testing.T) {
+	ctx, _, _, _, deployment := createPlatformReleaseFixture(t)
+	deployment.CurrentRuntimeRef = portainer.RuntimeRef{
+		DriverID:     portainer.PlatformRuntimeDriverDockerContainer,
+		EndpointID:   1,
+		ResourceType: portainer.PlatformRuntimeResourceContainer,
+		ResourceID:   "container-1",
+		Name:         "orders-api",
+	}
+	require.NoError(t, ctx.handler.DataStore.PlatformServiceDeployment().Update(deployment.ID, &deployment))
+	ctx.handler.RuntimeInspector = fakeRuntimeInspector{logs: platformservice.RuntimeLogResult{
+		Available: true,
+		Logs:      "line-1\nline-2\n",
+	}}
+
+	logs := doJSON[serviceDeploymentLogsResponse](t, ctx, http.MethodGet, fmt.Sprintf("/platform/service-deployments/%d/logs?tail=2", deployment.ID), nil, http.StatusOK)
+	require.True(t, logs.Available)
+	require.Equal(t, 2, logs.Tail)
+	require.Contains(t, logs.Logs, "line-2")
+}
+
+func TestPlatformReleaseResolveAcceptsCurrentAndAudits(t *testing.T) {
+	ctx, project, application, service, deployment := createPlatformReleaseFixture(t)
+	artifact := createImageReferenceArtifact(t, ctx, createImageReferenceArtifactPayload{
+		ProjectID:           project.ID,
+		ApplicationID:       application.ID,
+		ServiceDefinitionID: service.ID,
+		Name:                "orders-api",
+		Version:             "1.0.0",
+		ImageRef:            "registry.example.com/orders-api:1.0.0",
+	})
+	release := &portainer.PlatformRelease{
+		ProjectID:            project.ID,
+		EnvironmentID:        deployment.EnvironmentID,
+		ApplicationID:        application.ID,
+		ServiceDefinitionID:  service.ID,
+		ServiceDeploymentID:  deployment.ID,
+		ArtifactID:           artifact.ID,
+		Version:              "manual",
+		TriggerType:          portainer.PlatformReleaseTriggerDeploy,
+		Strategy:             portainer.NewPlatformReleaseStrategy(),
+		Status:               portainer.PlatformReleaseStatusRecoveryFailed,
+		ExpectedSpecRevision: deployment.SpecRevision,
+		Image:                artifact.ImageRef,
+		ConfigSnapshot:       portainer.PlatformServiceConfigSnapshot{SpecRevision: deployment.SpecRevision, DesiredSpecSnapshot: deployment.DesiredSpec},
+		RuntimeSnapshot: portainer.PlatformRuntimeSnapshot{
+			CurrentRuntimeRef: portainer.RuntimeRef{
+				DriverID:     portainer.PlatformRuntimeDriverDockerContainer,
+				EndpointID:   1,
+				ResourceType: portainer.PlatformRuntimeResourceContainer,
+				ResourceID:   "current-container",
+				Name:         "orders-api-current",
+			},
+		},
+		FailureReason:        platformservice.ReleaseFailureReasonRecoveryFailed,
+		ManualActionRequired: true,
+		LeaseOwner:           "executor",
+		LeaseExpiresAt:       time.Now().Unix() + 600,
+	}
+	require.NoError(t, ctx.handler.DataStore.PlatformRelease().Create(release))
+	require.NoError(t, ctx.handler.DataStore.PlatformReleaseLock().Create(&portainer.PlatformReleaseLock{
+		ServiceDeploymentID: deployment.ID,
+		ReleaseID:           release.ID,
+		LeaseOwner:          "executor",
+		LeaseExpiresAt:      release.LeaseExpiresAt,
+	}))
+
+	resolved := doJSON[portainer.PlatformRelease](t, ctx, http.MethodPost, fmt.Sprintf("/platform/releases/%d/resolve", release.ID), resolveReleasePayload{
+		Action:  portainer.PlatformReleaseResolutionAcceptCurrent,
+		Comment: "checked manually",
+	}, http.StatusOK)
+	require.Equal(t, portainer.PlatformReleaseStatusResolved, resolved.Status)
+	require.Equal(t, portainer.PlatformReleaseResolutionAcceptCurrent, resolved.ResolutionAction)
+	require.False(t, resolved.ManualActionRequired)
+
+	updatedDeployment, err := ctx.handler.DataStore.PlatformServiceDeployment().Read(deployment.ID)
+	require.NoError(t, err)
+	require.Equal(t, release.ID, updatedDeployment.CurrentServingReleaseID)
+	require.Equal(t, artifact.ID, updatedDeployment.CurrentArtifactID)
+	require.Equal(t, "current-container", updatedDeployment.CurrentRuntimeRef.ResourceID)
+	require.Equal(t, portainer.PlatformDeploymentDriftNone, updatedDeployment.DriftStatus)
+
+	_, err = ctx.handler.DataStore.PlatformReleaseLock().Read(platformreleaselock.LockIDForServiceDeployment(deployment.ID))
+	require.Error(t, err)
+	require.True(t, ctx.handler.DataStore.IsErrObjectNotFound(err))
+
+	audits := doJSON[[]portainer.PlatformAuditLog](t, ctx, http.MethodGet, fmt.Sprintf("/platform/audit-logs?releaseId=%d&action=%s", release.ID, portainer.PlatformAuditActionReleaseResolved), nil, http.StatusOK)
+	require.Len(t, audits, 1)
+	require.Equal(t, portainer.PlatformAuditResultSuccess, audits[0].Result)
 }
 
 func createPlatformReleaseFixture(t *testing.T) (platformTestContext, portainer.PlatformProject, portainer.PlatformApplication, portainer.PlatformServiceDefinition, portainer.PlatformServiceDeployment) {

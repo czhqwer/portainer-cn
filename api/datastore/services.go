@@ -24,6 +24,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/pendingactions"
 	"github.com/portainer/portainer/api/dataservices/platformapplication"
 	"github.com/portainer/portainer/api/dataservices/platformartifact"
+	"github.com/portainer/portainer/api/dataservices/platformauditlog"
 	"github.com/portainer/portainer/api/dataservices/platformenvironment"
 	"github.com/portainer/portainer/api/dataservices/platformproject"
 	"github.com/portainer/portainer/api/dataservices/platformrelease"
@@ -73,6 +74,7 @@ type Store struct {
 	PlatformArtifactService          *platformartifact.Service
 	PlatformReleaseService           *platformrelease.Service
 	PlatformReleaseLockService       *platformreleaselock.Service
+	PlatformAuditLogService          *platformauditlog.Service
 	DockerHubService                 *dockerhub.Service
 	EdgeGroupService                 *edgegroup.Service
 	EdgeJobService                   *edgejob.Service
@@ -178,6 +180,12 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.PlatformReleaseLockService = platformReleaseLockService
+
+	platformAuditLogService, err := platformauditlog.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformAuditLogService = platformAuditLogService
 
 	dockerhubService, err := dockerhub.NewService(store.connection)
 	if err != nil {
@@ -425,6 +433,11 @@ func (store *Store) PlatformReleaseLock() dataservices.PlatformReleaseLockServic
 	return store.PlatformReleaseLockService
 }
 
+// PlatformAuditLog gives access to the platform audit log data management layer
+func (store *Store) PlatformAuditLog() dataservices.PlatformAuditLogService {
+	return store.PlatformAuditLogService
+}
+
 // EdgeGroup gives access to the EdgeGroup data management layer
 func (store *Store) EdgeGroup() dataservices.EdgeGroupService {
 	return store.EdgeGroupService
@@ -591,6 +604,7 @@ type storeExport struct {
 	PlatformArtifact          []portainer.PlatformArtifact          `json:"platform_artifacts,omitempty"`
 	PlatformRelease           []portainer.PlatformRelease           `json:"platform_releases,omitempty"`
 	PlatformReleaseLock       []portainer.PlatformReleaseLock       `json:"platform_release_locks,omitempty"`
+	PlatformAuditLog          []portainer.PlatformAuditLog          `json:"platform_audit_logs,omitempty"`
 	Metadata                  map[string]any                        `json:"metadata,omitempty"`
 }
 
@@ -861,6 +875,14 @@ func (store *Store) Export(filename string) (err error) {
 		backup.PlatformReleaseLock = l
 	}
 
+	if a, err := store.PlatformAuditLog().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Audit Logs")
+		}
+	} else {
+		backup.PlatformAuditLog = a
+	}
+
 	if version, err := store.Version().Version(); err != nil {
 		if !store.IsErrObjectNotFound(err) {
 			log.Error().Err(err).Msg("exporting Version")
@@ -1076,6 +1098,12 @@ func (store *Store) Import(filename string) (err error) {
 	for _, v := range backup.PlatformReleaseLock {
 		if err := store.PlatformReleaseLock().Update(v.ID, &v); err != nil {
 			log.Warn().Err(err).Msg("failed to update the platform release lock in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformAuditLog {
+		if err := store.PlatformAuditLog().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform audit log in the database")
 		}
 	}
 

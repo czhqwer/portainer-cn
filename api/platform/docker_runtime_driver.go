@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -20,6 +21,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 	"github.com/pkg/errors"
 )
@@ -134,6 +136,90 @@ func (driver *DockerRuntimeDriver) DeleteRuntime(ctx context.Context, runtimeRef
 	}
 
 	return nil
+}
+
+func (driver *DockerRuntimeDriver) InspectRuntime(ctx context.Context, runtimeRef portainer.RuntimeRef) (RuntimeInspection, error) {
+	result := RuntimeInspection{RuntimeRef: runtimeRef}
+	if runtimeRef.ResourceID == "" {
+		result.Message = "runtime reference is empty"
+		return result, nil
+	}
+
+	cli, err := driver.clientForRuntime(runtimeRef)
+	if err != nil {
+		return result, err
+	}
+	defer logs.CloseAndLogErr(cli)
+
+	inspect, err := cli.ContainerInspect(ctx, runtimeRef.ResourceID)
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			result.Message = err.Error()
+			return result, nil
+		}
+		return result, err
+	}
+
+	result.Found = true
+	result.Image = inspect.Config.Image
+	if inspect.NetworkSettings != nil {
+		result.PublishedPorts = publishedPortsFromDockerPortMap(inspect.NetworkSettings.Ports)
+	}
+	if inspect.State != nil {
+		result.Running = inspect.State.Running
+		result.State = inspect.State.Status
+		result.Status = inspect.State.Status
+		result.RestartCount = inspect.RestartCount
+		result.StartedAt = inspect.State.StartedAt
+		result.FinishedAt = inspect.State.FinishedAt
+		if inspect.State.Error != "" {
+			result.Message = inspect.State.Error
+		}
+	}
+
+	return result, nil
+}
+
+func (driver *DockerRuntimeDriver) RuntimeLogs(ctx context.Context, runtimeRef portainer.RuntimeRef, options RuntimeLogOptions) (RuntimeLogResult, error) {
+	result := RuntimeLogResult{RuntimeRef: runtimeRef, Tail: options.Tail}
+	if runtimeRef.ResourceID == "" {
+		result.Reason = "RUNTIME_NOT_CONFIGURED"
+		return result, nil
+	}
+	if result.Tail <= 0 {
+		result.Tail = 100
+	}
+
+	cli, err := driver.clientForRuntime(runtimeRef)
+	if err != nil {
+		return result, err
+	}
+	defer logs.CloseAndLogErr(cli)
+
+	stream, err := cli.ContainerLogs(ctx, runtimeRef.ResourceID, dockercontainer.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Timestamps: true,
+		Tail:       strconv.Itoa(result.Tail),
+	})
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			result.Reason = "RUNTIME_MISSING"
+			return result, nil
+		}
+		return result, err
+	}
+	defer logs.CloseAndLogErr(stream)
+
+	var buffer bytes.Buffer
+	if _, err := stdcopy.StdCopy(&buffer, &buffer, stream); err != nil {
+		return result, err
+	}
+
+	result.Available = true
+	result.Logs = buffer.String()
+
+	return result, nil
 }
 
 func (driver *DockerRuntimeDriver) Switch(ctx context.Context, request ReleaseExecutionRequest, target portainer.PlatformDeploymentTarget, _ CandidateValidationSnapshot) (RuntimeSwitchResult, error) {
@@ -593,6 +679,24 @@ func publishedPortsFromInspect(portMap nat.PortMap, specs []portainer.PlatformPo
 			hostPort, _ := strconv.Atoi(binding.HostPort)
 			result = append(result, portainer.PlatformPublishedPort{
 				Name:          namesByPort[containerPort],
+				ContainerPort: containerPort,
+				HostPort:      hostPort,
+				Protocol:      portainer.PlatformPortProtocol(port.Proto()),
+				HostIP:        binding.HostIP,
+			})
+		}
+	}
+
+	return result
+}
+
+func publishedPortsFromDockerPortMap(portMap nat.PortMap) []portainer.PlatformPublishedPort {
+	result := make([]portainer.PlatformPublishedPort, 0)
+	for port, bindings := range portMap {
+		containerPort, _ := strconv.Atoi(port.Port())
+		for _, binding := range bindings {
+			hostPort, _ := strconv.Atoi(binding.HostPort)
+			result = append(result, portainer.PlatformPublishedPort{
 				ContainerPort: containerPort,
 				HostPort:      hostPort,
 				Protocol:      portainer.PlatformPortProtocol(port.Proto()),

@@ -19,6 +19,7 @@ type (
 		PlatformArtifact() PlatformArtifactService
 		PlatformRelease() PlatformReleaseService
 		PlatformReleaseLock() PlatformReleaseLockService
+		PlatformAuditLog() PlatformAuditLogService
 		EdgeGroup() EdgeGroupService
 		EdgeJob() EdgeJobService
 		EdgeStack() EdgeStackService
@@ -139,6 +140,12 @@ type (
 		Update(id string, lock *portainer.PlatformReleaseLock) error
 		Delete(id string) error
 		BucketName() string
+	}
+
+	// PlatformAuditLogService represents structured platform audit logs.
+	PlatformAuditLogService interface {
+		BaseCRUD[portainer.PlatformAuditLog, portainer.PlatformAuditLogID]
+		GetNextIdentifier() int
 	}
 
 	// EdgeGroupService represents a service to manage Edge groups

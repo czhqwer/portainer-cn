@@ -13,8 +13,9 @@ import (
 // Handler manages the private deployment platform control-plane endpoints.
 type Handler struct {
 	*mux.Router
-	DataStore       dataservices.DataStore
-	ReleaseExecutor platformservice.ReleaseExecutor
+	DataStore        dataservices.DataStore
+	ReleaseExecutor  platformservice.ReleaseExecutor
+	RuntimeInspector platformservice.RuntimeInspector
 }
 
 // NewHandler registers V0.1 platform endpoints. Every business endpoint stays
@@ -76,6 +77,10 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentCreate))).Methods(http.MethodPost)
 	h.Handle("/platform/service-deployments/{deploymentId}",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/service-deployments/{deploymentId}/status",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentStatus))).Methods(http.MethodGet)
+	h.Handle("/platform/service-deployments/{deploymentId}/logs",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentLogs))).Methods(http.MethodGet)
 	h.Handle("/platform/service-deployments/{deploymentId}",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.serviceDeploymentUpdate))).Methods(http.MethodPut)
 	h.Handle("/platform/service-deployments/{deploymentId}",
@@ -100,6 +105,11 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseCreate))).Methods(http.MethodPost)
 	h.Handle("/platform/releases/{releaseId}",
 		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/releases/{releaseId}/resolve",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.releaseResolve))).Methods(http.MethodPost)
+
+	h.Handle("/platform/audit-logs",
+		bouncer.AdminAccess(httperror.LoggerHandler(h.auditLogList))).Methods(http.MethodGet)
 
 	return h
 }

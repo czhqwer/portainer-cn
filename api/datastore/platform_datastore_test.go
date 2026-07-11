@@ -74,6 +74,12 @@ func TestPlatformDataServicesCRUDAndArchive(t *testing.T) {
 	require.Equal(t, portainer.PlatformReleaseStatusQueued, gotRelease.Status)
 	release.Status = portainer.PlatformReleaseStatusFailed
 	require.NoError(t, store.PlatformRelease().Update(release.ID, release))
+
+	audit := samplePlatformAuditLog(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID, release.ID)
+	require.NoError(t, store.PlatformAuditLog().Create(audit))
+	gotAudit, err := store.PlatformAuditLog().Read(audit.ID)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformAuditActionReleaseCreated, gotAudit.Action)
 }
 
 func TestPlatformDataServicesTxAndReleaseLock(t *testing.T) {
@@ -101,12 +107,16 @@ func TestPlatformDataServicesTxAndReleaseLock(t *testing.T) {
 			return err
 		}
 
-		return tx.PlatformReleaseLock().Create(&portainer.PlatformReleaseLock{
+		if err := tx.PlatformReleaseLock().Create(&portainer.PlatformReleaseLock{
 			ServiceDeploymentID: deployment.ID,
 			ReleaseID:           release.ID,
 			IdempotencyKeyHash:  "idem-hash",
 			PayloadHash:         "payload-hash",
-		})
+		}); err != nil {
+			return err
+		}
+
+		return tx.PlatformAuditLog().Create(samplePlatformAuditLog(project.ID, environment.ID, 0, 0, deployment.ID, 0, release.ID))
 	}))
 
 	var locks []portainer.PlatformReleaseLock
@@ -151,6 +161,8 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 		PayloadHash:         "payload-hash",
 	}
 	require.NoError(t, store.PlatformReleaseLock().Create(lock))
+	audit := samplePlatformAuditLog(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID, release.ID)
+	require.NoError(t, store.PlatformAuditLog().Create(audit))
 
 	backupFile := filepath.Join(t.TempDir(), "backup.json")
 	require.NoError(t, store.Export(backupFile))
@@ -173,6 +185,10 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	importedLock, err := importedStore.PlatformReleaseLock().Read(lock.ID)
 	require.NoError(t, err)
 	require.Equal(t, release.ID, importedLock.ReleaseID)
+
+	importedAudit, err := importedStore.PlatformAuditLog().Read(audit.ID)
+	require.NoError(t, err)
+	require.Equal(t, release.ID, importedAudit.ReleaseID)
 }
 
 func samplePlatformProject() *portainer.PlatformProject {
@@ -298,5 +314,31 @@ func samplePlatformRelease(
 		Traceability:         portainer.PlatformTraceabilityWeak,
 		CreatedAt:            100,
 		QueueExpiresAt:       700,
+	}
+}
+
+func samplePlatformAuditLog(
+	projectID portainer.PlatformProjectID,
+	environmentID portainer.PlatformEnvironmentID,
+	applicationID portainer.PlatformApplicationID,
+	definitionID portainer.PlatformServiceDefinitionID,
+	deploymentID portainer.PlatformServiceDeploymentID,
+	artifactID portainer.PlatformArtifactID,
+	releaseID portainer.PlatformReleaseID,
+) *portainer.PlatformAuditLog {
+	return &portainer.PlatformAuditLog{
+		Timestamp:           100,
+		OperatorUserID:      1,
+		OperatorUsername:    "admin",
+		Action:              portainer.PlatformAuditActionReleaseCreated,
+		Result:              portainer.PlatformAuditResultSuccess,
+		ProjectID:           projectID,
+		EnvironmentID:       environmentID,
+		ApplicationID:       applicationID,
+		ServiceDefinitionID: definitionID,
+		ServiceDeploymentID: deploymentID,
+		ArtifactID:          artifactID,
+		ReleaseID:           releaseID,
+		AfterSummary:        map[string]any{"status": string(portainer.PlatformReleaseStatusQueued)},
 	}
 }

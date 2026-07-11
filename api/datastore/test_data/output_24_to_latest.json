@@ -104,6 +104,7 @@
   "pending_actions": null,
   "platform_applications": null,
   "platform_artifacts": null,
+  "platform_audit_logs": null,
   "platform_environments": null,
   "platform_projects": null,
   "platform_release_locks": null,
