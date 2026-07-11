@@ -13,38 +13,46 @@ import (
 var _ dataservices.DataStore = &testDatastore{}
 
 type testDatastore struct {
-	allowList               dataservices.AllowListService
-	customTemplate          dataservices.CustomTemplateService
-	databaseConnection      dataservices.DatabaseConnectionService
-	edgeGroup               dataservices.EdgeGroupService
-	edgeJob                 dataservices.EdgeJobService
-	edgeStack               dataservices.EdgeStackService
-	edgeStackStatus         dataservices.EdgeStackStatusService
-	endpoint                dataservices.EndpointService
-	endpointGroup           dataservices.EndpointGroupService
-	endpointRelation        dataservices.EndpointRelationService
-	helmUserRepository      dataservices.HelmUserRepositoryService
-	registry                dataservices.RegistryService
-	resourceControl         dataservices.ResourceControlService
-	source                  dataservices.SourceService
-	apiKeyRepositoryService dataservices.APIKeyRepository
-	role                    dataservices.RoleService
-	sslSettings             dataservices.SSLSettingsService
-	settings                dataservices.SettingsService
-	snapshot                dataservices.SnapshotService
-	stack                   dataservices.StackService
-	tag                     dataservices.TagService
-	teamMembership          dataservices.TeamMembershipService
-	team                    dataservices.TeamService
-	tunnelServer            dataservices.TunnelServerService
-	user                    dataservices.UserService
-	userActivityLog         dataservices.UserActivityLogService
-	userAuthenticationLog   dataservices.UserAuthenticationLogService
-	version                 dataservices.VersionService
-	webhook                 dataservices.WebhookService
-	pendingActionsService   dataservices.PendingActionsService
-	workflow                dataservices.WorkflowService
-	connection              portainer.Connection
+	allowList                 dataservices.AllowListService
+	customTemplate            dataservices.CustomTemplateService
+	databaseConnection        dataservices.DatabaseConnectionService
+	platformProject           dataservices.PlatformProjectService
+	platformEnvironment       dataservices.PlatformEnvironmentService
+	platformApplication       dataservices.PlatformApplicationService
+	platformServiceDefinition dataservices.PlatformServiceDefinitionService
+	platformServiceDeployment dataservices.PlatformServiceDeploymentService
+	platformArtifact          dataservices.PlatformArtifactService
+	platformRelease           dataservices.PlatformReleaseService
+	platformReleaseLock       dataservices.PlatformReleaseLockService
+	edgeGroup                 dataservices.EdgeGroupService
+	edgeJob                   dataservices.EdgeJobService
+	edgeStack                 dataservices.EdgeStackService
+	edgeStackStatus           dataservices.EdgeStackStatusService
+	endpoint                  dataservices.EndpointService
+	endpointGroup             dataservices.EndpointGroupService
+	endpointRelation          dataservices.EndpointRelationService
+	helmUserRepository        dataservices.HelmUserRepositoryService
+	registry                  dataservices.RegistryService
+	resourceControl           dataservices.ResourceControlService
+	source                    dataservices.SourceService
+	apiKeyRepositoryService   dataservices.APIKeyRepository
+	role                      dataservices.RoleService
+	sslSettings               dataservices.SSLSettingsService
+	settings                  dataservices.SettingsService
+	snapshot                  dataservices.SnapshotService
+	stack                     dataservices.StackService
+	tag                       dataservices.TagService
+	teamMembership            dataservices.TeamMembershipService
+	team                      dataservices.TeamService
+	tunnelServer              dataservices.TunnelServerService
+	user                      dataservices.UserService
+	userActivityLog           dataservices.UserActivityLogService
+	userAuthenticationLog     dataservices.UserAuthenticationLogService
+	version                   dataservices.VersionService
+	webhook                   dataservices.WebhookService
+	pendingActionsService     dataservices.PendingActionsService
+	workflow                  dataservices.WorkflowService
+	connection                portainer.Connection
 }
 
 func (d *testDatastore) Backup(path string) (string, error)                  { return "", nil }
@@ -62,9 +70,33 @@ func (d *testDatastore) CustomTemplate() dataservices.CustomTemplateService { re
 func (d *testDatastore) DatabaseConnection() dataservices.DatabaseConnectionService {
 	return d.databaseConnection
 }
-func (d *testDatastore) EdgeGroup() dataservices.EdgeGroupService           { return d.edgeGroup }
-func (d *testDatastore) EdgeJob() dataservices.EdgeJobService               { return d.edgeJob }
-func (d *testDatastore) EdgeStack() dataservices.EdgeStackService           { return d.edgeStack }
+func (d *testDatastore) PlatformProject() dataservices.PlatformProjectService {
+	return d.platformProject
+}
+func (d *testDatastore) PlatformEnvironment() dataservices.PlatformEnvironmentService {
+	return d.platformEnvironment
+}
+func (d *testDatastore) PlatformApplication() dataservices.PlatformApplicationService {
+	return d.platformApplication
+}
+func (d *testDatastore) PlatformServiceDefinition() dataservices.PlatformServiceDefinitionService {
+	return d.platformServiceDefinition
+}
+func (d *testDatastore) PlatformServiceDeployment() dataservices.PlatformServiceDeploymentService {
+	return d.platformServiceDeployment
+}
+func (d *testDatastore) PlatformArtifact() dataservices.PlatformArtifactService {
+	return d.platformArtifact
+}
+func (d *testDatastore) PlatformRelease() dataservices.PlatformReleaseService {
+	return d.platformRelease
+}
+func (d *testDatastore) PlatformReleaseLock() dataservices.PlatformReleaseLockService {
+	return d.platformReleaseLock
+}
+func (d *testDatastore) EdgeGroup() dataservices.EdgeGroupService { return d.edgeGroup }
+func (d *testDatastore) EdgeJob() dataservices.EdgeJobService     { return d.edgeJob }
+func (d *testDatastore) EdgeStack() dataservices.EdgeStackService { return d.edgeStack }
 func (d *testDatastore) EdgeStackStatus() dataservices.EdgeStackStatusService {
 	return d.edgeStackStatus
 }
@@ -102,9 +134,9 @@ func (d *testDatastore) UserActivityLog() dataservices.UserActivityLogService {
 func (d *testDatastore) UserAuthenticationLog() dataservices.UserAuthenticationLogService {
 	return d.userAuthenticationLog
 }
-func (d *testDatastore) Version() dataservices.VersionService               { return d.version }
-func (d *testDatastore) Webhook() dataservices.WebhookService               { return d.webhook }
-func (d *testDatastore) Workflow() dataservices.WorkflowService             { return d.workflow }
+func (d *testDatastore) Version() dataservices.VersionService   { return d.version }
+func (d *testDatastore) Webhook() dataservices.WebhookService   { return d.webhook }
+func (d *testDatastore) Workflow() dataservices.WorkflowService { return d.workflow }
 
 func (d *testDatastore) PendingActions() dataservices.PendingActionsService {
 	return d.pendingActionsService

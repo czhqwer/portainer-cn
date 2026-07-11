@@ -34,6 +34,7 @@ import (
 	kubehandler "github.com/portainer/portainer/api/http/handler/kubernetes"
 	"github.com/portainer/portainer/api/http/handler/ldap"
 	"github.com/portainer/portainer/api/http/handler/motd"
+	platformhandler "github.com/portainer/portainer/api/http/handler/platform"
 	"github.com/portainer/portainer/api/http/handler/registries"
 	"github.com/portainer/portainer/api/http/handler/resourcecontrols"
 	"github.com/portainer/portainer/api/http/handler/roles"
@@ -223,6 +224,9 @@ func (server *Server) Start(ctx context.Context) error {
 
 	var motdHandler = motd.NewHandler(requestBouncer, motdSvc)
 
+	var platformHandler = platformhandler.NewHandler(requestBouncer)
+	platformHandler.DataStore = server.DataStore
+
 	var registryHandler = registries.NewHandler(requestBouncer)
 	registryHandler.DataStore = server.DataStore
 	registryHandler.FileService = server.FileService
@@ -321,6 +325,7 @@ func (server *Server) Start(ctx context.Context) error {
 		HelmTemplatesHandler:   helmTemplatesHandler,
 		KubernetesHandler:      kubernetesHandler,
 		MOTDHandler:            motdHandler,
+		PlatformHandler:        platformHandler,
 		RegistryHandler:        registryHandler,
 		ResourceControlHandler: resourceControlHandler,
 		SettingsHandler:        settingsHandler,
