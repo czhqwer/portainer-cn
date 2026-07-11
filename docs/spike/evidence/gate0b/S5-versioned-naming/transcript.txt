@@ -1,0 +1,905 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260711182923
+Username: LAPTOP-K3G7I15Q\czh
+RunAs User: LAPTOP-K3G7I15Q\czh
+Configuration Name: 
+Machine: LAPTOP-K3G7I15Q (Microsoft Windows NT 10.0.19045.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-naming-spike.ps1 -Apply
+Process ID: 39584
+PSVersion: 5.1.19041.6328
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6328
+BuildVersion: 10.0.19041.6328
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+==> Collect initial Docker state and pull image
+docker ps -a <helper-filter>
+NAMES     IMAGE     STATUS    PORTS
+docker pull nginx:alpine
+alpine: Pulling from library/nginx
+Digest: sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa
+Status: Image is up to date for nginx:alpine
+docker.io/library/nginx:alpine
+
+==> Pre-clean deterministic versioned names
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071101
+docker.exe : Error response from daemon: No such container: pcn-demo-shop-prod-cn-web-api-r2026071101
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-versioned-naming-spike.ps1:115 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...api-r2026071101:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+docker.exe : Error response from daemon: No such container: pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-versioned-naming-spike.ps1:115 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...71102-candidate:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102
+docker.exe : Error response from daemon: No such container: pcn-demo-shop-prod-cn-web-api-r2026071102
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-versioned-naming-spike.ps1:115 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...api-r2026071102:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+==> Create old official container with release-versioned name
+docker run -d --name pcn-demo-shop-prod-cn-web-api-r2026071101 --label com.portainer-cn.platform.spike=gate0b -p 18081:80 nginx:alpine
+2250097b9b4df355c23d4e668cb7bf88350cf9b8a13c4f16fa351612cc38bf2b
+docker inspect pcn-demo-shop-prod-cn-web-api-r2026071101
+[
+    {
+        "Id": "2250097b9b4df355c23d4e668cb7bf88350cf9b8a13c4f16fa351612cc38bf2b",
+        "Created": "2026-07-11T10:29:59.8679337Z",
+        "Path": "/docker-entrypoint.sh",
+        "Args": [
+            "nginx",
+            "-g",
+            "daemon off;"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 4089,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-07-11T10:29:59.9983355Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:ea51152ef8c480b999cee0271a288c698704b18483276119b1253e576ef3232f",
+        "ResolvConfPath": "/var/lib/docker/containers/2250097b9b4df355c23d4e668cb7bf88350cf9b8a13c4f16fa351612cc38bf2b/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/2250097b9b4df355c23d4e668cb7bf88350cf9b8a13c4f16fa351612cc38bf2b/hostname",
+        "HostsPath": "/var/lib/docker/containers/2250097b9b4df355c23d4e668cb7bf88350cf9b8a13c4f16fa351612cc38bf2b/hosts",
+        "LogPath": "/var/lib/docker/containers/2250097b9b4df355c23d4e668cb7bf88350cf9b8a13c4f16fa351612cc38bf2b/2250097b9b4df355c23d4e668cb7bf88350cf9b8a13c4f16fa351612cc38bf2b-json.log",
+        "Name": "/pcn-demo-shop-prod-cn-web-api-r2026071101",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "bridge",
+            "PortBindings": {
+                "80/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "18081"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/bb718fcac53dd1df26164f56def51f584b5fabdfa03a9c71de223ac277c8ce57-init/diff:/var/lib/docker/overlay2/78ab46e55bb1f9d33ae1520c4e1293d3eb0b4d5e67fe245fb710081b19c480c8/diff:/var/lib/docker/overlay2/cb9fb887864c0d45d74d77e55f02b8908243fa9468f85bf068f3118df027b439/diff:/var/lib/docker/overlay2/5e7bdcd5a2badcaed5215ea34e0805c78a0e80502c7f34e0ab857d7796bed9a4/diff:/var/lib/docker/overlay2/6e45c055296c9f42cc133431566615f829920d5405d675c4407f56842472b076/diff:/var/lib/docker/overlay2/bbc0479a027682139d1c8af2abf1a02c119be44dfddb2cfe187aaba1a0044441/diff:/var/lib/docker/overlay2/fa1d82c4b58e499478227b775ef9e4aac97d4ff49bb5a984d83c9413fcc64833/diff:/var/lib/docker/overlay2/cc6fe9adbf569cd2a83e8c9d52690ef7280b99024860a1394a80af3335ce0cb2/diff:/var/lib/docker/overlay2/1b40ae8bdfdebc47ad13c9fa6a9c5fd7d9b28330efe4c4224922599d9e491685/diff",
+                "MergedDir": "/var/lib/docker/overlay2/bb718fcac53dd1df26164f56def51f584b5fabdfa03a9c71de223ac277c8ce57/merged",
+                "UpperDir": "/var/lib/docker/overlay2/bb718fcac53dd1df26164f56def51f584b5fabdfa03a9c71de223ac277c8ce57/diff",
+                "WorkDir": "/var/lib/docker/overlay2/bb718fcac53dd1df26164f56def51f584b5fabdfa03a9c71de223ac277c8ce57/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "2250097b9b4d",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "80/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NGINX_VERSION=1.31.2",
+                "PKG_RELEASE=1",
+                "DYNPKG_RELEASE=1",
+                "NJS_VERSION=0.9.9",
+                "NJS_RELEASE=1",
+                "ACME_VERSION=0.4.1"
+            ],
+            "Cmd": [
+                "nginx",
+                "-g",
+                "daemon off;"
+            ],
+            "Image": "nginx:alpine",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "com.portainer-cn.platform.release-id": "2026071101",
+                "com.portainer-cn.platform.runtime-role": "current",
+                "com.portainer-cn.platform.spike": "gate0b",
+                "maintainer": "NGINX Docker Maintainers \u003cdocker-maint@nginx.com\u003e"
+            },
+            "StopSignal": "SIGQUIT"
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "c14a9b21e753086472a1145b0b123837b1f04c8e851232b00eaebc91a125f538",
+            "SandboxKey": "/var/run/docker/netns/c14a9b21e753",
+            "Ports": {
+                "80/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "18081"
+                    }
+                ]
+            },
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "cd720ceb48dd3847f402e0f69bce29ed2c67109693803d98c1a4db3bdf282de8",
+            "Gateway": "172.17.0.1",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "172.17.0.5",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "MacAddress": "02:42:ac:11:00:05",
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "MacAddress": "02:42:ac:11:00:05",
+                    "DriverOpts": null,
+                    "NetworkID": "03f101d079c703317b83062d8ac6a0743cd75cb66f67ed371335018ec9a79fe7",
+                    "EndpointID": "cd720ceb48dd3847f402e0f69bce29ed2c67109693803d98c1a4db3bdf282de8",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.5",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        }
+    }
+]
+curl.exe -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:18081/
+HTTP/1.1 200 OK
+Server: nginx/1.31.2
+Date: Sat, 11 Jul 2026 10:30:00 GMT
+Content-Type: text/html
+Content-Length: 896
+Last-Modified: Wed, 17 Jun 2026 15:58:07 GMT
+Connection: keep-alive
+ETag: "6a32c40f-380"
+Accept-Ranges: bytes
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, nginx is successfully installed and working.
+Further configuration is required for the web server, reverse proxy, 
+API gateway, load balancer, content cache, or other features.</p>
+
+<p>For online documentation and support please refer to
+<a href="https://nginx.org/">nginx.org</a>.<br/>
+To engage with the community please visit
+<a href="https://community.nginx.org/">community.nginx.org</a>.<br/>
+For enterprise grade support, professional services, additional 
+security features and capabilities please refer to
+<a href="https://f5.com/nginx">f5.com/nginx</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+status=200
+
+==> Create and remove new release candidate with candidate suffix
+docker run -d --name pcn-demo-shop-prod-cn-web-api-r2026071102-candidate --label com.portainer-cn.platform.spike=gate0b -P nginx:alpine
+45e15bb5547a3dcfa53f96c28534c2b38db683b4288a2b4ff292042feea3b353
+docker inspect pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+[
+    {
+        "Id": "45e15bb5547a3dcfa53f96c28534c2b38db683b4288a2b4ff292042feea3b353",
+        "Created": "2026-07-11T10:30:00.6743061Z",
+        "Path": "/docker-entrypoint.sh",
+        "Args": [
+            "nginx",
+            "-g",
+            "daemon off;"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 4169,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-07-11T10:30:00.7974615Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:ea51152ef8c480b999cee0271a288c698704b18483276119b1253e576ef3232f",
+        "ResolvConfPath": "/var/lib/docker/containers/45e15bb5547a3dcfa53f96c28534c2b38db683b4288a2b4ff292042feea3b353/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/45e15bb5547a3dcfa53f96c28534c2b38db683b4288a2b4ff292042feea3b353/hostname",
+        "HostsPath": "/var/lib/docker/containers/45e15bb5547a3dcfa53f96c28534c2b38db683b4288a2b4ff292042feea3b353/hosts",
+        "LogPath": "/var/lib/docker/containers/45e15bb5547a3dcfa53f96c28534c2b38db683b4288a2b4ff292042feea3b353/45e15bb5547a3dcfa53f96c28534c2b38db683b4288a2b4ff292042feea3b353-json.log",
+        "Name": "/pcn-demo-shop-prod-cn-web-api-r2026071102-candidate",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "bridge",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": true,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/126a24d2d5bffdfd69ff6f6d3ae58e29a513a24031afe82ac2afd39b3ffdc243-init/diff:/var/lib/docker/overlay2/78ab46e55bb1f9d33ae1520c4e1293d3eb0b4d5e67fe245fb710081b19c480c8/diff:/var/lib/docker/overlay2/cb9fb887864c0d45d74d77e55f02b8908243fa9468f85bf068f3118df027b439/diff:/var/lib/docker/overlay2/5e7bdcd5a2badcaed5215ea34e0805c78a0e80502c7f34e0ab857d7796bed9a4/diff:/var/lib/docker/overlay2/6e45c055296c9f42cc133431566615f829920d5405d675c4407f56842472b076/diff:/var/lib/docker/overlay2/bbc0479a027682139d1c8af2abf1a02c119be44dfddb2cfe187aaba1a0044441/diff:/var/lib/docker/overlay2/fa1d82c4b58e499478227b775ef9e4aac97d4ff49bb5a984d83c9413fcc64833/diff:/var/lib/docker/overlay2/cc6fe9adbf569cd2a83e8c9d52690ef7280b99024860a1394a80af3335ce0cb2/diff:/var/lib/docker/overlay2/1b40ae8bdfdebc47ad13c9fa6a9c5fd7d9b28330efe4c4224922599d9e491685/diff",
+                "MergedDir": "/var/lib/docker/overlay2/126a24d2d5bffdfd69ff6f6d3ae58e29a513a24031afe82ac2afd39b3ffdc243/merged",
+                "UpperDir": "/var/lib/docker/overlay2/126a24d2d5bffdfd69ff6f6d3ae58e29a513a24031afe82ac2afd39b3ffdc243/diff",
+                "WorkDir": "/var/lib/docker/overlay2/126a24d2d5bffdfd69ff6f6d3ae58e29a513a24031afe82ac2afd39b3ffdc243/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "45e15bb5547a",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "80/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NGINX_VERSION=1.31.2",
+                "PKG_RELEASE=1",
+                "DYNPKG_RELEASE=1",
+                "NJS_VERSION=0.9.9",
+                "NJS_RELEASE=1",
+                "ACME_VERSION=0.4.1"
+            ],
+            "Cmd": [
+                "nginx",
+                "-g",
+                "daemon off;"
+            ],
+            "Image": "nginx:alpine",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "com.portainer-cn.platform.release-id": "2026071102",
+                "com.portainer-cn.platform.runtime-role": "candidate",
+                "com.portainer-cn.platform.spike": "gate0b",
+                "maintainer": "NGINX Docker Maintainers \u003cdocker-maint@nginx.com\u003e"
+            },
+            "StopSignal": "SIGQUIT"
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "8384beb410a318e1ee086a50299a71c49bee477327fd881078d6ca368bc9cf8b",
+            "SandboxKey": "/var/run/docker/netns/8384beb410a3",
+            "Ports": {
+                "80/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "55005"
+                    }
+                ]
+            },
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "c48cef1dc45c410818bc298d74a891bb5ff32ec55cef1b06c1371b551957d5ed",
+            "Gateway": "172.17.0.1",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "172.17.0.6",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "MacAddress": "02:42:ac:11:00:06",
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "MacAddress": "02:42:ac:11:00:06",
+                    "DriverOpts": null,
+                    "NetworkID": "03f101d079c703317b83062d8ac6a0743cd75cb66f67ed371335018ec9a79fe7",
+                    "EndpointID": "c48cef1dc45c410818bc298d74a891bb5ff32ec55cef1b06c1371b551957d5ed",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.6",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        }
+    }
+]
+curl.exe -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:55005/
+HTTP/1.1 200 OK
+Server: nginx/1.31.2
+Date: Sat, 11 Jul 2026 10:30:01 GMT
+Content-Type: text/html
+Content-Length: 896
+Last-Modified: Wed, 17 Jun 2026 15:58:07 GMT
+Connection: keep-alive
+ETag: "6a32c40f-380"
+Accept-Ranges: bytes
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, nginx is successfully installed and working.
+Further configuration is required for the web server, reverse proxy, 
+API gateway, load balancer, content cache, or other features.</p>
+
+<p>For online documentation and support please refer to
+<a href="https://nginx.org/">nginx.org</a>.<br/>
+To engage with the community please visit
+<a href="https://community.nginx.org/">community.nginx.org</a>.<br/>
+For enterprise grade support, professional services, additional 
+security features and capabilities please refer to
+<a href="https://f5.com/nginx">f5.com/nginx</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+status=200
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+
+==> Keep old release container name and create new official name
+docker stop pcn-demo-shop-prod-cn-web-api-r2026071101
+pcn-demo-shop-prod-cn-web-api-r2026071101
+docker run -d --name pcn-demo-shop-prod-cn-web-api-r2026071102 --label com.portainer-cn.platform.spike=gate0b -p 18081:80 nginx:alpine
+9de7d5c6ba5314e848520b31c3a9dd036ad91f9f868464fdfa1d1a8befc23285
+docker inspect pcn-demo-shop-prod-cn-web-api-r2026071102
+[
+    {
+        "Id": "9de7d5c6ba5314e848520b31c3a9dd036ad91f9f868464fdfa1d1a8befc23285",
+        "Created": "2026-07-11T10:30:03.9113069Z",
+        "Path": "/docker-entrypoint.sh",
+        "Args": [
+            "nginx",
+            "-g",
+            "daemon off;"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 4311,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-07-11T10:30:04.0143205Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:ea51152ef8c480b999cee0271a288c698704b18483276119b1253e576ef3232f",
+        "ResolvConfPath": "/var/lib/docker/containers/9de7d5c6ba5314e848520b31c3a9dd036ad91f9f868464fdfa1d1a8befc23285/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/9de7d5c6ba5314e848520b31c3a9dd036ad91f9f868464fdfa1d1a8befc23285/hostname",
+        "HostsPath": "/var/lib/docker/containers/9de7d5c6ba5314e848520b31c3a9dd036ad91f9f868464fdfa1d1a8befc23285/hosts",
+        "LogPath": "/var/lib/docker/containers/9de7d5c6ba5314e848520b31c3a9dd036ad91f9f868464fdfa1d1a8befc23285/9de7d5c6ba5314e848520b31c3a9dd036ad91f9f868464fdfa1d1a8befc23285-json.log",
+        "Name": "/pcn-demo-shop-prod-cn-web-api-r2026071102",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "bridge",
+            "PortBindings": {
+                "80/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "18081"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/24d9cdd63a3a5753b7cf085df1c29a0376b63f4231dc4ed89a713674513726f6-init/diff:/var/lib/docker/overlay2/78ab46e55bb1f9d33ae1520c4e1293d3eb0b4d5e67fe245fb710081b19c480c8/diff:/var/lib/docker/overlay2/cb9fb887864c0d45d74d77e55f02b8908243fa9468f85bf068f3118df027b439/diff:/var/lib/docker/overlay2/5e7bdcd5a2badcaed5215ea34e0805c78a0e80502c7f34e0ab857d7796bed9a4/diff:/var/lib/docker/overlay2/6e45c055296c9f42cc133431566615f829920d5405d675c4407f56842472b076/diff:/var/lib/docker/overlay2/bbc0479a027682139d1c8af2abf1a02c119be44dfddb2cfe187aaba1a0044441/diff:/var/lib/docker/overlay2/fa1d82c4b58e499478227b775ef9e4aac97d4ff49bb5a984d83c9413fcc64833/diff:/var/lib/docker/overlay2/cc6fe9adbf569cd2a83e8c9d52690ef7280b99024860a1394a80af3335ce0cb2/diff:/var/lib/docker/overlay2/1b40ae8bdfdebc47ad13c9fa6a9c5fd7d9b28330efe4c4224922599d9e491685/diff",
+                "MergedDir": "/var/lib/docker/overlay2/24d9cdd63a3a5753b7cf085df1c29a0376b63f4231dc4ed89a713674513726f6/merged",
+                "UpperDir": "/var/lib/docker/overlay2/24d9cdd63a3a5753b7cf085df1c29a0376b63f4231dc4ed89a713674513726f6/diff",
+                "WorkDir": "/var/lib/docker/overlay2/24d9cdd63a3a5753b7cf085df1c29a0376b63f4231dc4ed89a713674513726f6/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "9de7d5c6ba53",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "80/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NGINX_VERSION=1.31.2",
+                "PKG_RELEASE=1",
+                "DYNPKG_RELEASE=1",
+                "NJS_VERSION=0.9.9",
+                "NJS_RELEASE=1",
+                "ACME_VERSION=0.4.1"
+            ],
+            "Cmd": [
+                "nginx",
+                "-g",
+                "daemon off;"
+            ],
+            "Image": "nginx:alpine",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "com.portainer-cn.platform.release-id": "2026071102",
+                "com.portainer-cn.platform.runtime-role": "current",
+                "com.portainer-cn.platform.spike": "gate0b",
+                "maintainer": "NGINX Docker Maintainers \u003cdocker-maint@nginx.com\u003e"
+            },
+            "StopSignal": "SIGQUIT"
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "cbc54f909ae9fc05e5a9dbd3c586ef3cdfc904ce9ff71787914bbca2c9d84fa1",
+            "SandboxKey": "/var/run/docker/netns/cbc54f909ae9",
+            "Ports": {
+                "80/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "18081"
+                    }
+                ]
+            },
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "a70af45bb287fa3af5d86e45131cf4c2586e2244ecf610fc1f6eb45ccc6537b1",
+            "Gateway": "172.17.0.1",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "172.17.0.5",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "MacAddress": "02:42:ac:11:00:05",
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "MacAddress": "02:42:ac:11:00:05",
+                    "DriverOpts": null,
+                    "NetworkID": "03f101d079c703317b83062d8ac6a0743cd75cb66f67ed371335018ec9a79fe7",
+                    "EndpointID": "a70af45bb287fa3af5d86e45131cf4c2586e2244ecf610fc1f6eb45ccc6537b1",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.5",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        }
+    }
+]
+curl.exe -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:18081/
+HTTP/1.1 200 OK
+Server: nginx/1.31.2
+Date: Sat, 11 Jul 2026 10:30:04 GMT
+Content-Type: text/html
+Content-Length: 896
+Last-Modified: Wed, 17 Jun 2026 15:58:07 GMT
+Connection: keep-alive
+ETag: "6a32c40f-380"
+Accept-Ranges: bytes
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, nginx is successfully installed and working.
+Further configuration is required for the web server, reverse proxy, 
+API gateway, load balancer, content cache, or other features.</p>
+
+<p>For online documentation and support please refer to
+<a href="https://nginx.org/">nginx.org</a>.<br/>
+To engage with the community please visit
+<a href="https://community.nginx.org/">community.nginx.org</a>.<br/>
+For enterprise grade support, professional services, additional 
+security features and capabilities please refer to
+<a href="https://f5.com/nginx">f5.com/nginx</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+status=200
+docker ps -a <helper-filter>
+NAMES                                       IMAGE          STATUS                    PORTS
+pcn-demo-shop-prod-cn-web-api-r2026071102   nginx:alpine   Up Less than a second     0.0.0.0:18081->80/tcp
+pcn-demo-shop-prod-cn-web-api-r2026071101   nginx:alpine   Exited (0) 1 second ago
+
+==> Write summary and cleanup helper containers
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071101
+pcn-demo-shop-prod-cn-web-api-r2026071101
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102
+pcn-demo-shop-prod-cn-web-api-r2026071102
+docker ps -a <helper-filter>
+NAMES     IMAGE     STATUS    PORTS
+
+Versioned naming Spike completed.
+**********************
+Windows PowerShell transcript end
+End time: 20260711183005
+**********************

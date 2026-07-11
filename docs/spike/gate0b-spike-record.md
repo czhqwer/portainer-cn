@@ -2,7 +2,7 @@
 
 版本：v0.1
 日期：2026-07-11
-状态：未通过；S1/S2/S3/S6 本地子集已实测通过，S7 私有 registry 子集通过，S5 本地命名子集已部分验证，S4 仍等待实测
+状态：未通过；S1/S2/S3/S5/S6/S7 已完成本地或私有 registry 子集实测，S4 远程 Agent 仍等待实测
 关联方案：[Gate 0B Docker/Agent Spike 执行方案](../Gate0B-Docker-Agent-Spike执行方案.md)
 
 ## 1. 总览
@@ -15,7 +15,7 @@
 | S2 | 容器化 Portainer + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S2-containerized-docker/` | 容器内 Docker socket 可用；`127.0.0.1` 不可达，bridge gateway 和 `host.docker.internal` 均可访问 candidate 随机端口 |
 | S3 | 本地 Agent | 本地子集通过 | `docs/spike/evidence/gate0b/S3-local-agent/` | Agent `/ping` 返回 Docker platform，单节点 NodeName 可为空，candidate 随机端口从 Portainer 主机可访问 |
 | S4 | 远程 Agent | 未执行 | - | 待定 |
-| S5 | 版本化容器命名 | 部分通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 本地辅助容器 r1/r2 命名与固定端口冲突规避流程通过；正式 `project/env/service/release` 命名模板仍待实现前复核 |
+| S5 | 版本化容器命名 | 通过 | `docs/spike/evidence/gate0b/S5-versioned-naming/` | 正式命名模板和 candidate 后缀通过；旧 release 容器保留时，新 release 使用不同 releaseId 不发生名称冲突 |
 | S6 | 正式端口切换 | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 旧容器停止、新容器占用正式端口、坏镜像失败后旧容器恢复均完成；恢复后健康检查 200 |
 | S7 | 私有 registry 认证和 digest 解析 | 通过 | `docs/spike/evidence/gate0b/S7-private-registry/` | 正确凭据 push/pull 成功，错误凭据 401，缺失镜像 manifest unknown，pull 后 RepoDigests 可解析私有 digest |
 
@@ -187,18 +187,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agen
 
 ## 10. S5 版本化容器命名
 
-状态：部分通过。
+状态：通过。
 
-已验证：
+执行日期：2026-07-11
+执行命令：
 
-- 本地辅助脚本使用 `pcn-spike-gate0b-candidate`、`pcn-spike-gate0b-r1`、`pcn-spike-gate0b-r2` 验证 candidate、旧正式容器和新正式容器的分离命名。
-- 旧容器 `r1` 停止后，新容器 `r2` 可占用同一正式端口，坏镜像失败后可恢复 `r1`。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-naming-spike.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-naming-spike.ps1 -Apply
+```
 
-待补证据：
+证据：
 
-- `pcn-{projectSlug}-{envSlug}-{serviceSlug}-r{releaseId}-candidate` 正式命名模板验证。
-- `pcn-{projectSlug}-{envSlug}-{serviceSlug}-r{releaseId}` 正式容器命名模板验证。
-- 多项目、多环境、多服务 slug 截断、冲突和非法字符归一化策略。
+- `docs/spike/evidence/gate0b/S5-versioned-naming/old-official-inspect.json`
+- `docs/spike/evidence/gate0b/S5-versioned-naming/candidate-inspect.json`
+- `docs/spike/evidence/gate0b/S5-versioned-naming/new-official-inspect.json`
+- `docs/spike/evidence/gate0b/S5-versioned-naming/containers-during-versioned-retention.txt`
+- `docs/spike/evidence/gate0b/S5-versioned-naming/versioned-naming-summary.txt`
+
+结论：
+
+- 正式旧容器命名 `pcn-demo-shop-prod-cn-web-api-r2026071101` 通过。
+- 新 candidate 命名 `pcn-demo-shop-prod-cn-web-api-r2026071102-candidate` 通过，使用随机宿主机端口，验证后删除。
+- 新正式容器命名 `pcn-demo-shop-prod-cn-web-api-r2026071102` 通过。
+- 旧 release 容器停止但保留时，新 release 使用不同 releaseId 名称创建成功，不发生 Docker name 冲突。
+- 正式执行器仍应复用平台模型中已校验的 slug 字段，并在运行前拒绝空 slug、非法字符或超长名称。
 
 ## 11. S6 正式端口切换与旧容器恢复
 
@@ -253,7 +266,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-private-re
 
 当前结论：未通过。
 
-2026-07-11 已完成本地 Docker socket、容器化 Docker socket、本地 Agent 和私有 registry 子集实测，S1/S2/S3/S6/S7 可作为本地公开/私有镜像场景的正向证据，S5 仅完成辅助命名子集验证。S4 远程 Agent、多节点目标选择和正式命名策略仍未完成，Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
+2026-07-11 已完成本地 Docker socket、容器化 Docker socket、本地 Agent、版本化命名、正式端口切换/恢复和私有 registry 子集实测，S1/S2/S3/S5/S6/S7 可作为本地公开/私有镜像场景的正向证据。S4 远程 Agent 和多节点目标选择仍未完成，Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
 
 通过前必须同时满足：
 

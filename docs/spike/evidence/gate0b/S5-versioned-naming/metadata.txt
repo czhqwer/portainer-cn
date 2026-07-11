@@ -1,0 +1,13 @@
+﻿scenario=S5-versioned-naming
+image=nginx:alpine
+project_slug=demo-shop
+environment_slug=prod-cn
+service_slug=web-api
+old_release_id=2026071101
+new_release_id=2026071102
+old_official_name=pcn-demo-shop-prod-cn-web-api-r2026071101
+new_candidate_name=pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+new_official_name=pcn-demo-shop-prod-cn-web-api-r2026071102
+official_port=18081
+started_at=2026-07-11T18:29:23
+cleanup=False

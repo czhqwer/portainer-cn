@@ -1,0 +1,3 @@
+﻿candidate_name=pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+container_port=80
+host_port=55005

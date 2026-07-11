@@ -141,6 +141,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agen
 
 该脚本启动本地 Portainer Agent，并通过 `/ping` 验证 Agent version 和 Docker platform header；随后创建 candidate 随机宿主机端口，并从当前 Portainer 主机视角验证健康检查可达性。它只覆盖 S3 的单机本地 Agent 子集；Agent Docker API 的签名请求、`X-PortainerAgent-Target` 多节点选择、远程 Agent 防火墙和跨主机端口可达性仍必须在真实 Portainer 后端或远程环境中补齐。
 
+### 4.5 版本化命名辅助脚本
+
+正式版本化容器命名子集可以使用 `docs/spike/gate0b-versioned-naming-spike.ps1` 辅助执行。脚本默认 dry-run，不会运行 Docker；必须显式传入 `-Apply` 才会创建旧正式容器、新 candidate 和新正式容器。
+
+示例：
+
+```powershell
+# 预演，不执行 Docker
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-naming-spike.ps1
+
+# 执行 S5 命名子集：正式模板、candidate 后缀、旧版本保留时新版本不发生名称冲突
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-naming-spike.ps1 -Apply
+
+# 清理脚本创建的 helper 容器
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-naming-spike.ps1 -Cleanup -Apply
+```
+
+该脚本验证 `pcn-{projectSlug}-{envSlug}-{serviceSlug}-r{releaseId}` 和 `pcn-{projectSlug}-{envSlug}-{serviceSlug}-r{releaseId}-candidate` 命名模板，证明旧 release 容器保留时，新 release 使用不同 releaseId 不发生 Docker name 冲突。正式执行器仍应复用平台模型中已校验的 slug 字段，并在运行前拒绝空 slug、非法字符或超长名称。
+
 ## 5. 默认策略待决项
 
 Spike 必须给出以下默认策略，不能只记录“可配置”：

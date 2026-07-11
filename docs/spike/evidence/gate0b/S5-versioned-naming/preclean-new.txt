@@ -1,0 +1,9 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:29:59
+
+docker.exe : Error response from daemon: No such container: pcn-demo-shop-prod-cn-web-api-r2026071102
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-versioned-naming-spike.ps1:115 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...api-r2026071102:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

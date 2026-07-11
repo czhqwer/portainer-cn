@@ -1,0 +1,6 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:30:04
+
+NAMES                                       IMAGE          STATUS                    PORTS
+pcn-demo-shop-prod-cn-web-api-r2026071102   nginx:alpine   Up Less than a second     0.0.0.0:18081->80/tcp
+pcn-demo-shop-prod-cn-web-api-r2026071101   nginx:alpine   Exited (0) 1 second ago

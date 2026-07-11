@@ -1,0 +1,26 @@
+﻿docker ps -a <helper-filter>
+docker pull nginx:alpine
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071101
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102
+docker run -d --name pcn-demo-shop-prod-cn-web-api-r2026071101 --label com.portainer-cn.platform.spike=gate0b -p 18081:80 nginx:alpine
+docker inspect pcn-demo-shop-prod-cn-web-api-r2026071101
+curl.exe -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:18081/
+docker run -d --name pcn-demo-shop-prod-cn-web-api-r2026071102-candidate --label com.portainer-cn.platform.spike=gate0b -P nginx:alpine
+docker inspect pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+curl.exe -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:55005/
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102-candidate
+docker stop pcn-demo-shop-prod-cn-web-api-r2026071101
+docker run -d --name pcn-demo-shop-prod-cn-web-api-r2026071102 --label com.portainer-cn.platform.spike=gate0b -p 18081:80 nginx:alpine
+docker inspect pcn-demo-shop-prod-cn-web-api-r2026071102
+curl.exe -sS -i -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:18081/
+docker ps -a <helper-filter>
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071101
+docker rm -f pcn-demo-shop-prod-cn-web-api-r2026071102
+docker ps -a <helper-filter>
