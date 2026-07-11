@@ -406,6 +406,17 @@ angular
         },
       };
 
+      var platformConfig = {
+        name: 'portainer.platform.config',
+        url: '/config',
+        data: { docs: '/user/app-delivery/platform/config' },
+        views: {
+          'content@': {
+            component: 'platformConfigView',
+          },
+        },
+      };
+
       var platformReleases = {
         name: 'portainer.platform.releases',
         url: '/releases',
@@ -546,6 +557,7 @@ angular
       $stateRegistryProvider.register(platformApplications);
       $stateRegistryProvider.register(platformDeploy);
       $stateRegistryProvider.register(platformArtifacts);
+      $stateRegistryProvider.register(platformConfig);
       $stateRegistryProvider.register(platformReleases);
       $stateRegistryProvider.register(init);
       $stateRegistryProvider.register(initAdmin);

@@ -1,4 +1,4 @@
-import { FormEvent, type ReactNode, useMemo, useState } from 'react';
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Activity,
@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Rocket,
   Save,
+  SlidersHorizontal,
   Wrench,
 } from 'lucide-react';
 
@@ -21,8 +22,10 @@ import { PageHeader } from '@@/PageHeader';
 import { useCurrentUser } from '@/react/hooks/useUser';
 
 import {
+  useArchivePlatformConfigSetMutation,
   useCreateImageReferenceArtifactMutation,
   useCreatePlatformApplicationMutation,
+  useCreatePlatformConfigSetMutation,
   useCreatePlatformEnvironmentMutation,
   useCreatePlatformProjectMutation,
   useCreatePlatformReleaseMutation,
@@ -31,6 +34,8 @@ import {
   usePlatformApplications,
   usePlatformAuditLogs,
   usePlatformArtifacts,
+  usePlatformConfigSets,
+  usePlatformEffectiveConfig,
   usePlatformEnvironments,
   usePlatformProjects,
   usePlatformReleaseRollbackDiff,
@@ -39,8 +44,10 @@ import {
   usePlatformServiceDeployments,
   usePlatformServiceDeploymentStatus,
   usePlatformServices,
+  useReadPlatformConfigSecretMutation,
   useResolvePlatformReleaseMutation,
   useRollbackPlatformReleaseMutation,
+  useUpdatePlatformConfigSetMutation,
   useUpdatePlatformServiceDeploymentMutation,
   useValidatePlatformReleaseMutation,
 } from './queries';
@@ -49,7 +56,11 @@ import {
   PlatformApplication,
   PlatformAuditLog,
   PlatformArtifact,
+  PlatformConfigEntry,
+  PlatformConfigScopeType,
+  PlatformConfigSet,
   PlatformDeploymentDesiredSpec,
+  PlatformEffectiveConfigResponse,
   PlatformEnvironment,
   PlatformPublishedPort,
   PlatformProject,
@@ -514,6 +525,297 @@ export function PlatformReleasesView() {
   );
 }
 
+// 配置中心只允许项目、环境和服务部署三级作用域，并把当前作用域随请求交给服务端复核；
+// 这样浏览器本地状态即使被篡改，也不能把项目级表单越权写成环境级或服务部署级配置。
+export function PlatformConfigView() {
+  const { t } = useTranslation();
+  const projectsQuery = usePlatformProjects();
+  const projects = projectsQuery.data ?? [];
+  const [selectedProjectId, setSelectedProjectId] = useState<number>();
+  const [scopeType, setScopeType] =
+    useState<PlatformConfigScopeType>('project');
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<number>();
+  const [selectedApplicationId, setSelectedApplicationId] = useState<number>();
+  const [selectedServiceId, setSelectedServiceId] = useState<number>();
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<number>();
+  const [selectedConfigSetId, setSelectedConfigSetId] = useState<number>();
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const currentProject =
+    projects.find((project) => project.Id === selectedProjectId) ?? projects[0];
+  const canManage = !!currentProject?.Permissions?.CanManageResources;
+  const canReveal = !!currentProject?.Permissions?.CanRevealSensitive;
+  const environmentsQuery = usePlatformEnvironments(currentProject?.Id);
+  const environments = environmentsQuery.data ?? [];
+  const currentEnvironment =
+    environments.find(
+      (environment) => environment.Id === selectedEnvironmentId
+    ) ?? environments[0];
+  const applicationsQuery = usePlatformApplications(currentProject?.Id);
+  const applications = applicationsQuery.data ?? [];
+  const currentApplication =
+    applications.find(
+      (application) => application.Id === selectedApplicationId
+    ) ?? applications[0];
+  const servicesQuery = usePlatformServices(currentApplication?.Id);
+  const services = servicesQuery.data ?? [];
+  const currentService =
+    services.find((service) => service.Id === selectedServiceId) ?? services[0];
+  const deploymentsQuery = usePlatformServiceDeployments(currentService?.Id);
+  const deployments = deploymentsQuery.data ?? [];
+  const currentDeployment =
+    deployments.find((deployment) => deployment.Id === selectedDeploymentId) ??
+    deployments[0];
+  const scopeId =
+    scopeType === 'project'
+      ? currentProject?.Id
+      : scopeType === 'environment'
+        ? currentEnvironment?.Id
+        : currentDeployment?.Id;
+  const configSetsQuery = usePlatformConfigSets({
+    projectId: currentProject?.Id,
+    scopeType,
+    scopeId,
+  });
+  const configSets = configSetsQuery.data ?? [];
+  const selectedConfigSet = configSets.find(
+    (configSet) => configSet.Id === selectedConfigSetId
+  );
+  const effectiveConfigQuery = usePlatformEffectiveConfig(
+    currentDeployment?.Id
+  );
+  const archiveMutation = useArchivePlatformConfigSetMutation();
+
+  useEffect(() => {
+    if (
+      selectedConfigSetId &&
+      !configSets.some((configSet) => configSet.Id === selectedConfigSetId)
+    ) {
+      setSelectedConfigSetId(undefined);
+      setIsEditorOpen(false);
+    }
+  }, [configSets, selectedConfigSetId]);
+
+  function selectScope(nextScope: string) {
+    setScopeType(nextScope as PlatformConfigScopeType);
+    setSelectedConfigSetId(undefined);
+    setIsEditorOpen(false);
+  }
+
+  function archive(configSet: PlatformConfigSet) {
+    if (
+      !window.confirm(
+        t('platform.config.archiveConfirm', {
+          defaultValue:
+            'Archive config set {{name}}? It will no longer affect new releases.',
+          name: configSet.Name,
+        })
+      )
+    ) {
+      return;
+    }
+    archiveMutation.mutate(configSet.Id, {
+      onSuccess: () => {
+        if (selectedConfigSetId === configSet.Id) {
+          setSelectedConfigSetId(undefined);
+          setIsEditorOpen(false);
+        }
+      },
+    });
+  }
+
+  return (
+    <PlatformPage
+      titleKey="platform.pages.config.title"
+      titleDefault="Configuration center"
+    >
+      <PlatformNoticeStack />
+      <div className="mx-4 mb-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+          <div className="mb-4 flex items-center gap-2 text-lg font-semibold">
+            <SlidersHorizontal className="icon" />
+            {t('platform.config.scopeTitle', {
+              defaultValue: 'Select configuration scope',
+            })}
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <SelectField
+              label={t('platform.filters.project', { defaultValue: 'Project' })}
+              value={currentProject?.Id}
+              disabled={projects.length === 0}
+              onChange={(projectId) => {
+                setSelectedProjectId(projectId);
+                setSelectedEnvironmentId(undefined);
+                setSelectedApplicationId(undefined);
+                setSelectedServiceId(undefined);
+                setSelectedDeploymentId(undefined);
+                setSelectedConfigSetId(undefined);
+                setIsEditorOpen(false);
+              }}
+            >
+              {projects.map((project) => (
+                <option key={project.Id} value={project.Id}>
+                  {project.Name}
+                </option>
+              ))}
+            </SelectField>
+            <StringSelectField
+              label={t('platform.config.scope', { defaultValue: 'Scope' })}
+              value={scopeType}
+              onChange={selectScope}
+              options={[
+                [
+                  'project',
+                  t('platform.config.scopes.project', {
+                    defaultValue: 'Project',
+                  }),
+                ],
+                [
+                  'environment',
+                  t('platform.config.scopes.environment', {
+                    defaultValue: 'Environment',
+                  }),
+                ],
+                [
+                  'service-deployment',
+                  t('platform.config.scopes.serviceDeployment', {
+                    defaultValue: 'Service deployment',
+                  }),
+                ],
+              ]}
+            />
+            {scopeType === 'environment' && (
+              <SelectField
+                label={t('platform.config.environment', {
+                  defaultValue: 'Environment',
+                })}
+                value={currentEnvironment?.Id}
+                disabled={environments.length === 0}
+                onChange={setSelectedEnvironmentId}
+              >
+                {environments.map((environment) => (
+                  <option key={environment.Id} value={environment.Id}>
+                    {environment.Name}
+                  </option>
+                ))}
+              </SelectField>
+            )}
+            {scopeType === 'service-deployment' && (
+              <>
+                <SelectField
+                  label={t('platform.filters.application', {
+                    defaultValue: 'Application',
+                  })}
+                  value={currentApplication?.Id}
+                  disabled={applications.length === 0}
+                  onChange={(applicationId) => {
+                    setSelectedApplicationId(applicationId);
+                    setSelectedServiceId(undefined);
+                    setSelectedDeploymentId(undefined);
+                  }}
+                >
+                  {applications.map((application) => (
+                    <option key={application.Id} value={application.Id}>
+                      {application.Name}
+                    </option>
+                  ))}
+                </SelectField>
+                <SelectField
+                  label={t('platform.filters.service', {
+                    defaultValue: 'Service',
+                  })}
+                  value={currentService?.Id}
+                  disabled={services.length === 0}
+                  onChange={(serviceId) => {
+                    setSelectedServiceId(serviceId);
+                    setSelectedDeploymentId(undefined);
+                  }}
+                >
+                  {services.map((service) => (
+                    <option key={service.Id} value={service.Id}>
+                      {service.Name}
+                    </option>
+                  ))}
+                </SelectField>
+                <SelectField
+                  label={t('platform.filters.deployment', {
+                    defaultValue: 'Deployment config',
+                  })}
+                  value={currentDeployment?.Id}
+                  disabled={deployments.length === 0}
+                  onChange={setSelectedDeploymentId}
+                >
+                  {deployments.map((deployment) => (
+                    <option key={deployment.Id} value={deployment.Id}>
+                      #{deployment.Id} · {deployment.EnvironmentId}
+                    </option>
+                  ))}
+                </SelectField>
+              </>
+            )}
+          </div>
+        </section>
+        <EffectiveConfigDetails
+          response={effectiveConfigQuery.data}
+          isLoading={effectiveConfigQuery.isLoading}
+          emptyMessage={t('platform.config.effectiveEmpty', {
+            defaultValue:
+              'Select a service deployment to preview its effective configuration and drift status.',
+          })}
+        />
+      </div>
+      <DataSection
+        title={t('platform.config.tableTitle', { defaultValue: 'Config sets' })}
+        isLoading={configSetsQuery.isLoading}
+        empty={!scopeId || configSets.length === 0}
+        emptyMessage={t('platform.config.empty', {
+          defaultValue: 'No active config sets exist for this scope.',
+        })}
+      >
+        <ConfigSetsTable
+          configSets={configSets}
+          canManage={canManage}
+          onEdit={(configSet) => {
+            setSelectedConfigSetId(configSet.Id);
+            setIsEditorOpen(true);
+          }}
+          onArchive={archive}
+          isArchiving={archiveMutation.isLoading}
+        />
+      </DataSection>
+      {canManage && scopeId && (
+        <ActionBar>
+          <Button
+            color="primary"
+            icon={Plus}
+            onClick={() => {
+              setSelectedConfigSetId(undefined);
+              setIsEditorOpen(true);
+            }}
+            data-cy="platform-config-set-create"
+          >
+            {t('platform.actions.createConfigSet', {
+              defaultValue: 'Create config set',
+            })}
+          </Button>
+        </ActionBar>
+      )}
+      {isEditorOpen && currentProject && scopeId && (
+        <ConfigSetEditor
+          configSet={selectedConfigSet}
+          projectId={currentProject.Id}
+          scopeType={scopeType}
+          scopeId={scopeId}
+          canReveal={canReveal}
+          onDone={(configSetId) => {
+            setSelectedConfigSetId(configSetId);
+            setIsEditorOpen(false);
+          }}
+        />
+      )}
+    </PlatformPage>
+  );
+}
+
 export function PlatformDeployView() {
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
@@ -546,6 +848,9 @@ export function PlatformDeployView() {
   const deployments = deploymentsQuery.data ?? [];
   const currentDeployment = deployments.find(
     (deployment) => deployment.EnvironmentId === currentEnvironment?.Id
+  );
+  const effectiveConfigQuery = usePlatformEffectiveConfig(
+    currentDeployment?.Id
   );
   const artifactsQuery = usePlatformArtifacts();
   const artifacts = artifactsQuery.data ?? [];
@@ -923,6 +1228,16 @@ export function PlatformDeployView() {
               })}
             </div>
           )}
+          <div className="mt-4">
+            <EffectiveConfigDetails
+              response={effectiveConfigQuery.data}
+              isLoading={effectiveConfigQuery.isLoading}
+              emptyMessage={t('platform.config.effectiveDeployEmpty', {
+                defaultValue:
+                  'Save a service deployment configuration to preview the merged project, environment, and deployment values.',
+              })}
+            />
+          </div>
           {releaseResult?.Release && (
             <Alert
               className="mt-4"
@@ -1646,18 +1961,21 @@ function TextInputField({
   onChange,
   required,
   inputMode,
+  type,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
   inputMode?: 'numeric';
+  type?: 'password';
 }) {
   return (
     <label className="block">
       <span className="text-muted mb-1 block text-sm">{label}</span>
       <input
         className="form-control"
+        type={type}
         value={value}
         required={required}
         inputMode={inputMode}
@@ -2095,6 +2413,435 @@ function ReleasesTable({
         ],
       }))}
     />
+  );
+}
+
+function ConfigSetsTable({
+  configSets,
+  canManage,
+  onEdit,
+  onArchive,
+  isArchiving,
+}: {
+  configSets: PlatformConfigSet[];
+  canManage: boolean;
+  onEdit: (configSet: PlatformConfigSet) => void;
+  onArchive: (configSet: PlatformConfigSet) => void;
+  isArchiving: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <PlatformTable
+      columns={[
+        t('platform.columns.name', { defaultValue: 'Name' }),
+        t('platform.config.revision', { defaultValue: 'Revision' }),
+        t('platform.config.entries', { defaultValue: 'Entries' }),
+        t('platform.columns.status', { defaultValue: 'Status' }),
+        t('platform.columns.actions', { defaultValue: 'Actions' }),
+      ]}
+      rows={configSets.map((configSet) => ({
+        key: String(configSet.Id),
+        cells: [
+          configSet.Name,
+          String(configSet.Revision),
+          `${configSet.Entries.length}`,
+          configSet.LifecycleStatus,
+          canManage ? (
+            <div
+              key={`actions-${configSet.Id}`}
+              className="flex flex-wrap gap-2"
+            >
+              <Button
+                color="light"
+                size="xsmall"
+                onClick={() => onEdit(configSet)}
+                data-cy={`platform-config-set-${configSet.Id}-edit`}
+              >
+                {t('platform.actions.edit', { defaultValue: 'Edit' })}
+              </Button>
+              <Button
+                color="dangerlight"
+                size="xsmall"
+                disabled={isArchiving}
+                onClick={() => onArchive(configSet)}
+                data-cy={`platform-config-set-${configSet.Id}-archive`}
+              >
+                {t('platform.actions.archive', { defaultValue: 'Archive' })}
+              </Button>
+            </div>
+          ) : (
+            '-'
+          ),
+        ],
+      }))}
+    />
+  );
+}
+
+// 普通更新只回传敏感条目的元数据，不回填其值；替换敏感值必须显式提交键和值，
+// 避免脱敏 API 响应在编辑保存时意外清空已经加密保存的旧值。
+function ConfigSetEditor({
+  configSet,
+  projectId,
+  scopeType,
+  scopeId,
+  canReveal,
+  onDone,
+}: {
+  configSet?: PlatformConfigSet;
+  projectId: number;
+  scopeType: PlatformConfigScopeType;
+  scopeId: number;
+  canReveal: boolean;
+  onDone: (configSetId?: number) => void;
+}) {
+  const { t } = useTranslation();
+  const createMutation = useCreatePlatformConfigSetMutation();
+  const updateMutation = useUpdatePlatformConfigSetMutation();
+  const secretMutation = useReadPlatformConfigSecretMutation();
+  const [name, setName] = useState(configSet?.Name ?? 'default');
+  const [plainEntriesText, setPlainEntriesText] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [secretValue, setSecretValue] = useState('');
+  const [revealedValues, setRevealedValues] = useState<Record<string, string>>(
+    {}
+  );
+
+  useEffect(() => {
+    setName(configSet?.Name ?? 'default');
+    setPlainEntriesText(formatPlainConfigEntries(configSet?.Entries ?? []));
+    setSecretKey('');
+    setSecretValue('');
+    setRevealedValues({});
+  }, [configSet]);
+
+  const sensitiveEntries = (configSet?.Entries ?? []).filter(
+    (entry) => entry.Sensitive
+  );
+  const isSubmitting = createMutation.isLoading || updateMutation.isLoading;
+
+  function configEntries(): PlatformConfigEntry[] {
+    const entries = parsePlainConfigEntries(plainEntriesText);
+    const preservedSecrets = sensitiveEntries.map((entry) => ({
+      Key: entry.Key,
+      ValueType: entry.ValueType,
+      Sensitive: true,
+      Required: entry.Required,
+      HasValue: entry.HasValue,
+    }));
+    if (secretKey.trim()) {
+      return [
+        ...entries.filter((entry) => entry.Key !== secretKey.trim()),
+        ...preservedSecrets.filter((entry) => entry.Key !== secretKey.trim()),
+        {
+          Key: secretKey.trim(),
+          ValueType: 'plain',
+          Value: secretValue,
+          Sensitive: true,
+          Required: true,
+        },
+      ];
+    }
+    return [...entries, ...preservedSecrets];
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const entries = configEntries();
+    if (configSet) {
+      updateMutation.mutate(
+        {
+          configSetId: configSet.Id,
+          payload: {
+            ResourceVersion: configSet.ResourceVersion,
+            Name: name.trim(),
+            Entries: entries,
+          },
+        },
+        {
+          onSuccess: (updated) => onDone(updated.Id),
+        }
+      );
+      return;
+    }
+    createMutation.mutate(
+      {
+        ProjectId: projectId,
+        ScopeType: scopeType,
+        ScopeId: scopeId,
+        Name: name.trim(),
+        Entries: entries,
+      },
+      {
+        onSuccess: (created) => onDone(created.Id),
+      }
+    );
+  }
+
+  async function readSensitive(
+    entry: PlatformConfigEntry,
+    action: 'reveal' | 'copy'
+  ) {
+    if (!configSet) {
+      return;
+    }
+    const message =
+      action === 'reveal'
+        ? t('platform.config.revealConfirm', {
+            defaultValue:
+              'Reveal {{key}} only when it is safe to display the value. Continue?',
+            key: entry.Key,
+          })
+        : t('platform.config.copyConfirm', {
+            defaultValue:
+              'Copy {{key}} to the system clipboard only when it is safe. Continue?',
+            key: entry.Key,
+          });
+    if (!window.confirm(message)) {
+      return;
+    }
+    const value = await secretMutation.mutateAsync({
+      configSetId: configSet.Id,
+      key: entry.Key,
+      action,
+    });
+    if (action === 'reveal') {
+      setRevealedValues((values) => ({ ...values, [entry.Key]: value }));
+      return;
+    }
+    await navigator.clipboard?.writeText(value);
+  }
+
+  return (
+    <section className="mx-4 mb-4 rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+      <h2 className="mb-3 text-lg font-semibold">
+        {configSet
+          ? t('platform.config.editTitle', { defaultValue: 'Edit config set' })
+          : t('platform.config.createTitle', {
+              defaultValue: 'Create config set',
+            })}
+      </h2>
+      <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+        <TextInputField
+          label={t('platform.forms.name', { defaultValue: 'Name' })}
+          value={name}
+          onChange={setName}
+          required
+        />
+        <div className="text-muted self-end text-sm">
+          {t('platform.config.scopeSummary', {
+            defaultValue: 'Scope: {{scope}} #{{id}}',
+            scope: scopeType,
+            id: scopeId,
+          })}
+        </div>
+        <div className="md:col-span-2">
+          <TextAreaField
+            label={t('platform.config.plainEntries', {
+              defaultValue: 'Plain configuration entries',
+            })}
+            value={plainEntriesText}
+            onChange={setPlainEntriesText}
+            placeholder="APP_ENV=production"
+          />
+        </div>
+        <TextInputField
+          label={t('platform.config.sensitiveKey', {
+            defaultValue: 'Sensitive variable key',
+          })}
+          value={secretKey}
+          onChange={setSecretKey}
+        />
+        <TextInputField
+          label={t('platform.config.sensitiveValue', {
+            defaultValue: 'Sensitive variable value',
+          })}
+          value={secretValue}
+          onChange={setSecretValue}
+          type="password"
+        />
+        <div className="md:col-span-2">
+          <Alert
+            color="default"
+            title={t('platform.config.sensitiveNoticeTitle', {
+              defaultValue: 'Sensitive values are encrypted',
+            })}
+          >
+            {t('platform.config.sensitiveNoticeBody', {
+              defaultValue:
+                'Sensitive values are sent only to the save request, encrypted by the server, and then cleared from this form. API lists remain redacted.',
+            })}
+          </Alert>
+        </div>
+        {sensitiveEntries.length > 0 && (
+          <div className="md:col-span-2">
+            <div className="mb-2 text-sm font-semibold">
+              {t('platform.config.savedSensitive', {
+                defaultValue: 'Saved sensitive variables',
+              })}
+            </div>
+            <div className="space-y-2">
+              {sensitiveEntries.map((entry) => (
+                <div
+                  key={entry.Key}
+                  className="flex flex-wrap items-center gap-2 rounded border border-solid border-gray-5 p-2 text-sm"
+                >
+                  <span className="font-medium">{entry.Key}</span>
+                  <span className="text-muted">
+                    {entry.HasValue
+                      ? t('platform.config.hasValue', {
+                          defaultValue: 'value saved',
+                        })
+                      : t('platform.config.noValue', {
+                          defaultValue: 'no value',
+                        })}
+                  </span>
+                  {canReveal && configSet && (
+                    <>
+                      <Button
+                        color="light"
+                        size="xsmall"
+                        disabled={secretMutation.isLoading}
+                        onClick={() => readSensitive(entry, 'reveal')}
+                        data-cy={`platform-config-${configSet.Id}-${entry.Key}-reveal`}
+                      >
+                        {t('platform.actions.reveal', {
+                          defaultValue: 'Reveal',
+                        })}
+                      </Button>
+                      <Button
+                        color="light"
+                        size="xsmall"
+                        disabled={secretMutation.isLoading}
+                        onClick={() => readSensitive(entry, 'copy')}
+                        data-cy={`platform-config-${configSet.Id}-${entry.Key}-copy`}
+                      >
+                        {t('platform.actions.copy', { defaultValue: 'Copy' })}
+                      </Button>
+                    </>
+                  )}
+                  {revealedValues[entry.Key] && (
+                    <code className="max-w-full break-all rounded bg-gray-2 px-2 py-1 th-dark:bg-gray-10">
+                      {revealedValues[entry.Key]}
+                    </code>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <FormActions
+          isSubmitting={isSubmitting}
+          submitDisabled={!name.trim() || (!!secretKey.trim() && !secretValue)}
+          submitLabel={
+            configSet
+              ? t('platform.actions.save', { defaultValue: 'Save' })
+              : t('platform.actions.createConfigSet', {
+                  defaultValue: 'Create config set',
+                })
+          }
+          onCancel={() => onDone(configSet?.Id)}
+        />
+      </form>
+    </section>
+  );
+}
+
+function EffectiveConfigDetails({
+  response,
+  isLoading,
+  emptyMessage,
+}: {
+  response?: PlatformEffectiveConfigResponse;
+  isLoading: boolean;
+  emptyMessage: string;
+}) {
+  const { t } = useTranslation();
+  const entries = response?.EffectiveConfig.Entries ?? [];
+  const revisions = Object.entries(
+    response?.EffectiveConfig.ConfigSetRevisions ?? {}
+  );
+
+  return (
+    <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+      <h2 className="mb-3 text-lg font-semibold">
+        {t('platform.config.effectiveTitle', {
+          defaultValue: 'Effective configuration preview',
+        })}
+      </h2>
+      {isLoading && (
+        <div className="text-muted text-sm">
+          {t('common.loading', { defaultValue: 'Loading...' })}
+        </div>
+      )}
+      {!isLoading && !response && (
+        <div className="text-muted text-sm">{emptyMessage}</div>
+      )}
+      {!isLoading && response && (
+        <div className="space-y-3">
+          <SummaryList
+            rows={[
+              [
+                t('platform.config.driftStatus', {
+                  defaultValue: 'Drift status',
+                }),
+                response.DriftStatus || '-',
+              ],
+              [
+                t('platform.config.configHash', {
+                  defaultValue: 'Config hash',
+                }),
+                response.EffectiveConfig.Hash || '-',
+              ],
+              [
+                t('platform.config.specRevision', {
+                  defaultValue: 'Spec revision',
+                }),
+                String(response.EffectiveConfig.SpecRevision),
+              ],
+            ]}
+          />
+          {revisions.length > 0 && (
+            <div className="text-muted text-xs">
+              {t('platform.config.revisions', {
+                defaultValue: 'Config set revisions: {{revisions}}',
+                revisions: revisions
+                  .map(([key, revision]) => `${key}: ${revision}`)
+                  .join(', '),
+              })}
+            </div>
+          )}
+          {entries.length > 0 ? (
+            <PlatformTable
+              columns={[
+                t('platform.config.key', { defaultValue: 'Key' }),
+                t('platform.config.value', { defaultValue: 'Value' }),
+                t('platform.config.source', { defaultValue: 'Source' }),
+              ]}
+              rows={entries.map((entry) => ({
+                key: entry.Key,
+                cells: [
+                  entry.Key,
+                  entry.Sensitive
+                    ? t('platform.config.maskedValue', {
+                        defaultValue: '••••••',
+                      })
+                    : (entry.Value ?? ''),
+                  entry.Source,
+                ],
+              }))}
+            />
+          ) : (
+            <div className="text-muted text-sm">
+              {t('platform.config.noEffectiveEntries', {
+                defaultValue: 'No effective configuration entries.',
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -3130,14 +3877,43 @@ function parseEnvOverrides(envText: string) {
       const value = separatorIndex >= 0 ? line.slice(separatorIndex + 1) : '';
 
       return {
-        Key: key,
+        Name: key,
         Value: value,
         Source: 'literal',
         IsSecret: false,
         HasValue: true,
       };
     })
-    .filter((item) => item.Key);
+    .filter((item) => item.Name);
+}
+
+function parsePlainConfigEntries(entriesText: string): PlatformConfigEntry[] {
+  return entriesText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separatorIndex = line.indexOf('=');
+      const key =
+        separatorIndex >= 0 ? line.slice(0, separatorIndex).trim() : line;
+      const value = separatorIndex >= 0 ? line.slice(separatorIndex + 1) : '';
+
+      return {
+        Key: key,
+        ValueType: 'plain' as const,
+        Value: value,
+        Sensitive: false,
+        Required: false,
+      };
+    })
+    .filter((entry) => entry.Key);
+}
+
+function formatPlainConfigEntries(entries: PlatformConfigEntry[]) {
+  return entries
+    .filter((entry) => !entry.Sensitive && entry.ValueType === 'plain')
+    .map((entry) => `${entry.Key}=${entry.Value ?? ''}`)
+    .join('\n');
 }
 
 function buildReleasePayload({

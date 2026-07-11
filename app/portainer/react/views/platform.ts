@@ -3,6 +3,7 @@ import angular from 'angular';
 import {
   PlatformApplicationsView,
   PlatformArtifactsView,
+  PlatformConfigView,
   PlatformDeployView,
   PlatformProjectsView,
   PlatformReleasesView,
@@ -35,6 +36,10 @@ export const platformViewsModule = angular
       withUIRouter(withReactQuery(withCurrentUser(PlatformArtifactsView))),
       []
     )
+  )
+  .component(
+    'platformConfigView',
+    r2a(withUIRouter(withReactQuery(withCurrentUser(PlatformConfigView))), [])
   )
   .component(
     'platformReleasesView',

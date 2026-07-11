@@ -101,7 +101,7 @@ export interface PlatformPublishedPort {
 }
 
 export interface PlatformEnvOverride {
-  Key: string;
+  Name: string;
   Value?: string;
   Source?: string;
   IsSecret?: boolean;
@@ -139,6 +139,55 @@ export interface PlatformDeploymentDesiredSpec {
   Strategy?: {
     Type?: string;
   };
+}
+
+export type PlatformConfigScopeType =
+  | 'project'
+  | 'environment'
+  | 'service-deployment';
+
+export interface PlatformConfigEntry {
+  Key: string;
+  ValueType: 'plain' | 'secret-ref' | 'database-ref' | 'redis-ref';
+  Value?: string;
+  Sensitive: boolean;
+  Required: boolean;
+  Source?: string;
+  Hash?: string;
+  HasValue?: boolean;
+}
+
+export interface PlatformConfigSet extends PlatformLifecycle {
+  Id: number;
+  ProjectId: number;
+  ScopeType: PlatformConfigScopeType;
+  ScopeId: number;
+  Name: string;
+  Entries: PlatformConfigEntry[];
+  Revision: number;
+}
+
+export interface PlatformEffectiveConfigEntry {
+  Key: string;
+  ValueType: string;
+  Value?: string;
+  Sensitive: boolean;
+  Required: boolean;
+  Source: string;
+  Hash?: string;
+  HasValue?: boolean;
+}
+
+export interface PlatformEffectiveConfig {
+  SpecRevision: number;
+  ConfigSetRevisions?: Record<string, number>;
+  Entries: PlatformEffectiveConfigEntry[];
+  Hash?: string;
+}
+
+export interface PlatformEffectiveConfigResponse {
+  EffectiveConfig: PlatformEffectiveConfig;
+  DriftStatus: string;
 }
 
 export interface PlatformServiceDeployment extends PlatformLifecycle {
@@ -374,6 +423,20 @@ export interface CreatePlatformReleasePayload {
     Type: string;
   };
   TriggerType?: string;
+}
+
+export interface CreatePlatformConfigSetPayload {
+  ProjectId: number;
+  ScopeType: PlatformConfigScopeType;
+  ScopeId: number;
+  Name: string;
+  Entries: PlatformConfigEntry[];
+}
+
+export interface UpdatePlatformConfigSetPayload {
+  ResourceVersion: number;
+  Name: string;
+  Entries: PlatformConfigEntry[];
 }
 
 export interface RollbackPlatformReleasePayload {

@@ -6,6 +6,7 @@ import {
   Layers,
   Package,
   Rocket,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -49,6 +50,15 @@ export function AppDeliverySidebar() {
         to="portainer.platform.artifacts"
         icon={Package}
         data-cy="portainerSidebar-platform-artifacts"
+      />
+
+      <SidebarItem
+        label={t('platform.navigation.config', {
+          defaultValue: 'Configuration',
+        })}
+        to="portainer.platform.config"
+        icon={SlidersHorizontal}
+        data-cy="portainerSidebar-platform-config"
       />
 
       <SidebarItem

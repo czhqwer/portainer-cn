@@ -6,6 +6,7 @@ import { withError } from '@/react-tools/react-query';
 import {
   CreateImageReferenceArtifactPayload,
   CreatePlatformApplicationPayload,
+  CreatePlatformConfigSetPayload,
   CreatePlatformEnvironmentPayload,
   CreatePlatformProjectPayload,
   CreatePlatformReleasePayload,
@@ -15,6 +16,9 @@ import {
   PlatformApplication,
   PlatformAuditLog,
   PlatformArtifact,
+  PlatformConfigScopeType,
+  PlatformConfigSet,
+  PlatformEffectiveConfigResponse,
   PlatformProject,
   PlatformRelease,
   PlatformReleaseCreateResponse,
@@ -27,6 +31,7 @@ import {
   PlatformServiceDeploymentStatus,
   PlatformServiceDefinition,
   UpdatePlatformServiceDeploymentPayload,
+  UpdatePlatformConfigSetPayload,
 } from './types';
 
 export const platformQueryKeys = {
@@ -45,6 +50,20 @@ export const platformQueryKeys = {
   deploymentLogs: (deploymentId?: number, tail?: number) =>
     [...platformQueryKeys.all, 'deployment-logs', deploymentId, tail] as const,
   artifacts: () => [...platformQueryKeys.all, 'artifacts'] as const,
+  configSets: (
+    projectId?: number,
+    scopeType?: PlatformConfigScopeType,
+    scopeId?: number
+  ) =>
+    [
+      ...platformQueryKeys.all,
+      'config-sets',
+      projectId,
+      scopeType,
+      scopeId,
+    ] as const,
+  effectiveConfig: (deploymentId?: number) =>
+    [...platformQueryKeys.all, 'effective-config', deploymentId] as const,
   releases: () => [...platformQueryKeys.all, 'releases'] as const,
   rollbackDiff: (releaseId?: number) =>
     [...platformQueryKeys.all, 'rollback-diff', releaseId] as const,
@@ -180,6 +199,76 @@ async function getServiceDeploymentLogs(deploymentId: number, tail: number) {
 
 async function getArtifacts() {
   const response = await axios.get<PlatformArtifact[]>('/platform/artifacts');
+  return response.data;
+}
+
+async function getConfigSets({
+  projectId,
+  scopeType,
+  scopeId,
+}: {
+  projectId: number;
+  scopeType?: PlatformConfigScopeType;
+  scopeId?: number;
+}) {
+  const response = await axios.get<PlatformConfigSet[]>(
+    '/platform/config-sets',
+    {
+      params: {
+        projectId,
+        scopeType,
+        scopeId,
+      },
+    }
+  );
+  return response.data;
+}
+
+async function createConfigSet(payload: CreatePlatformConfigSetPayload) {
+  const response = await axios.post<PlatformConfigSet>(
+    '/platform/config-sets',
+    payload
+  );
+  return response.data;
+}
+
+async function updateConfigSet({
+  configSetId,
+  payload,
+}: {
+  configSetId: number;
+  payload: UpdatePlatformConfigSetPayload;
+}) {
+  const response = await axios.put<PlatformConfigSet>(
+    `/platform/config-sets/${configSetId}`,
+    payload
+  );
+  return response.data;
+}
+
+async function archiveConfigSet(configSetId: number) {
+  await axios.delete(`/platform/config-sets/${configSetId}`);
+}
+
+async function readConfigSecret({
+  configSetId,
+  key,
+  action,
+}: {
+  configSetId: number;
+  key: string;
+  action: 'reveal' | 'copy';
+}) {
+  const response = await axios.post<{ Value: string }>(
+    `/platform/config-sets/${configSetId}/entries/${encodeURIComponent(key)}/${action}`
+  );
+  return response.data.Value;
+}
+
+async function getEffectiveConfig(deploymentId: number) {
+  const response = await axios.get<PlatformEffectiveConfigResponse>(
+    `/platform/service-deployments/${deploymentId}/effective-config`
+  );
   return response.data;
 }
 
@@ -374,6 +463,68 @@ export function useCreateImageReferenceArtifactMutation() {
   });
 }
 
+export function usePlatformConfigSets({
+  projectId,
+  scopeType,
+  scopeId,
+}: {
+  projectId?: number;
+  scopeType?: PlatformConfigScopeType;
+  scopeId?: number;
+}) {
+  return useQuery({
+    queryKey: platformQueryKeys.configSets(projectId, scopeType, scopeId),
+    queryFn: () =>
+      getConfigSets({
+        projectId: projectId as number,
+        scopeType,
+        scopeId,
+      }),
+    enabled: !!projectId && !!scopeId,
+    ...withError('Failed loading platform config sets'),
+  });
+}
+
+export function useCreatePlatformConfigSetMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createConfigSet,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
+    ...withError('Failed creating platform config set'),
+  });
+}
+
+export function useUpdatePlatformConfigSetMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateConfigSet,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
+    ...withError('Failed updating platform config set'),
+  });
+}
+
+export function useArchivePlatformConfigSetMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: archiveConfigSet,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
+    ...withError('Failed archiving platform config set'),
+  });
+}
+
+export function useReadPlatformConfigSecretMutation() {
+  return useMutation({
+    mutationFn: readConfigSecret,
+    ...withError('Failed reading platform sensitive variable'),
+  });
+}
+
 export function useValidatePlatformReleaseMutation() {
   return useMutation({
     mutationFn: validateRelease,
@@ -416,6 +567,15 @@ export function usePlatformServiceDeploymentStatus(deploymentId?: number) {
     queryFn: () => getServiceDeploymentStatus(deploymentId as number),
     enabled: !!deploymentId,
     ...withError('Failed loading platform service status'),
+  });
+}
+
+export function usePlatformEffectiveConfig(deploymentId?: number) {
+  return useQuery({
+    queryKey: platformQueryKeys.effectiveConfig(deploymentId),
+    queryFn: () => getEffectiveConfig(deploymentId as number),
+    enabled: !!deploymentId,
+    ...withError('Failed loading platform effective config'),
   });
 }
 
