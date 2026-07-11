@@ -51,6 +51,8 @@ export type DatabaseQueryResult = {
   RequiresConfirmation?: boolean;
   UnsafeWrite?: boolean;
   ErrorCode?: string;
+  RedisKey?: string;
+  RedisType?: string;
 };
 
 export type DatabaseSchema = {
@@ -325,7 +327,10 @@ export function useRedisKeys(
         cursor,
         nodeName
       ),
-    enabled: !!connection && connection.Type === 'redis',
+    enabled:
+      !!connection &&
+      connection.Type === 'redis' &&
+      /^\d+$/.test((database || '0').trim()),
     ...withError('Unable to scan Redis keys'),
   });
 }
@@ -346,7 +351,11 @@ export function useRedisKeyDetails(
     ),
     queryFn: () =>
       getRedisKeyDetails(environmentId, connection!, database, key!, nodeName),
-    enabled: !!connection && connection.Type === 'redis' && !!key,
+    enabled:
+      !!connection &&
+      connection.Type === 'redis' &&
+      !!key &&
+      /^\d+$/.test((database || '0').trim()),
     ...withError('Unable to retrieve Redis key details'),
   });
 }
@@ -499,7 +508,7 @@ async function getRedisKeys(
     const { data } = await axios.get<RedisKeyScanResponse>(
       `${databaseConnectionUrl(environmentId, connection)}/redis-keys`,
       {
-        params: { database, pattern, cursor },
+        params: { database, pattern, cursor, count: 100 },
         headers: { ...withAgentTargetHeader(nodeName) },
       }
     );

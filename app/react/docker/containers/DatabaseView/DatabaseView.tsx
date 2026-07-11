@@ -13,7 +13,7 @@ import {
   Eye,
   FileJson,
   FileSpreadsheet,
-  FolderTree,
+  Folder,
   FlaskConical,
   History,
   KeyRound,
@@ -38,6 +38,7 @@ import {
   ContainerListViewModel,
   ContainerStatus,
 } from '@/react/docker/containers/types';
+import { dispatchCacheRefreshEvent } from '@/portainer/services/http-request.helper';
 
 import { PageHeader } from '@@/PageHeader';
 import { Icon } from '@@/Icon';
@@ -53,7 +54,7 @@ import {
   DatabaseSchema,
   DatabaseTableDetails,
   RedisKeyDetails,
-  RedisKeyScanResponse,
+  RedisKeySummary,
   useCreateDatabaseConnection,
   useDatabaseConnections,
   useDatabaseSchema,
@@ -83,9 +84,13 @@ const defaultFormValues: ConnectionFormValues = {
 };
 
 const maxSelectRows = 200;
+const maxRedisTreeKeys = 100;
 const defaultSqlComment = '-- SQL 查询结果最多显示 200 行';
 const defaultSqlTemplate = defaultSqlComment;
 const historyRetentionMs = 7 * 24 * 60 * 60 * 1000;
+const redisDatabaseOptions = Array.from({ length: 16 }, (_, index) =>
+  String(index)
+);
 
 type QueryHistoryItem = {
   id: string;
@@ -110,6 +115,14 @@ type PersistedQueryTabs = {
 type SelectedTable = {
   database: string;
   table: string;
+};
+
+type RedisTreeNode = {
+  segment: string;
+  path: string;
+  children: RedisTreeNode[];
+  key?: RedisKeySummary;
+  keyCount: number;
 };
 
 type DatabaseViewError = Error & {
@@ -169,13 +182,12 @@ export function DatabaseView() {
   const [activeTabId, setActiveTabId] = useState('');
   const [selectedTable, setSelectedTable] = useState<SelectedTable>();
   const [redisPattern, setRedisPattern] = useState('*');
-  const [redisCursor, setRedisCursor] = useState('0');
-  const [redisDatabase, setRedisDatabase] = useState('0');
   const [selectedRedisKey, setSelectedRedisKey] = useState('');
-  const [history, setHistory] = useState<QueryHistoryItem[]>([]);
-  const [expandedDatabases, setExpandedDatabases] = useState<
+  const [pendingRedisPreviewKey, setPendingRedisPreviewKey] = useState('');
+  const [expandedRedisFolders, setExpandedRedisFolders] = useState<
     Record<string, boolean>
   >({});
+  const [history, setHistory] = useState<QueryHistoryItem[]>([]);
 
   const selectedConnection = useMemo(
     () => connections.find((connection) => connection.Id === selectedId),
@@ -192,16 +204,35 @@ export function DatabaseView() {
     activeContainer?.NodeName
   );
   const databaseOptions = useMemo(
-    () => schemaQuery.data?.Databases.map((database) => database.Name) || [],
-    [schemaQuery.data]
+    () =>
+      activeConnection?.Type === 'redis'
+        ? redisDatabaseOptions
+        : schemaQuery.data?.Databases.map((database) => database.Name) || [],
+    [activeConnection?.Type, schemaQuery.data]
   );
   const activeTab =
     queryTabs.find((tab) => tab.id === activeTabId) || queryTabs[0];
-  const activeDatabase =
-    activeTab?.database ||
-    activeConnection?.Database ||
-    preferredDatabaseOption(databaseOptions, activeConnection?.Type) ||
-    '';
+  // Redis 只能使用数字 DB index；从 MySQL 切过来时 tab.database 可能仍是业务库名。
+  const activeDatabase = useMemo(() => {
+    const raw =
+      activeTab?.database ||
+      activeConnection?.Database ||
+      (activeConnection?.Type === 'redis'
+        ? '0'
+        : preferredDatabaseOption(databaseOptions, activeConnection?.Type)) ||
+      '';
+
+    if (activeConnection?.Type === 'redis') {
+      return normalizeRedisDatabase(raw);
+    }
+
+    return raw;
+  }, [
+    activeConnection?.Database,
+    activeConnection?.Type,
+    activeTab?.database,
+    databaseOptions,
+  ]);
   const historyStorageKey = `portainer.databaseHistory.${user.Id}.${environmentId}.${activeConnection?.Id || 'none'}`;
   const tabsStorageKey = `portainer.databaseTabs.${user.Id}.${environmentId}.${activeConnection?.Id || 'none'}`;
   const preferPublishedContainerPorts = isLocalAgentUrl(
@@ -217,15 +248,19 @@ export function DatabaseView() {
   const redisKeysQuery = useRedisKeys(
     environmentId,
     activeConnection,
-    redisDatabase,
+    activeDatabase,
     redisPattern,
-    redisCursor,
+    '0',
     activeContainer?.NodeName
+  );
+  const redisTreeKeys = useMemo(
+    () => (redisKeysQuery.data?.Keys || []).slice(0, maxRedisTreeKeys),
+    [redisKeysQuery.data?.Keys]
   );
   const redisKeyDetailsQuery = useRedisKeyDetails(
     environmentId,
     activeConnection,
-    redisDatabase,
+    activeDatabase,
     selectedRedisKey,
     activeContainer?.NodeName
   );
@@ -271,12 +306,53 @@ export function DatabaseView() {
   useEffect(() => {
     setSelectedTable(undefined);
     setSelectedRedisKey('');
-    setRedisCursor('0');
-    setRedisDatabase(activeConnection?.Database || '0');
-  }, [activeConnection?.Id]);
+    setPendingRedisPreviewKey('');
+    setExpandedRedisFolders({});
+  }, [
+    activeConnection?.Id,
+    activeConnection?.Type,
+    activeConnection?.Database,
+  ]);
+
+  // 仅在用户主动点选 Key 时写入结果区；避免详情查询后台刷新覆盖命令执行结果。
+  useEffect(() => {
+    if (
+      activeConnection?.Type !== 'redis' ||
+      !pendingRedisPreviewKey ||
+      !redisKeyDetailsQuery.data ||
+      redisKeyDetailsQuery.data.Name !== pendingRedisPreviewKey ||
+      !activeTab
+    ) {
+      return;
+    }
+
+    setQueryTabs((tabs) =>
+      tabs.map((tab) =>
+        tab.id === activeTab.id
+          ? {
+              ...tab,
+              result: redisDetailsToQueryResult(redisKeyDetailsQuery.data!),
+              error: undefined,
+            }
+          : tab
+      )
+    );
+    setPendingRedisPreviewKey('');
+  }, [
+    activeConnection?.Type,
+    activeTab?.id,
+    pendingRedisPreviewKey,
+    redisKeyDetailsQuery.data,
+  ]);
 
   function selectConnection(connection: DatabaseConnection) {
+    // 先清空旧 tabs，避免切到 Redis 时把 MySQL 的库名写进新连接缓存并触发 SCAN。
     setSelectedId(connection.Id);
+    setQueryTabs([]);
+    setActiveTabId('');
+    setSelectedRedisKey('');
+    setPendingRedisPreviewKey('');
+    setExpandedRedisFolders({});
   }
 
   function openCreateForm() {
@@ -359,6 +435,14 @@ export function DatabaseView() {
       return;
     }
 
+    // 命令执行优先于 Key 预览，避免旧详情结果盖住新查询的值列。
+    setPendingRedisPreviewKey('');
+    setSelectedRedisKey('');
+
+    const queryDatabase =
+      activeConnection.Type === 'redis'
+        ? normalizeRedisDatabase(activeDatabase)
+        : activeDatabase;
     const isWriteStatement = isUpdateOrDeleteStatement(statement);
     const unsafeWrite = isUnsafeWriteStatement(statement);
     const abortController = new AbortController();
@@ -370,7 +454,7 @@ export function DatabaseView() {
         const preview = await runQuery.mutateAsync({
           connection: activeConnection,
           query: statement,
-          database: activeDatabase,
+          database: queryDatabase,
           preview: true,
           nodeName: activeContainer?.NodeName,
           signal: abortController.signal,
@@ -406,7 +490,7 @@ export function DatabaseView() {
       const result = await runQuery.mutateAsync({
         connection: activeConnection,
         query: statement,
-        database: activeDatabase,
+        database: queryDatabase,
         confirmUnsafeWrite: unsafeWrite,
         nodeName: activeContainer?.NodeName,
         signal: abortController.signal,
@@ -459,7 +543,16 @@ export function DatabaseView() {
   }
 
   function updateActiveTabDatabase(database: string) {
-    updateActiveTab({ database });
+    const nextDatabase =
+      activeConnection?.Type === 'redis'
+        ? normalizeRedisDatabase(database)
+        : database;
+    updateActiveTab({ database: nextDatabase });
+    if (activeConnection?.Type === 'redis') {
+      setSelectedRedisKey('');
+      setPendingRedisPreviewKey('');
+      setExpandedRedisFolders({});
+    }
   }
 
   function addQueryTab() {
@@ -521,13 +614,6 @@ export function DatabaseView() {
     }
   }
 
-  function toggleDatabase(name: string) {
-    setExpandedDatabases((expanded) => ({
-      ...expanded,
-      [name]: !expanded[name],
-    }));
-  }
-
   // 单击表名负责展开/收起结构，双击表名才生成 SELECT，避免误改 SQL 编辑区。
   function selectTable(database: string, table: string) {
     setSelectedTable((current) =>
@@ -550,131 +636,143 @@ export function DatabaseView() {
     );
   }
 
+  // 双击 Key 写入对应读命令到编辑区，单击只预览结果，避免误改命令草稿。
+  function insertRedisKeyCommand(key: RedisKeySummary) {
+    if (!activeTab) {
+      return;
+    }
+
+    updateActiveTabQuery(
+      appendSqlStatement(activeTab.query, redisKeyReadCommand(key))
+    );
+  }
+
+  function toggleRedisFolder(path: string) {
+    setExpandedRedisFolders((expanded) => ({
+      ...expanded,
+      [path]: !expanded[path],
+    }));
+  }
+
   if (!isPureAdmin) {
     return null;
   }
 
   return (
-    <>
+    <div className={`${styles.root} flex h-full flex-col`}>
       <PageHeader
-        title={t('legacyText.Database query', {
-          defaultValue: 'Database query',
-        })}
         breadcrumbs={t('legacyText.Databases', { defaultValue: 'Databases' })}
-        reload
       />
 
-      <div className={styles.root}>
-        <div className="flex h-[calc(100vh-170px)] max-h-[calc(100vh-170px)] min-h-[560px] gap-4 overflow-hidden">
-          <aside className="flex h-full w-[300px] shrink-0 flex-col overflow-hidden border-r border-gray-5 pr-4">
-            <ConnectionSidebar
-              connections={connections}
-              activeConnection={activeConnection}
-              isLoading={connectionsQuery.isLoading}
-              schema={schemaQuery.data}
-              isSchemaLoading={schemaQuery.isLoading}
-              schemaError={schemaQuery.error as DatabaseViewError | undefined}
-              databaseFilter={activeDatabase}
-              selectedTable={selectedTable}
-              tableDetails={tableDetailsQuery.data}
-              isTableDetailsLoading={tableDetailsQuery.isLoading}
-              expandedDatabases={expandedDatabases}
-              onSelectConnection={selectConnection}
-              onCreate={openCreateForm}
-              onEdit={openEditForm}
-              onDelete={handleDelete}
-              onToggleDatabase={toggleDatabase}
-              onSelectTable={selectTable}
-              onInsertTableSelect={insertTableSelect}
-            />
-          </aside>
+      <div className="flex min-h-[560px] flex-1 gap-4 overflow-hidden">
+        <aside className="flex h-full min-h-0 w-[300px] shrink-0 flex-col overflow-hidden border-r border-gray-5 pr-4">
+          <ConnectionSidebar
+            connections={connections}
+            activeConnection={activeConnection}
+            isLoading={connectionsQuery.isLoading}
+            schema={schemaQuery.data}
+            isSchemaLoading={schemaQuery.isLoading}
+            schemaError={schemaQuery.error as DatabaseViewError | undefined}
+            databaseFilter={activeDatabase}
+            selectedTable={selectedTable}
+            tableDetails={tableDetailsQuery.data}
+            isTableDetailsLoading={tableDetailsQuery.isLoading}
+            redisKeys={redisTreeKeys}
+            isRedisKeysLoading={redisKeysQuery.isLoading}
+            redisPattern={redisPattern}
+            selectedRedisKey={selectedRedisKey}
+            expandedRedisFolders={expandedRedisFolders}
+            onSelectConnection={selectConnection}
+            onCreate={openCreateForm}
+            onEdit={openEditForm}
+            onDelete={handleDelete}
+            onSelectTable={selectTable}
+            onInsertTableSelect={insertTableSelect}
+            onRedisPatternChange={(pattern) => {
+              setRedisPattern(normalizeRedisSearchPattern(pattern));
+            }}
+            onRedisRefresh={() => redisKeysQuery.refetch()}
+            onSelectRedisKey={(key) => {
+              setSelectedRedisKey(key);
+              setPendingRedisPreviewKey(key);
+            }}
+            onInsertRedisKeyCommand={insertRedisKeyCommand}
+            onToggleRedisFolder={toggleRedisFolder}
+          />
+        </aside>
 
-          <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-            <QueryWorkspace
-              activeConnection={activeConnection}
-              databases={databaseOptions}
-              tabs={queryTabs}
-              activeTabId={activeTabId}
-              selectedDatabase={activeDatabase}
-              history={history}
-              isRunning={runQuery.isLoading}
-              redisKeys={redisKeysQuery.data}
-              isRedisKeysLoading={redisKeysQuery.isLoading}
-              redisKeyDetails={redisKeyDetailsQuery.data}
-              isRedisKeyDetailsLoading={redisKeyDetailsQuery.isLoading}
-              redisPattern={redisPattern}
-              redisDatabase={redisDatabase}
-              selectedRedisKey={selectedRedisKey}
-              onSelectTab={setActiveTabId}
-              onAddTab={addQueryTab}
-              onCloseTab={closeQueryTab}
-              onSelectDatabase={updateActiveTabDatabase}
-              onQueryChange={updateActiveTabQuery}
-              onFormat={formatActiveTabQuery}
-              onRun={handleRunQuery}
-              onCancel={cancelRunningQuery}
-              onRedisPatternChange={(pattern) => {
-                setRedisPattern(pattern || '*');
-                setRedisCursor('0');
-              }}
-              onRedisDatabaseChange={(database) => {
-                setRedisDatabase(database);
-                setRedisCursor('0');
-              }}
-              onRedisNextPage={() =>
-                setRedisCursor(redisKeysQuery.data?.Cursor || '0')
+        <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+          <QueryWorkspace
+            activeConnection={activeConnection}
+            databases={databaseOptions}
+            tabs={queryTabs}
+            activeTabId={activeTabId}
+            selectedDatabase={activeDatabase}
+            history={history}
+            isRunning={runQuery.isLoading}
+            onSelectTab={setActiveTabId}
+            onAddTab={addQueryTab}
+            onCloseTab={closeQueryTab}
+            onSelectDatabase={updateActiveTabDatabase}
+            onQueryChange={updateActiveTabQuery}
+            onFormat={formatActiveTabQuery}
+            onRun={handleRunQuery}
+            onCancel={cancelRunningQuery}
+            onRefresh={() => {
+              // 顶部刷新下放到运行按钮旁：刷新连接/库表/Redis Key，避免整页重载打断编辑。
+              dispatchCacheRefreshEvent();
+              connectionsQuery.refetch();
+              schemaQuery.refetch();
+              if (activeConnection?.Type === 'redis') {
+                redisKeysQuery.refetch();
               }
-              onRedisRefresh={() => redisKeysQuery.refetch()}
-              onSelectRedisKey={setSelectedRedisKey}
-            />
-          </main>
-        </div>
-
-        {formMode && (
-          <div className="fixed inset-y-0 right-0 z-50 flex w-[420px] max-w-full flex-col border-l border-gray-5 bg-gray-10 p-5 shadow-2xl">
-            <ConnectionForm
-              values={formValues}
-              isEditing={formMode === 'edit'}
-              hasSavedPassword={
-                !!editingId &&
-                !!connections.find((connection) => connection.Id === editingId)
-                  ?.HasPassword
-              }
-              isLoading={
-                createConnection.isLoading || updateConnection.isLoading
-              }
-              isTesting={testConnection.isLoading}
-              onCancel={closeForm}
-              onTest={async (values) => {
-                const payload = normalizePayload(
-                  {
-                    ...values,
-                    Name: values.Name || 'test',
-                  },
-                  {
-                    connectionId: editingId,
-                    preserveBlankPassword: !!editingId,
-                  }
-                );
-                const container = containersQuery.data?.find(
-                  (container) => container.Id === payload.ContainerId
-                );
-
-                await testConnection.mutateAsync({
-                  payload,
-                  nodeName: container?.NodeName,
-                });
-              }}
-              onSave={handleSave}
-              onChange={setFormValues}
-              containers={containersQuery.data || []}
-              isContainerTargetVisible={isDockerEnvironment}
-              preferPublishedContainerPorts={preferPublishedContainerPorts}
-            />
-          </div>
-        )}
+            }}
+          />
+        </main>
       </div>
-    </>
+
+      {formMode && (
+        <div className="fixed inset-y-0 right-0 z-50 flex w-[420px] max-w-full flex-col border-l border-gray-5 bg-gray-10 p-5 shadow-2xl">
+          <ConnectionForm
+            values={formValues}
+            isEditing={formMode === 'edit'}
+            hasSavedPassword={
+              !!editingId &&
+              !!connections.find((connection) => connection.Id === editingId)
+                ?.HasPassword
+            }
+            isLoading={createConnection.isLoading || updateConnection.isLoading}
+            isTesting={testConnection.isLoading}
+            onCancel={closeForm}
+            onTest={async (values) => {
+              const payload = normalizePayload(
+                {
+                  ...values,
+                  Name: values.Name || 'test',
+                },
+                {
+                  connectionId: editingId,
+                  preserveBlankPassword: !!editingId,
+                }
+              );
+              const container = containersQuery.data?.find(
+                (container) => container.Id === payload.ContainerId
+              );
+
+              await testConnection.mutateAsync({
+                payload,
+                nodeName: container?.NodeName,
+              });
+            }}
+            onSave={handleSave}
+            onChange={setFormValues}
+            containers={containersQuery.data || []}
+            isContainerTargetVisible={isDockerEnvironment}
+            preferPublishedContainerPorts={preferPublishedContainerPorts}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -689,14 +787,22 @@ function ConnectionSidebar({
   selectedTable,
   tableDetails,
   isTableDetailsLoading,
-  expandedDatabases,
+  redisKeys,
+  isRedisKeysLoading,
+  redisPattern,
+  selectedRedisKey,
+  expandedRedisFolders,
   onSelectConnection,
   onCreate,
   onEdit,
   onDelete,
-  onToggleDatabase,
   onSelectTable,
   onInsertTableSelect,
+  onRedisPatternChange,
+  onRedisRefresh,
+  onSelectRedisKey,
+  onInsertRedisKeyCommand,
+  onToggleRedisFolder,
 }: {
   connections: DatabaseConnection[];
   activeConnection?: DatabaseConnection;
@@ -708,164 +814,181 @@ function ConnectionSidebar({
   selectedTable?: SelectedTable;
   tableDetails?: DatabaseTableDetails;
   isTableDetailsLoading: boolean;
-  expandedDatabases: Record<string, boolean>;
+  redisKeys: RedisKeySummary[];
+  isRedisKeysLoading: boolean;
+  redisPattern: string;
+  selectedRedisKey: string;
+  expandedRedisFolders: Record<string, boolean>;
   onSelectConnection: (connection: DatabaseConnection) => void;
   onCreate: () => void;
   onEdit: (connection: DatabaseConnection) => void;
   onDelete: (connection: DatabaseConnection) => void;
-  onToggleDatabase: (name: string) => void;
   onSelectTable: (database: string, table: string) => void;
   onInsertTableSelect: (database: string, table: string) => void;
+  onRedisPatternChange: (pattern: string) => void;
+  onRedisRefresh: () => void;
+  onSelectRedisKey: (key: string) => void;
+  onInsertRedisKeyCommand: (key: RedisKeySummary) => void;
+  onToggleRedisFolder: (path: string) => void;
 }) {
   const { t } = useTranslation();
   const [isConnectionListOpen, setIsConnectionListOpen] = useState(true);
+  const isRedisConnection = activeConnection?.Type === 'redis';
 
   return (
-    <>
-      <div className="flex items-center gap-2 pb-3">
-        <Icon icon={Database} className="lucide" />
-        <span className="font-semibold">
-          {t('panelTitles.Connections', { defaultValue: 'Connections' })}
-        </span>
-        <Button
-          type="button"
-          color="default"
-          size="small"
-          title={t('buttonTitles.Select database connection', {
-            defaultValue: 'Select database connection',
-          })}
-          disabled={connections.length === 0}
-          onClick={() => setIsConnectionListOpen((isOpen) => !isOpen)}
-          data-cy="database-select-connection-button"
-        >
-          <Icon icon={ListTree} className="lucide" />
-        </Button>
-        <Button
-          type="button"
-          color="default"
-          size="small"
-          className="ml-auto"
-          onClick={onCreate}
-          data-cy="database-add-connection-button"
-        >
-          <Icon icon={Plus} className="lucide" />
-        </Button>
-      </div>
-
-      {isConnectionListOpen && (
-        <div className="max-h-[240px] overflow-auto pb-4">
-          {isLoading && (
-            <span className="text-muted">
-              {t('common.Loading...', { defaultValue: 'Loading...' })}
-            </span>
-          )}
-          {!isLoading && connections.length === 0 && (
-            <span className="text-muted">
-              {t('legacyText.No saved connections', {
-                defaultValue: 'No saved connections',
-              })}
-            </span>
-          )}
-          <div className="space-y-1">
-            {connections.map((connection) => (
-              <div
-                key={connection.Id}
-                role="button"
-                tabIndex={0}
-                className={`w-full rounded border px-2 py-2 text-left transition ${
-                  activeConnection?.Id === connection.Id
-                    ? 'border-blue-8 bg-blue-8 text-white'
-                    : 'border-gray-5 bg-white text-gray-10 hover:bg-gray-2 th-dark:bg-gray-iron-11 th-dark:text-white th-dark:hover:bg-gray-iron-10'
-                }`}
-                onClick={() => onSelectConnection(connection)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSelectConnection(connection);
-                  }
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold">
-                        {connection.Name}
-                      </span>
-                      <span className="label label-default shrink-0">
-                        {connection.Type}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 truncate text-[11px] opacity-80">
-                      {connection.ContainerId
-                        ? t('legacyText.Container', {
-                            defaultValue: 'Container',
-                          })
-                        : t('legacyText.Custom address', {
-                            defaultValue: 'Custom address',
-                          })}
-                      {' - '}
-                      {connection.Host}:{connection.Port}
-                      {connection.Database ? ` / ${connection.Database}` : ''}
-                    </div>
-                  </div>
-                  {activeConnection?.Id === connection.Id && (
-                    <div className="flex shrink-0 gap-1">
-                      <Button
-                        type="button"
-                        color="default"
-                        size="small"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onEdit(connection);
-                        }}
-                        data-cy="database-edit-connection-button"
-                      >
-                        <Icon icon={Pencil} className="lucide" />
-                      </Button>
-                      <Button
-                        type="button"
-                        color="dangerlight"
-                        size="small"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDelete(connection);
-                        }}
-                        data-cy="database-delete-connection-button"
-                      >
-                        <Icon icon={Trash2} className="lucide" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0">
+        <div className="flex items-center gap-2 pb-2">
+          <Icon icon={Database} className="lucide" />
+          <span className="font-semibold">
+            {t('panelTitles.Connections', { defaultValue: 'Connections' })}
+          </span>
+          <Button
+            type="button"
+            color="default"
+            size="small"
+            title={t('buttonTitles.Select database connection', {
+              defaultValue: 'Select database connection',
+            })}
+            disabled={connections.length === 0}
+            onClick={() => setIsConnectionListOpen((isOpen) => !isOpen)}
+            data-cy="database-select-connection-button"
+          >
+            <Icon icon={ListTree} className="lucide" />
+          </Button>
+          <Button
+            type="button"
+            color="default"
+            size="small"
+            className="ml-auto"
+            onClick={onCreate}
+            data-cy="database-add-connection-button"
+          >
+            <Icon icon={Plus} className="lucide" />
+          </Button>
         </div>
-      )}
 
-      <div className="flex items-center gap-2 border-t border-gray-5 py-3">
-        <Icon icon={FolderTree} className="lucide" />
-        <span className="font-semibold">
-          {t('panelTitles.Database tree', {
-            defaultValue: 'Database tree',
-          })}
-        </span>
+        {isConnectionListOpen && (
+          <div className="max-h-[200px] shrink-0 overflow-y-auto">
+            {isLoading && (
+              <span className="text-muted">
+                {t('common.Loading...', { defaultValue: 'Loading...' })}
+              </span>
+            )}
+            {!isLoading && connections.length === 0 && (
+              <span className="text-muted">
+                {t('legacyText.No saved connections', {
+                  defaultValue: 'No saved connections',
+                })}
+              </span>
+            )}
+            <div className="space-y-1">
+              {connections.map((connection) => (
+                <div
+                  key={connection.Id}
+                  role="button"
+                  tabIndex={0}
+                  className={`w-full rounded border px-2 py-2 text-left transition ${
+                    activeConnection?.Id === connection.Id
+                      ? 'border-blue-8 bg-blue-8 text-white'
+                      : 'border-gray-5 bg-white text-gray-10 hover:bg-gray-2 th-dark:bg-gray-iron-11 th-dark:text-white th-dark:hover:bg-gray-iron-10'
+                  }`}
+                  onClick={() => onSelectConnection(connection)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelectConnection(connection);
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold">
+                          {connection.Name}
+                        </span>
+                        <span className="label label-default shrink-0">
+                          {connection.Type}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] opacity-80">
+                        {connection.ContainerId
+                          ? t('legacyText.Container', {
+                              defaultValue: 'Container',
+                            })
+                          : t('legacyText.Custom address', {
+                              defaultValue: 'Custom address',
+                            })}
+                        {' - '}
+                        {connection.Host}:{connection.Port}
+                        {connection.Database ? ` / ${connection.Database}` : ''}
+                      </div>
+                    </div>
+                    {activeConnection?.Id === connection.Id && (
+                      <div className="flex shrink-0 gap-1">
+                        <Button
+                          type="button"
+                          color="default"
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onEdit(connection);
+                          }}
+                          data-cy="database-edit-connection-button"
+                        >
+                          <Icon icon={Pencil} className="lucide" />
+                        </Button>
+                        <Button
+                          type="button"
+                          color="dangerlight"
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDelete(connection);
+                          }}
+                          data-cy="database-delete-connection-button"
+                        >
+                          <Icon icon={Trash2} className="lucide" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <SchemaTree
-        schema={schema}
-        isLoading={isSchemaLoading}
-        error={schemaError}
-        databaseFilter={databaseFilter}
-        selectedTable={selectedTable}
-        tableDetails={tableDetails}
-        isTableDetailsLoading={isTableDetailsLoading}
-        expandedDatabases={expandedDatabases}
-        onToggleDatabase={onToggleDatabase}
-        onSelectTable={onSelectTable}
-        onInsertTableSelect={onInsertTableSelect}
-      />
-    </>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-gray-5 pt-1.5">
+        {isRedisConnection ? (
+          <RedisKeyTree
+            keys={redisKeys}
+            isLoading={isRedisKeysLoading}
+            pattern={redisPattern}
+            selectedKey={selectedRedisKey}
+            expandedFolders={expandedRedisFolders}
+            onPatternChange={onRedisPatternChange}
+            onRefresh={onRedisRefresh}
+            onSelectKey={onSelectRedisKey}
+            onInsertKeyCommand={onInsertRedisKeyCommand}
+            onToggleFolder={onToggleRedisFolder}
+          />
+        ) : (
+          <SchemaTree
+            schema={schema}
+            isLoading={isSchemaLoading}
+            error={schemaError}
+            databaseFilter={databaseFilter}
+            selectedTable={selectedTable}
+            tableDetails={tableDetails}
+            isTableDetailsLoading={isTableDetailsLoading}
+            onSelectTable={onSelectTable}
+            onInsertTableSelect={onInsertTableSelect}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -877,8 +1000,6 @@ function SchemaTree({
   selectedTable,
   tableDetails,
   isTableDetailsLoading,
-  expandedDatabases,
-  onToggleDatabase,
   onSelectTable,
   onInsertTableSelect,
 }: {
@@ -889,12 +1010,42 @@ function SchemaTree({
   selectedTable?: SelectedTable;
   tableDetails?: DatabaseTableDetails;
   isTableDetailsLoading: boolean;
-  expandedDatabases: Record<string, boolean>;
-  onToggleDatabase: (name: string) => void;
   onSelectTable: (database: string, table: string) => void;
   onInsertTableSelect: (database: string, table: string) => void;
 }) {
   const { t } = useTranslation();
+  const [searchDraft, setSearchDraft] = useState('');
+  const [tableSearch, setTableSearch] = useState('');
+
+  useEffect(() => {
+    setSearchDraft('');
+    setTableSearch('');
+  }, [databaseFilter, schema?.Databases?.length]);
+
+  // 当前库已由右上角下拉确定，侧栏只扁平展示表名，不再套一层库名节点。
+  const filteredTables = useMemo(() => {
+    const source = databaseFilter
+      ? schema?.Databases.filter((database) => database.Name === databaseFilter)
+      : schema?.Databases;
+    if (!source) {
+      return [];
+    }
+
+    const keyword = tableSearch.trim().toLowerCase();
+    const tables: Array<{ database: string; name: string }> = [];
+    source.forEach((database) => {
+      database.Tables.forEach((table) => {
+        if (!keyword || table.Name.toLowerCase().includes(keyword)) {
+          tables.push({ database: database.Name, name: table.Name });
+        }
+      });
+    });
+    return tables;
+  }, [databaseFilter, schema?.Databases, tableSearch]);
+
+  function submitSearch() {
+    setTableSearch(searchDraft.trim());
+  }
 
   if (isLoading) {
     return (
@@ -918,81 +1069,81 @@ function SchemaTree({
     );
   }
 
-  const databases = databaseFilter
-    ? schema?.Databases.filter((database) => database.Name === databaseFilter)
-    : schema?.Databases;
-
-  if (!databases || databases.length === 0) {
-    return (
-      <span className="text-muted">
-        {t('legacyText.No database tree available', {
-          defaultValue: 'No database tree available',
-        })}
-      </span>
-    );
-  }
-
   return (
-    <div className="min-h-0 flex-1 overflow-auto pr-1 text-sm [color-scheme:light] th-dark:[color-scheme:dark]">
-      {databases.map((database) => {
-        const expanded = expandedDatabases[database.Name] ?? false;
-        return (
-          <div key={database.Name}>
-            <button
-              type="button"
-              className="flex w-full items-center gap-1 rounded border-0 bg-transparent px-1.5 py-1 text-left text-gray-10 hover:bg-gray-2 th-dark:text-gray-2 th-dark:hover:bg-gray-iron-10"
-              onClick={() => onToggleDatabase(database.Name)}
-            >
-              <Icon
-                icon={expanded ? ChevronDown : ChevronRight}
-                className="lucide"
-              />
-              <span className="truncate">{database.Name}</span>
-            </button>
-            {expanded && (
-              <div className="ml-5">
-                {database.Tables.length === 0 && (
-                  <div className="text-muted px-2 py-1 text-xs">
-                    {t('legacyText.No tables', { defaultValue: 'No tables' })}
-                  </div>
-                )}
-                {database.Tables.map((table) => {
-                  const isSelected =
-                    selectedTable?.database === database.Name &&
-                    selectedTable?.table === table.Name;
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mb-1.5 flex items-center gap-2">
+        <input
+          className="form-control h-8 min-w-0 flex-1"
+          value={searchDraft}
+          onChange={(event) => setSearchDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submitSearch();
+            }
+          }}
+          placeholder={t('placeholders.Search tables', {
+            defaultValue: 'Search tables (fuzzy)',
+          })}
+          aria-label={t('placeholders.Search tables', {
+            defaultValue: 'Search tables (fuzzy)',
+          })}
+        />
+        <Button
+          type="button"
+          color="default"
+          size="small"
+          onClick={submitSearch}
+          data-cy="database-schema-search-button"
+        >
+          {t('buttons.Search', { defaultValue: 'Search' })}
+        </Button>
+      </div>
 
-                  return (
-                    <div key={`${database.Name}.${table.Name}`}>
-                      <button
-                        type="button"
-                        className={`flex w-full items-center gap-1.5 rounded border-0 px-1.5 py-1 text-left text-xs transition-colors ${
-                          isSelected
-                            ? 'bg-blue-2 text-blue-9 th-dark:bg-gray-iron-10 th-dark:text-gray-1'
-                            : 'bg-transparent text-gray-9 hover:bg-gray-2 hover:text-gray-10 th-dark:text-gray-4 th-dark:hover:bg-gray-iron-10 th-dark:hover:text-gray-1'
-                        }`}
-                        onClick={() => onSelectTable(database.Name, table.Name)}
-                        onDoubleClick={() =>
-                          onInsertTableSelect(database.Name, table.Name)
-                        }
-                      >
-                        <Icon icon={Table2} className="lucide" />
-                        <span className="truncate">{table.Name}</span>
-                      </button>
-                      {isSelected && (
-                        <InlineTableStructure
-                          details={tableDetails}
-                          isLoading={isTableDetailsLoading}
-                          tableName={table.Name}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
+      {filteredTables.length === 0 ? (
+        <span className="text-muted px-1.5 py-1">
+          {tableSearch
+            ? t('legacyText.No matching tables', {
+                defaultValue: 'No matching tables',
+              })
+            : t('legacyText.No tables', { defaultValue: 'No tables' })}
+        </span>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-auto pr-1 text-sm [color-scheme:light] th-dark:[color-scheme:dark]">
+          {filteredTables.map((table) => {
+            const isSelected =
+              selectedTable?.database === table.database &&
+              selectedTable?.table === table.name;
+
+            return (
+              <div key={`${table.database}.${table.name}`}>
+                <button
+                  type="button"
+                  className={`flex w-full items-center gap-1.5 rounded border-0 px-1.5 py-1 text-left text-xs transition-colors ${
+                    isSelected
+                      ? 'bg-blue-2 text-blue-9 th-dark:bg-gray-iron-10 th-dark:text-gray-1'
+                      : 'bg-transparent text-gray-9 hover:bg-gray-2 hover:text-gray-10 th-dark:text-gray-4 th-dark:hover:bg-gray-iron-10 th-dark:hover:text-gray-1'
+                  }`}
+                  onClick={() => onSelectTable(table.database, table.name)}
+                  onDoubleClick={() =>
+                    onInsertTableSelect(table.database, table.name)
+                  }
+                >
+                  <Icon icon={Table2} className="lucide" />
+                  <span className="truncate">{table.name}</span>
+                </button>
+                {isSelected && (
+                  <InlineTableStructure
+                    details={tableDetails}
+                    isLoading={isTableDetailsLoading}
+                    tableName={table.name}
+                  />
+                )}
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1005,13 +1156,6 @@ function QueryWorkspace({
   selectedDatabase,
   history,
   isRunning,
-  redisKeys,
-  isRedisKeysLoading,
-  redisKeyDetails,
-  isRedisKeyDetailsLoading,
-  redisPattern,
-  redisDatabase,
-  selectedRedisKey,
   onSelectTab,
   onAddTab,
   onCloseTab,
@@ -1020,11 +1164,7 @@ function QueryWorkspace({
   onFormat,
   onRun,
   onCancel,
-  onRedisPatternChange,
-  onRedisDatabaseChange,
-  onRedisNextPage,
-  onRedisRefresh,
-  onSelectRedisKey,
+  onRefresh,
 }: {
   activeConnection?: DatabaseConnection;
   databases: string[];
@@ -1033,13 +1173,6 @@ function QueryWorkspace({
   selectedDatabase: string;
   history: QueryHistoryItem[];
   isRunning: boolean;
-  redisKeys?: RedisKeyScanResponse;
-  isRedisKeysLoading: boolean;
-  redisKeyDetails?: RedisKeyDetails;
-  isRedisKeyDetailsLoading: boolean;
-  redisPattern: string;
-  redisDatabase: string;
-  selectedRedisKey: string;
   onSelectTab: (tabId: string) => void;
   onAddTab: () => void;
   onCloseTab: (tabId: string) => void;
@@ -1048,11 +1181,7 @@ function QueryWorkspace({
   onFormat: (selectionStart: number, selectionEnd: number) => void;
   onRun: (queryToRun?: string) => void;
   onCancel: () => void;
-  onRedisPatternChange: (pattern: string) => void;
-  onRedisDatabaseChange: (database: string) => void;
-  onRedisNextPage: () => void;
-  onRedisRefresh: () => void;
-  onSelectRedisKey: (key: string) => void;
+  onRefresh: () => void;
 }) {
   const { t } = useTranslation();
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -1210,28 +1339,32 @@ function QueryWorkspace({
               defaultValue: 'Execution history',
             })}
           </button>
-          {!isRedisConnection && (
-            <select
-              className="form-control ml-auto max-w-[280px]"
-              value={selectedDatabase}
-              onChange={(event) => onSelectDatabase(event.target.value)}
-              disabled={databases.length === 0}
-              aria-label={t('legacyText.Database', {
-                defaultValue: 'Database',
-              })}
-            >
-              {!selectedDatabase && (
-                <option value="">
-                  {t('placeholders.Select...', { defaultValue: 'Select...' })}
-                </option>
-              )}
-              {databases.map((database) => (
-                <option key={database} value={database}>
-                  {database}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            className="form-control ml-auto max-w-[280px]"
+            value={selectedDatabase}
+            onChange={(event) => onSelectDatabase(event.target.value)}
+            disabled={databases.length === 0}
+            aria-label={
+              isRedisConnection
+                ? t('legacyText.Redis database', {
+                    defaultValue: 'Redis database',
+                  })
+                : t('legacyText.Database', {
+                    defaultValue: 'Database',
+                  })
+            }
+          >
+            {!selectedDatabase && (
+              <option value="">
+                {t('placeholders.Select...', { defaultValue: 'Select...' })}
+              </option>
+            )}
+            {databases.map((database) => (
+              <option key={database} value={database}>
+                {database}
+              </option>
+            ))}
+          </select>
           <Button
             type="button"
             color="default"
@@ -1264,6 +1397,17 @@ function QueryWorkspace({
               {t('buttons.Run', { defaultValue: 'Run' })}
             </Button>
           )}
+          <Button
+            type="button"
+            color="default"
+            onClick={onRefresh}
+            title={t('pageTitles.Refresh page', {
+              defaultValue: 'Refresh page',
+            })}
+            data-cy="database-refresh-workspace-button"
+          >
+            <Icon icon={RefreshCw} className="lucide" />
+          </Button>
         </div>
 
         <div
@@ -1324,24 +1468,10 @@ function QueryWorkspace({
           </Alert>
         )}
 
-        {isRedisConnection ? (
-          <RedisKeyBrowser
-            keys={redisKeys}
-            isKeysLoading={isRedisKeysLoading}
-            details={redisKeyDetails}
-            isDetailsLoading={isRedisKeyDetailsLoading}
-            pattern={redisPattern}
-            database={redisDatabase}
-            selectedKey={selectedRedisKey}
-            onPatternChange={onRedisPatternChange}
-            onDatabaseChange={onRedisDatabaseChange}
-            onRefresh={onRedisRefresh}
-            onNextPage={onRedisNextPage}
-            onSelectKey={onSelectRedisKey}
-          />
-        ) : null}
-
-        <QueryResult result={activeTab?.result} />
+        <QueryResult
+          key={`${activeTab?.id || 'empty'}-${activeTab?.result?.Duration ?? 'none'}-${activeTab?.result?.Message || ''}-${activeTab?.result?.Rows?.[0]?.Value || ''}-${activeTab?.result?.Rows?.length || 0}`}
+          result={activeTab?.result}
+        />
       </div>
 
       {isHistoryOpen && (
@@ -1427,11 +1557,7 @@ function InlineTableStructure({
                 : index.Unique
                   ? 'UNIQUE'
                   : '';
-              const tooltip = [
-                index.Name,
-                index.Columns.join(', '),
-                indexType,
-              ]
+              const tooltip = [index.Name, index.Columns.join(', '), indexType]
                 .filter(Boolean)
                 .join('\n');
 
@@ -1458,62 +1584,73 @@ function InlineTableStructure({
   );
 }
 
-function RedisKeyBrowser({
+// Redis Key 树放在库表树位置：按 `:` 分层展开，只展示 Key 结构不展示 value。
+function RedisKeyTree({
   keys,
-  isKeysLoading,
-  details,
-  isDetailsLoading,
+  isLoading,
   pattern,
-  database,
   selectedKey,
+  expandedFolders,
   onPatternChange,
-  onDatabaseChange,
   onRefresh,
-  onNextPage,
   onSelectKey,
+  onInsertKeyCommand,
+  onToggleFolder,
 }: {
-  keys?: RedisKeyScanResponse;
-  isKeysLoading: boolean;
-  details?: RedisKeyDetails;
-  isDetailsLoading: boolean;
+  keys: RedisKeySummary[];
+  isLoading: boolean;
   pattern: string;
-  database: string;
   selectedKey: string;
+  expandedFolders: Record<string, boolean>;
   onPatternChange: (pattern: string) => void;
-  onDatabaseChange: (database: string) => void;
   onRefresh: () => void;
-  onNextPage: () => void;
   onSelectKey: (key: string) => void;
+  onInsertKeyCommand: (key: RedisKeySummary) => void;
+  onToggleFolder: (path: string) => void;
 }) {
   const { t } = useTranslation();
+  const [patternDraft, setPatternDraft] = useState(
+    displayRedisSearchPattern(pattern)
+  );
+  const tree = useMemo(() => buildRedisKeyTree(keys), [keys]);
+
+  useEffect(() => {
+    setPatternDraft(displayRedisSearchPattern(pattern));
+  }, [pattern]);
+
+  function submitPattern() {
+    onPatternChange(patternDraft);
+  }
 
   return (
-    <div className="mt-3 h-[190px] shrink-0 overflow-hidden rounded border border-gray-5 bg-white text-gray-10 th-dark:bg-gray-iron-11 th-dark:text-white">
-      <div className="flex items-center gap-2 border-b border-gray-5 px-3 py-2">
-        <Icon icon={KeyRound} className="lucide" />
-        <span className="font-semibold">
-          {t('panelTitles.Redis key browser', {
-            defaultValue: 'Redis key browser',
-          })}
-        </span>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mb-1.5 flex items-center gap-2">
         <input
-          className="form-control ml-auto h-8 max-w-[220px]"
-          value={pattern}
-          onChange={(event) => onPatternChange(event.target.value)}
-          placeholder={t('placeholders.Redis key pattern', {
-            defaultValue: 'Redis key pattern',
+          className="form-control h-8 min-w-0 flex-1"
+          value={patternDraft}
+          onChange={(event) => setPatternDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submitPattern();
+            }
+          }}
+          placeholder={t('placeholders.Search Redis keys', {
+            defaultValue: 'Search keys (fuzzy)',
+          })}
+          aria-label={t('placeholders.Search Redis keys', {
+            defaultValue: 'Search keys (fuzzy)',
           })}
         />
-        <input
-          className="form-control h-8 w-[80px]"
-          type="number"
-          min={0}
-          value={database}
-          onChange={(event) => onDatabaseChange(event.target.value)}
-          aria-label={t('legacyText.Redis database', {
-            defaultValue: 'Redis database',
-          })}
-        />
+        <Button
+          type="button"
+          color="default"
+          size="small"
+          onClick={submitPattern}
+          data-cy="database-redis-search-button"
+        >
+          {t('buttons.Search', { defaultValue: 'Search' })}
+        </Button>
         <Button
           type="button"
           color="default"
@@ -1524,94 +1661,162 @@ function RedisKeyBrowser({
           <Icon icon={RefreshCw} className="lucide" />
         </Button>
       </div>
-      <div className="grid h-[calc(100%-41px)] min-h-0 grid-cols-[320px_1fr]">
-        <div className="border-r border-gray-5 p-2">
-          {isKeysLoading && (
-            <div className="text-muted p-2">
-              {t('common.Loading...', { defaultValue: 'Loading...' })}
-            </div>
-          )}
-          {!isKeysLoading && keys?.Keys.length === 0 && (
-            <div className="text-muted p-2">
-              {t('legacyText.No keys found', { defaultValue: 'No keys found' })}
-            </div>
-          )}
-          <div className="h-[calc(100%-38px)] overflow-auto">
-            {keys?.Keys.map((key) => (
-              <button
-                key={key.Name}
-                type="button"
-                className={`mb-1 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${
-                  selectedKey === key.Name
-                    ? 'bg-blue-8 text-white'
-                    : 'hover:bg-gray-2 th-dark:hover:bg-gray-iron-9'
-                }`}
-                onClick={() => onSelectKey(key.Name)}
-              >
-                <span className="min-w-0 flex-1 truncate font-mono">
-                  {key.Name}
-                </span>
-                <span className="label label-default">{key.Type}</span>
-              </button>
-            ))}
+
+      <div className="text-muted mb-2 px-0.5 text-[11px] leading-4">
+        {t('legacyText.Redis tree shows at most {{count}} keys', {
+          count: maxRedisTreeKeys,
+          defaultValue: `Showing at most ${maxRedisTreeKeys} keys`,
+        })}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto pr-1 text-sm [color-scheme:light] th-dark:[color-scheme:dark]">
+        {isLoading && keys.length === 0 && (
+          <div className="text-muted px-1.5 py-1">
+            {t('common.Loading...', { defaultValue: 'Loading...' })}
           </div>
-          <Button
-            type="button"
-            color="default"
-            size="small"
-            disabled={!keys || keys.Cursor === '0'}
-            onClick={onNextPage}
-            data-cy="database-redis-next-page-button"
-          >
-            {t('buttons.Next', { defaultValue: 'Next' })}
-          </Button>
-        </div>
-        <div className="min-w-0 overflow-auto p-3">
-          {isDetailsLoading && (
-            <div className="text-muted">
-              {t('legacyText.Loading key details...', {
-                defaultValue: 'Loading key details...',
-              })}
-            </div>
-          )}
-          {!isDetailsLoading && !details && (
-            <div className="text-muted">
-              {t('legacyText.Select a Redis key to preview.', {
-                defaultValue: 'Select a Redis key to preview.',
-              })}
-            </div>
-          )}
-          {details && (
-            <>
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-mono font-semibold">{details.Name}</span>
-                <span className="label label-default">{details.Type}</span>
-                <span className="text-muted">TTL: {details.TTL}</span>
-              </div>
-              {details.Value ? (
-                <pre className="m-0 whitespace-pre-wrap break-words rounded bg-gray-2 p-2 font-mono text-xs th-dark:bg-gray-iron-10">
-                  {details.Value}
-                </pre>
-              ) : (
-                <table className="table-hover nowrap-cells mb-0 table text-xs">
-                  <tbody>
-                    {details.Rows.map((row, index) => (
-                      <tr key={index}>
-                        {Object.entries(row).map(([column, value]) => (
-                          <td key={column} className="font-mono">
-                            {value}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </>
-          )}
-        </div>
+        )}
+        {!isLoading && keys.length === 0 && (
+          <div className="text-muted px-1.5 py-1">
+            {t('legacyText.No keys found', { defaultValue: 'No keys found' })}
+          </div>
+        )}
+        {tree.children.map((node) => (
+          <RedisTreeNodeView
+            key={node.path}
+            node={node}
+            depth={0}
+            selectedKey={selectedKey}
+            expandedFolders={expandedFolders}
+            onToggleFolder={onToggleFolder}
+            onSelectKey={onSelectKey}
+            onInsertKeyCommand={onInsertKeyCommand}
+          />
+        ))}
       </div>
     </div>
+  );
+}
+
+function RedisTreeNodeView({
+  node,
+  depth,
+  selectedKey,
+  expandedFolders,
+  onToggleFolder,
+  onSelectKey,
+  onInsertKeyCommand,
+}: {
+  node: RedisTreeNode;
+  depth: number;
+  selectedKey: string;
+  expandedFolders: Record<string, boolean>;
+  onToggleFolder: (path: string) => void;
+  onSelectKey: (key: string) => void;
+  onInsertKeyCommand: (key: RedisKeySummary) => void;
+}) {
+  const hasChildren = node.children.length > 0;
+  const expanded = expandedFolders[node.path] ?? false;
+  const paddingLeft = 6 + depth * 14;
+
+  if (hasChildren) {
+    return (
+      <div>
+        <button
+          type="button"
+          className="flex w-full items-center gap-1 rounded border-0 bg-transparent py-1 text-left text-gray-10 hover:bg-gray-2 th-dark:text-gray-2 th-dark:hover:bg-gray-iron-10"
+          style={{ paddingLeft }}
+          onClick={() => onToggleFolder(node.path)}
+        >
+          <Icon
+            icon={expanded ? ChevronDown : ChevronRight}
+            className="lucide shrink-0"
+          />
+          <Icon icon={Folder} className="lucide shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{node.segment}</span>
+          <span className="text-muted shrink-0 text-[11px]">
+            ({node.keyCount})
+          </span>
+        </button>
+        {node.key && (
+          <RedisKeyLeafButton
+            keySummary={node.key}
+            depth={depth + 1}
+            selectedKey={selectedKey}
+            label={node.segment}
+            onSelectKey={onSelectKey}
+            onInsertKeyCommand={onInsertKeyCommand}
+          />
+        )}
+        {expanded &&
+          node.children.map((child) => (
+            <RedisTreeNodeView
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              selectedKey={selectedKey}
+              expandedFolders={expandedFolders}
+              onToggleFolder={onToggleFolder}
+              onSelectKey={onSelectKey}
+              onInsertKeyCommand={onInsertKeyCommand}
+            />
+          ))}
+      </div>
+    );
+  }
+
+  if (!node.key) {
+    return null;
+  }
+
+  return (
+    <RedisKeyLeafButton
+      keySummary={node.key}
+      depth={depth}
+      selectedKey={selectedKey}
+      label={node.segment}
+      onSelectKey={onSelectKey}
+      onInsertKeyCommand={onInsertKeyCommand}
+    />
+  );
+}
+
+function RedisKeyLeafButton({
+  keySummary,
+  depth,
+  selectedKey,
+  label,
+  onSelectKey,
+  onInsertKeyCommand,
+}: {
+  keySummary: RedisKeySummary;
+  depth: number;
+  selectedKey: string;
+  label?: string;
+  onSelectKey: (key: string) => void;
+  onInsertKeyCommand: (key: RedisKeySummary) => void;
+}) {
+  const isSelected = selectedKey === keySummary.Name;
+  const paddingLeft = 6 + depth * 14;
+
+  return (
+    <button
+      type="button"
+      className={`flex w-full items-center gap-1.5 rounded border-0 py-1 text-left text-xs transition-colors ${
+        isSelected
+          ? 'bg-blue-2 text-blue-9 th-dark:bg-gray-iron-10 th-dark:text-gray-1'
+          : 'bg-transparent text-gray-9 hover:bg-gray-2 hover:text-gray-10 th-dark:text-gray-4 th-dark:hover:bg-gray-iron-10 th-dark:hover:text-gray-1'
+      }`}
+      style={{ paddingLeft }}
+      title={keySummary.Name}
+      onClick={() => onSelectKey(keySummary.Name)}
+      onDoubleClick={() => onInsertKeyCommand(keySummary)}
+    >
+      <Icon icon={KeyRound} className="lucide shrink-0" />
+      <span className="min-w-0 flex-1 truncate font-mono">
+        {label || keySummary.Name}
+      </span>
+      <span className="label label-default shrink-0">{keySummary.Type}</span>
+    </button>
   );
 }
 
@@ -2266,6 +2471,19 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
           {t('panelTitles.Results', { defaultValue: 'Results' })}
         </span>
         <span className="text-muted">{result.Message}</span>
+        {result.RedisKey && (
+          <span
+            className="max-w-[240px] truncate font-mono text-xs"
+            title={result.RedisKey}
+          >
+            {result.RedisKey}
+          </span>
+        )}
+        {result.RedisType && (
+          <span className="label label-default shrink-0">
+            {result.RedisType}
+          </span>
+        )}
         <span className="ml-auto rounded bg-gray-2 px-2 py-1 text-xs font-medium text-gray-8 th-dark:bg-gray-iron-10 th-dark:text-gray-3">
           {result.Duration.toFixed(3)}s
         </span>
@@ -2323,12 +2541,12 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
             <tr>
               {result.Columns.map((column) => (
                 <th key={column} className="min-w-[140px]">
-                  {column}
+                  {resultColumnLabel(column, t)}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody data-legacy-i18n-skip="true">
             {result.Rows.length === 0 && (
               <tr>
                 <td colSpan={Math.max(result.Columns.length, 1)}>
@@ -2341,7 +2559,10 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
                 {result.Columns.map((column) => (
                   <td key={column} className="max-w-[260px]">
                     <div className="group flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate">
+                      <span
+                        className="min-w-0 flex-1 truncate"
+                        title={row[column]}
+                      >
                         {row[column]}
                       </span>
                       <button
@@ -2380,7 +2601,10 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
                 {detail.column}
               </span>
             </div>
-            <pre className="m-0 min-h-[180px] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm">
+            <pre
+              className="m-0 min-h-[180px] overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm"
+              data-legacy-i18n-skip="true"
+            >
               {detail.value}
             </pre>
             <div className="flex justify-end gap-2 border-t border-gray-5 px-4 py-3">
@@ -2795,11 +3019,13 @@ function sanitizeQueryTabs(
     .map((tab, index) => ({
       id: tab.id,
       name: tab.name || queryTabName(index + 1, t),
-      query: tab.query || defaultSqlTemplate,
+      query: defaultQueryDraft(connection, tab.query),
       database:
-        tab.database ||
-        connection.Database ||
-        preferredDatabaseOption(databases, connection.Type),
+        connection.Type === 'redis'
+          ? normalizeRedisDatabase(tab.database || connection.Database || '0')
+          : tab.database ||
+            connection.Database ||
+            preferredDatabaseOption(databases, connection.Type),
     }));
 
   return validTabs.length
@@ -2817,11 +3043,261 @@ function createDefaultQueryTab(
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     name: queryTabName(index, t),
-    query: defaultSqlTemplate,
+    query: defaultQueryDraft(connection),
     database:
-      connection.Database ||
-      preferredDatabaseOption(databases, connection.Type),
+      connection.Type === 'redis'
+        ? normalizeRedisDatabase(connection.Database)
+        : connection.Database ||
+          preferredDatabaseOption(databases, connection.Type),
   };
+}
+
+// Redis 编辑区不应残留 SQL 行数提示；历史草稿若仍是该注释则清空。
+function defaultQueryDraft(connection: DatabaseConnection, query?: string) {
+  if (connection.Type === 'redis') {
+    const trimmed = (query || '').trim();
+    if (
+      !trimmed ||
+      trimmed === defaultSqlComment ||
+      trimmed.startsWith('-- SQL')
+    ) {
+      return '';
+    }
+    return query || '';
+  }
+
+  return query || defaultSqlTemplate;
+}
+
+// Redis DB 只能是数字 index；切库瞬间残留的 MySQL 库名直接回落为 0。
+function normalizeRedisDatabase(database?: string) {
+  const trimmed = (database || '').trim();
+  if (/^\d+$/.test(trimmed)) {
+    return trimmed;
+  }
+  return '0';
+}
+
+// 搜索框输入普通关键字时自动包成 *keyword*，实现模糊匹配；已含通配符则原样提交。
+function normalizeRedisSearchPattern(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return '*';
+  }
+  if (/[*?\[]/.test(trimmed)) {
+    return trimmed;
+  }
+  return `*${trimmed}*`;
+}
+
+function displayRedisSearchPattern(pattern: string) {
+  if (pattern === '*') {
+    return '';
+  }
+  const fuzzyMatch = pattern.match(/^\*([^*?[\]]+)\*$/);
+  if (fuzzyMatch) {
+    return fuzzyMatch[1];
+  }
+  return pattern;
+}
+
+function resultColumnLabel(column: string, t: TranslateFn) {
+  if (column === 'TTL') {
+    return t('tableHeaders.TTL', { defaultValue: 'TTL' });
+  }
+  if (column === 'Key') {
+    return t('tableHeaders.Key', { defaultValue: 'Key' });
+  }
+  if (column === 'Type') {
+    return t('tableHeaders.Type', { defaultValue: 'Type' });
+  }
+  if (column === 'Value') {
+    return t('tableHeaders.Value', { defaultValue: 'Value' });
+  }
+  if (column === 'Index') {
+    return t('tableHeaders.Index', { defaultValue: 'Index' });
+  }
+  if (column === 'Field') {
+    return t('tableHeaders.Field', { defaultValue: 'Field' });
+  }
+
+  return column;
+}
+
+// 把 Redis Key 详情转成结果：Key/Type 放表头元数据，list/set 行内用 Index。
+function redisDetailsToQueryResult(
+  details: RedisKeyDetails
+): DatabaseQueryResult {
+  const meta = {
+    RedisKey: details.Name,
+    RedisType: details.Type,
+  };
+
+  if (typeof details.Value === 'string') {
+    return {
+      Columns: ['Value', 'TTL'],
+      Rows: [
+        {
+          Value: details.Value,
+          TTL: details.TTL,
+        },
+      ],
+      Message: '1 row(s)',
+      Duration: 0,
+      ...meta,
+    };
+  }
+
+  if (details.Rows.length === 0) {
+    return {
+      Columns: ['Value', 'TTL'],
+      Rows: [
+        {
+          Value: '',
+          TTL: details.TTL,
+        },
+      ],
+      Message: '1 row(s)',
+      Duration: 0,
+      ...meta,
+    };
+  }
+
+  if (details.Type === 'hash') {
+    return {
+      Columns: ['Field', 'Value', 'TTL'],
+      Rows: details.Rows.map((row) => ({
+        Field: row.Field || '',
+        Value: row.Value ?? '',
+        TTL: details.TTL,
+      })),
+      Message: `${details.Rows.length} row(s)`,
+      Duration: 0,
+      ...meta,
+    };
+  }
+
+  if (
+    details.Type === 'list' ||
+    details.Type === 'set' ||
+    details.Type === 'zset'
+  ) {
+    return {
+      Columns: ['Index', 'Value', 'TTL'],
+      Rows: details.Rows.map((row, index) => ({
+        Index: row.Index ?? String(index),
+        Value: redisDetailRowValue(row),
+        TTL: details.TTL,
+      })),
+      Message: `${details.Rows.length} row(s)`,
+      Duration: 0,
+      ...meta,
+    };
+  }
+
+  return {
+    Columns: ['Value', 'TTL'],
+    Rows: details.Rows.map((row) => ({
+      Value: redisDetailRowValue(row),
+      TTL: details.TTL,
+    })),
+    Message: `${details.Rows.length} row(s)`,
+    Duration: 0,
+    ...meta,
+  };
+}
+
+function redisDetailRowValue(row: Record<string, string>) {
+  if (row.Score !== undefined) {
+    return `${row.Value ?? ''} (${row.Score})`;
+  }
+  return row.Value ?? '';
+}
+
+function redisKeyReadCommand(key: RedisKeySummary) {
+  const quoted = quoteRedisArg(key.Name);
+  switch (key.Type) {
+    case 'hash':
+      return `HGETALL ${quoted}`;
+    case 'list':
+      return `LRANGE ${quoted} 0 -1`;
+    case 'set':
+      return `SMEMBERS ${quoted}`;
+    case 'zset':
+      return `ZRANGE ${quoted} 0 -1 WITHSCORES`;
+    default:
+      return `GET ${quoted}`;
+  }
+}
+
+function quoteRedisArg(value: string) {
+  if (/^[\w.:-]+$/.test(value)) {
+    return value;
+  }
+
+  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+}
+
+// 按 `:` 把 Redis Key 拆成可展开的命名空间树，文件夹节点只承担导航职责。
+function buildRedisKeyTree(keys: RedisKeySummary[]): RedisTreeNode {
+  const root: RedisTreeNode = {
+    segment: '',
+    path: '',
+    children: [],
+    keyCount: 0,
+  };
+
+  keys.forEach((key) => {
+    const parts = key.Name.split(':').filter((part) => part.length > 0);
+    if (parts.length === 0) {
+      return;
+    }
+
+    let node = root;
+    let path = '';
+    parts.forEach((part, index) => {
+      path = path ? `${path}:${part}` : part;
+      let child = node.children.find((item) => item.segment === part);
+      if (!child) {
+        child = {
+          segment: part,
+          path,
+          children: [],
+          keyCount: 0,
+        };
+        node.children.push(child);
+      }
+      node = child;
+      if (index === parts.length - 1) {
+        node.key = key;
+      }
+    });
+  });
+
+  sortRedisTree(root);
+  assignRedisKeyCounts(root);
+  return root;
+}
+
+function sortRedisTree(node: RedisTreeNode) {
+  node.children.sort((left, right) => {
+    const leftIsFolder = left.children.length > 0;
+    const rightIsFolder = right.children.length > 0;
+    if (leftIsFolder !== rightIsFolder) {
+      return leftIsFolder ? -1 : 1;
+    }
+    return left.segment.localeCompare(right.segment);
+  });
+  node.children.forEach(sortRedisTree);
+}
+
+function assignRedisKeyCounts(node: RedisTreeNode): number {
+  let count = node.key ? 1 : 0;
+  node.children.forEach((child) => {
+    count += assignRedisKeyCounts(child);
+  });
+  node.keyCount = count;
+  return count;
 }
 
 function queryTabName(index: number, t: TranslateFn) {
@@ -2963,10 +3439,7 @@ function jsonTable(result: DatabaseQueryResult) {
 
 function formatJsonText(value?: string) {
   const trimmed = value?.trim();
-  if (
-    !trimmed ||
-    (!trimmed.startsWith('{') && !trimmed.startsWith('['))
-  ) {
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
     return undefined;
   }
 

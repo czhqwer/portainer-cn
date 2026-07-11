@@ -50,6 +50,9 @@ type databaseQueryResult struct {
 	RequiresConfirmation bool                `json:"RequiresConfirmation,omitempty"`
 	UnsafeWrite          bool                `json:"UnsafeWrite,omitempty"`
 	ErrorCode            string              `json:"ErrorCode,omitempty"`
+	// Redis 单次查询的 Key/Type 对所有行相同，提到表头展示，避免每行重复。
+	RedisKey  string `json:"RedisKey,omitempty"`
+	RedisType string `json:"RedisType,omitempty"`
 }
 
 type databaseErrorResponse struct {
@@ -288,12 +291,178 @@ func executeRedisCommand(ctx context.Context, connection portainer.DatabaseConne
 		value = nil
 	}
 
-	rows := redisValueRows(value)
+	// 结果统一成 Key/Value/TTL/Type，并按命令正确展开 HGETALL 等成对结构，
+	// 避免表格截断观感或 field/value 拆散后与详情弹窗不一致。
+	key := redisCommandKey(args)
+	ttlLabel := ""
+	keyType := ""
+	if key != "" {
+		if ttl, ttlErr := client.TTL(ctx, key).Result(); ttlErr == nil {
+			ttlLabel = redisTTLLabel(ttl)
+		}
+		if typed, typeErr := client.Type(ctx, key).Result(); typeErr == nil {
+			keyType = typed
+		}
+	}
+
+	rows, columns := redisCommandResultRows(args, value, keyType, ttlLabel)
 	return &databaseQueryResult{
-		Columns: []string{"Index", "Value"},
-		Rows:    rows,
-		Message: fmt.Sprintf("%d row(s)", len(rows)),
+		Columns:   columns,
+		Rows:      rows,
+		Message:   fmt.Sprintf("%d row(s)", len(rows)),
+		RedisKey:  key,
+		RedisType: keyType,
 	}, nil
+}
+
+// redisCommandKey 识别常见单 Key 命令的目标 Key，用于补充 TTL/Type 列。
+func redisCommandKey(args []string) string {
+	if len(args) < 2 {
+		return ""
+	}
+
+	switch strings.ToUpper(args[0]) {
+	case "GET", "GETDEL", "GETEX", "DUMP", "EXISTS", "TTL", "PTTL", "TYPE", "STRLEN",
+		"HGET", "HGETALL", "HKEYS", "HVALS", "HLEN",
+		"LLEN", "LRANGE", "LINDEX",
+		"SMEMBERS", "SCARD", "SSCAN",
+		"ZCARD", "ZRANGE", "ZREVRANGE", "ZSCORE":
+		return args[1]
+	default:
+		return ""
+	}
+}
+
+// redisCommandResultRows 生成表格行；Key/Type 已上移到结果头，行内只保留值与 TTL。
+// list/set/zset 增加 Index（0,1,2...），hash 保留 Field。
+func redisCommandResultRows(args []string, value any, keyType string, ttl string) ([]map[string]string, []string) {
+	command := ""
+	if len(args) > 0 {
+		command = strings.ToUpper(args[0])
+	}
+
+	switch command {
+	case "HGETALL":
+		return redisHashPairsToRows(value, ttl)
+	case "ZRANGE", "ZREVRANGE":
+		if redisCommandHasWithScores(args) {
+			return redisZSetPairsToRows(value, ttl)
+		}
+	}
+
+	switch keyType {
+	case "list", "set", "zset":
+		return redisIndexedValueRows(value, ttl)
+	case "hash":
+		return redisHashPairsToRows(value, ttl)
+	default:
+		return redisScalarValueRows(value, ttl)
+	}
+}
+
+func redisCommandHasWithScores(args []string) bool {
+	for _, arg := range args {
+		if strings.EqualFold(arg, "WITHSCORES") {
+			return true
+		}
+	}
+	return false
+}
+
+func redisScalarValueRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Value", "TTL"}
+	if value == nil {
+		return []map[string]string{}, columns
+	}
+
+	return []map[string]string{
+		{
+			"Value": databaseValueToString(value),
+			"TTL":   ttl,
+		},
+	}, columns
+}
+
+func redisIndexedValueRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Index", "Value", "TTL"}
+	rows := []map[string]string{}
+
+	appendItem := func(item any) {
+		rows = append(rows, map[string]string{
+			"Index": strconv.Itoa(len(rows)),
+			"Value": databaseValueToString(item),
+			"TTL":   ttl,
+		})
+	}
+
+	switch v := value.(type) {
+	case nil:
+		return rows, columns
+	case []any:
+		for _, item := range v {
+			appendItem(item)
+		}
+	case []string:
+		for _, item := range v {
+			appendItem(item)
+		}
+	default:
+		appendItem(v)
+	}
+
+	return rows, columns
+}
+
+func redisHashPairsToRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Field", "Value", "TTL"}
+	rows := []map[string]string{}
+	items, ok := value.([]any)
+	if !ok {
+		if value != nil {
+			rows = append(rows, map[string]string{
+				"Field": "",
+				"Value": databaseValueToString(value),
+				"TTL":   ttl,
+			})
+		}
+		return rows, columns
+	}
+
+	for i := 0; i+1 < len(items); i += 2 {
+		rows = append(rows, map[string]string{
+			"Field": databaseValueToString(items[i]),
+			"Value": databaseValueToString(items[i+1]),
+			"TTL":   ttl,
+		})
+	}
+	return rows, columns
+}
+
+func redisZSetPairsToRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Index", "Value", "TTL"}
+	rows := []map[string]string{}
+	items, ok := value.([]any)
+	if !ok {
+		if value != nil {
+			rows = append(rows, map[string]string{
+				"Index": "0",
+				"Value": databaseValueToString(value),
+				"TTL":   ttl,
+			})
+		}
+		return rows, columns
+	}
+
+	for i := 0; i+1 < len(items); i += 2 {
+		member := databaseValueToString(items[i])
+		score := databaseValueToString(items[i+1])
+		rows = append(rows, map[string]string{
+			"Index": strconv.Itoa(len(rows)),
+			"Value": member + " (" + score + ")",
+			"TTL":   ttl,
+		})
+	}
+	return rows, columns
 }
 
 func mysqlDSN(connection portainer.DatabaseConnection, timeout int) string {
@@ -346,14 +515,18 @@ func databaseValueToString(value any) string {
 	}
 }
 
-func redisValueRows(value any) []map[string]string {
+func redisValueRows(value any, ttl string) []map[string]string {
 	rows := []map[string]string{}
 
 	appendValue := func(v any) {
-		rows = append(rows, map[string]string{
+		row := map[string]string{
 			"Index": strconv.Itoa(len(rows) + 1),
 			"Value": databaseValueToString(v),
-		})
+		}
+		if ttl != "" {
+			row["TTL"] = ttl
+		}
+		rows = append(rows, row)
 	}
 
 	switch v := value.(type) {

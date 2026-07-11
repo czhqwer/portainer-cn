@@ -108,32 +108,50 @@ func scanRedisKeys(r *http.Request, connection portainer.DatabaseConnection, dbI
 	client := newRedisClient(connection, dbIndex)
 	defer client.Close()
 
-	keys, nextCursor, err := client.Scan(r.Context(), cursor, pattern, count).Result()
-	if err != nil {
-		return nil, err
-	}
-
+	// 单次接口内最多收集 100 个 Key，避免前端翻页累加导致 keyspace 过载。
 	result := &databaseRedisKeyScanResponse{
-		Cursor: strconv.FormatUint(nextCursor, 10),
-		Keys:   make([]databaseRedisKey, 0, len(keys)),
+		Cursor: "0",
+		Keys:   make([]databaseRedisKey, 0, maxRedisPreviewItems),
+	}
+	scanCursor := cursor
+	scanCount := count
+	if scanCount > maxRedisPreviewItems {
+		scanCount = maxRedisPreviewItems
 	}
 
-	for _, key := range keys {
-		keyType, err := client.Type(r.Context(), key).Result()
+	for len(result.Keys) < int(maxRedisPreviewItems) {
+		keys, nextCursor, err := client.Scan(r.Context(), scanCursor, pattern, scanCount).Result()
 		if err != nil {
 			return nil, err
 		}
-		ttl, err := client.TTL(r.Context(), key).Result()
-		if err != nil {
-			return nil, err
+
+		for _, key := range keys {
+			if len(result.Keys) >= int(maxRedisPreviewItems) {
+				break
+			}
+			keyType, err := client.Type(r.Context(), key).Result()
+			if err != nil {
+				return nil, err
+			}
+			ttl, err := client.TTL(r.Context(), key).Result()
+			if err != nil {
+				return nil, err
+			}
+			result.Keys = append(result.Keys, databaseRedisKey{
+				Name: key,
+				Type: keyType,
+				TTL:  redisTTLLabel(ttl),
+			})
 		}
-		result.Keys = append(result.Keys, databaseRedisKey{
-			Name: key,
-			Type: keyType,
-			TTL:  redisTTLLabel(ttl),
-		})
+
+		scanCursor = nextCursor
+		if nextCursor == 0 || len(result.Keys) >= int(maxRedisPreviewItems) {
+			break
+		}
 	}
 
+	// 达到上限后即使 SCAN 未结束也返回 0，前端不再提供继续翻页入口。
+	result.Cursor = "0"
 	return result, nil
 }
 

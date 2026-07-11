@@ -50,13 +50,66 @@ func TestSplitRedisCommand(t *testing.T) {
 }
 
 func TestRedisValueRows(t *testing.T) {
-	rows := redisValueRows([]any{"one", []byte("two")})
+	rows := redisValueRows([]any{"one", []byte("two")}, "1m0s")
 
 	want := []map[string]string{
-		{"Index": "1", "Value": "one"},
-		{"Index": "2", "Value": "two"},
+		{"Index": "1", "Value": "one", "TTL": "1m0s"},
+		{"Index": "2", "Value": "two", "TTL": "1m0s"},
 	}
 
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("got %v, want %v", rows, want)
+	}
+}
+
+func TestRedisCommandKey(t *testing.T) {
+	if got := redisCommandKey([]string{"GET", "sys:config"}); got != "sys:config" {
+		t.Fatalf("got %q, want sys:config", got)
+	}
+	if got := redisCommandKey([]string{"PING"}); got != "" {
+		t.Fatalf("got %q, want empty", got)
+	}
+}
+
+func TestRedisHashPairsToRows(t *testing.T) {
+	rows, columns := redisHashPairsToRows([]any{"name", "alice", "age", "18"}, "No expiration")
+	wantColumns := []string{"Field", "Value", "TTL"}
+	want := []map[string]string{
+		{"Field": "name", "Value": "alice", "TTL": "No expiration"},
+		{"Field": "age", "Value": "18", "TTL": "No expiration"},
+	}
+	if !reflect.DeepEqual(columns, wantColumns) {
+		t.Fatalf("columns got %v, want %v", columns, wantColumns)
+	}
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("got %v, want %v", rows, want)
+	}
+}
+
+func TestRedisCommandResultRowsGet(t *testing.T) {
+	rows, columns := redisCommandResultRows([]string{"GET", "sys:config"}, `{"ok":true}`, "string", "No expiration")
+	wantColumns := []string{"Value", "TTL"}
+	want := []map[string]string{
+		{"Value": `{"ok":true}`, "TTL": "No expiration"},
+	}
+	if !reflect.DeepEqual(columns, wantColumns) {
+		t.Fatalf("columns got %v, want %v", columns, wantColumns)
+	}
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("got %v, want %v", rows, want)
+	}
+}
+
+func TestRedisIndexedValueRows(t *testing.T) {
+	rows, columns := redisIndexedValueRows([]any{"a", "b"}, "No expiration")
+	wantColumns := []string{"Index", "Value", "TTL"}
+	want := []map[string]string{
+		{"Index": "0", "Value": "a", "TTL": "No expiration"},
+		{"Index": "1", "Value": "b", "TTL": "No expiration"},
+	}
+	if !reflect.DeepEqual(columns, wantColumns) {
+		t.Fatalf("columns got %v, want %v", columns, wantColumns)
+	}
 	if !reflect.DeepEqual(rows, want) {
 		t.Fatalf("got %v, want %v", rows, want)
 	}
