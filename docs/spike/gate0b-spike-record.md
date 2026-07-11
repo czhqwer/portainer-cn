@@ -14,7 +14,7 @@
 | S1 | Portainer 后端直接运行在宿主机 + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | Docker socket 可用，candidate 随机端口健康检查 200；清理证据见 `docs/spike/evidence/gate0b/S1-local-docker-cleanup/` |
 | S2 | 容器化 Portainer + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S2-containerized-docker/` | 容器内 Docker socket 可用；`127.0.0.1` 不可达，bridge gateway 和 `host.docker.internal` 均可访问 candidate 随机端口 |
 | S3 | 本地 Agent | 本地子集通过 | `docs/spike/evidence/gate0b/S3-local-agent/` | Agent `/ping` 返回 Docker platform，单节点 NodeName 可为空，candidate 随机端口从 Portainer 主机可访问 |
-| S4 | 远程 Agent | 等待远程环境 | `docs/spike/gate0b-remote-agent-spike.ps1` | 证据采集脚本已准备；仍缺真实远程 Agent、目标节点、candidate 随机端口放行/阻断证据 |
+| S4 | 远程 Agent | 等待远程环境 | `docs/spike/S4-remote-agent-environment-checklist.md`、`docs/spike/gate0b-remote-agent-spike.ps1` | 环境准备清单和证据采集脚本已准备；仍缺真实远程 Agent、目标节点、candidate 随机端口放行/阻断证据 |
 | S5 | 版本化容器命名 | 通过 | `docs/spike/evidence/gate0b/S5-versioned-naming/` | 正式命名模板和 candidate 后缀通过；旧 release 容器保留时，新 release 使用不同 releaseId 不发生名称冲突 |
 | S6 | 正式端口切换 | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 旧容器停止、新容器占用正式端口、坏镜像失败后旧容器恢复均完成；恢复后健康检查 200 |
 | S7 | 私有 registry 认证和 digest 解析 | 通过 | `docs/spike/evidence/gate0b/S7-private-registry/` | 正确凭据 push/pull 成功，错误凭据 401，缺失镜像 manifest unknown，pull 后 RepoDigests 可解析私有 digest |
@@ -182,6 +182,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-agen
 已准备：
 
 - `docs/spike/gate0b-remote-agent-spike.ps1` 可采集远程 Agent `/ping`、candidate 放行 URL 和 candidate 阻断 URL 证据。
+- `docs/spike/S4-remote-agent-environment-checklist.md` 已列出需要准备的远程 Agent URL、目标节点、candidate 放行/阻断地址和防火墙说明。
 
 待补证据：
 

@@ -162,7 +162,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-versioned-
 
 ### 4.6 远程 Agent 证据采集脚本
 
-远程 Agent 场景需要真实远程主机、网络和防火墙拓扑，不能由本机 Docker Desktop 完整替代。拿到远程 Agent endpoint 和 candidate 可达地址后，可使用 `docs/spike/gate0b-remote-agent-spike.ps1` 采集 S4 证据。
+远程 Agent 场景需要真实远程主机、网络和防火墙拓扑，不能由本机 Docker Desktop 完整替代。环境准备项见 `docs/spike/S4-remote-agent-environment-checklist.md`。拿到远程 Agent endpoint 和 candidate 可达地址后，可使用 `docs/spike/gate0b-remote-agent-spike.ps1` 采集 S4 证据。
 
 示例：
 
