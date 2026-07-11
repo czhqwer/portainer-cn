@@ -1,0 +1,9 @@
+﻿exit_code=0
+captured_at=2026-07-11T18:10:44
+
+docker.exe : Error response from daemon: No such container: pcn-spike-gate0b-s2-candidate
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-containerized-docker-spike.ps1:123 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...0b-s2-candidate:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

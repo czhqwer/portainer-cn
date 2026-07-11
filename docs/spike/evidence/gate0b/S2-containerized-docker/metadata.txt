@@ -1,0 +1,6 @@
+﻿scenario=S2-containerized-docker
+image=nginx:alpine
+probe_image=curlimages/curl:8.10.1
+docker_cli_image=docker:27-cli
+started_at=2026-07-11T18:09:02
+cleanup=False

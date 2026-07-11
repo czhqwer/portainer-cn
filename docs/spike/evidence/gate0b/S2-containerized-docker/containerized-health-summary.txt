@@ -1,0 +1,12 @@
+﻿checked_at=2026-07-11T18:10:50
+candidate_host_port=55003
+bridge_gateway=172.17.0.1
+
+loopback|url=http://127.0.0.1:55003/|exit_code=7|status=000|passed=False
+bridge-gateway|url=http://172.17.0.1:55003/|exit_code=0|status=200|passed=True
+host-docker-internal|url=http://host.docker.internal:55003/|exit_code=0|status=200|passed=True
+
+reachable_candidates=2
+conclusion=CONTAINERIZED_HEALTHCHECK_HOST_FOUND
+recommended_healthcheck_url=http://172.17.0.1:55003/
+recommended_healthcheck_host=172.17.0.1

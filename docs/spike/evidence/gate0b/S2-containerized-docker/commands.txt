@@ -1,0 +1,21 @@
+﻿docker version
+docker context ls
+docker ps -a --filter label=com.portainer-cn.platform.spike=gate0b --format table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}
+docker pull nginx:alpine
+docker pull curlimages/curl:8.10.1
+docker pull docker:27-cli
+docker run --rm --label com.portainer-cn.platform.spike=gate0b -v /var/run/docker.sock:/var/run/docker.sock docker:27-cli docker version
+docker rm -f pcn-spike-gate0b-s2-candidate
+docker run -d --name pcn-spike-gate0b-s2-candidate --label com.portainer-cn.platform.spike=gate0b --label com.portainer-cn.platform.runtime-role=candidate -P nginx:alpine
+docker inspect pcn-spike-gate0b-s2-candidate
+docker run --rm --label com.portainer-cn.platform.spike=gate0b curlimages/curl:8.10.1 -sS -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:55003/
+docker run --rm --label com.portainer-cn.platform.spike=gate0b curlimages/curl:8.10.1 -sS -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://172.17.0.1:55003/
+docker run --rm --label com.portainer-cn.platform.spike=gate0b curlimages/curl:8.10.1 -sS -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://host.docker.internal:55003/
+docker rm -f pcn-spike-gate0b-s2-candidate
+docker ps -a --filter label=com.portainer-cn.platform.spike=gate0b --format table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}

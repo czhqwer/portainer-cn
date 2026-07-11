@@ -1,0 +1,3 @@
+﻿container=pcn-spike-gate0b-s2-candidate
+container_port=80
+host_port=55003

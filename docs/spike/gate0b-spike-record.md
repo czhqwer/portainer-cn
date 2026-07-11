@@ -2,7 +2,7 @@
 
 版本：v0.1
 日期：2026-07-11
-状态：未通过；S1/S6 本地 Docker socket 子集已实测通过，S5 本地命名子集已部分验证，S2/S3/S4/S7 仍等待实测
+状态：未通过；S1/S2/S6 本地 Docker socket 子集已实测通过，S5 本地命名子集已部分验证，S3/S4/S7 仍等待实测
 关联方案：[Gate 0B Docker/Agent Spike 执行方案](../Gate0B-Docker-Agent-Spike执行方案.md)
 
 ## 1. 总览
@@ -12,7 +12,7 @@
 | 场景编号 | 场景 | 状态 | 证据位置 | 结论 |
 | --- | --- | --- | --- | --- |
 | S1 | Portainer 后端直接运行在宿主机 + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | Docker socket 可用，candidate 随机端口健康检查 200；清理证据见 `docs/spike/evidence/gate0b/S1-local-docker-cleanup/` |
-| S2 | 容器化 Portainer + Docker socket | 未执行 | - | 待定 |
+| S2 | 容器化 Portainer + Docker socket | 本地子集通过 | `docs/spike/evidence/gate0b/S2-containerized-docker/` | 容器内 Docker socket 可用；`127.0.0.1` 不可达，bridge gateway 和 `host.docker.internal` 均可访问 candidate 随机端口 |
 | S3 | 本地 Agent | 未执行 | - | 待定 |
 | S4 | 远程 Agent | 未执行 | - | 待定 |
 | S5 | 版本化容器命名 | 部分通过 | `docs/spike/evidence/gate0b/S1-local-docker/` | 本地辅助容器 r1/r2 命名与固定端口冲突规避流程通过；正式 `project/env/service/release` 命名模板仍待实现前复核 |
@@ -43,9 +43,9 @@
 
 | 决策点 | 结论 | 证据 | 状态 |
 | --- | --- | --- | --- |
-| `HealthCheckHost` 默认值 | 本地宿主机后端场景使用 `127.0.0.1` 可访问 candidate 随机端口和正式端口 | `docs/spike/evidence/gate0b/S1-local-docker/*healthcheck.txt` | 部分通过 |
+| `HealthCheckHost` 默认值 | 宿主机后端场景可用 `127.0.0.1`；本地容器化 Docker socket 场景不能用容器内 `127.0.0.1`，可用 bridge gateway 或 `host.docker.internal`，但正式实现仍需支持显式配置 | `docs/spike/evidence/gate0b/S1-local-docker/*healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/containerized-health-summary.txt` | 部分通过 |
 | Agent `NodeName` 默认选择 | 待定 | - | 未执行 |
-| candidate 随机端口解析 | 本地 Docker socket 场景可通过 Docker 端口映射解析随机宿主机端口 | `docs/spike/evidence/gate0b/S1-local-docker/candidate-healthcheck.txt` | 部分通过 |
+| candidate 随机端口解析 | 本地宿主机和容器化 Docker socket 场景均可通过 Docker 端口映射解析随机宿主机端口 | `docs/spike/evidence/gate0b/S1-local-docker/candidate-healthcheck.txt`、`docs/spike/evidence/gate0b/S2-containerized-docker/candidate-port.txt` | 部分通过 |
 | 私有镜像凭据优先级 | 待定 | - | 未执行 |
 | digest 解析时机 | 待定 | - | 未执行 |
 | 旧容器恢复状态映射 | 本地坏镜像启动失败后可恢复旧容器并重新通过健康检查；正式状态枚举和 reason 映射仍待执行器实现时固化 | `docs/spike/evidence/gate0b/S1-local-docker/official-r1-recovered-healthcheck.txt` | 部分通过 |
@@ -117,13 +117,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-dock
 
 ## 7. S2 容器化 Portainer + Docker socket
 
-状态：未执行
+状态：本地容器化 Docker socket 子集通过。
 
-待补证据：
+执行日期：2026-07-11
+执行命令：
 
-- Portainer 容器网络信息。
-- `127.0.0.1`、Docker bridge gateway、`host.docker.internal` 和显式 `HealthCheckHost` 的可达性对比。
-- 不可自动推断时的 UI/API 配置路径。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containerized-docker-spike.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containerized-docker-spike.ps1 -Apply
+```
+
+证据：
+
+- `docs/spike/evidence/gate0b/S2-containerized-docker/container-docker-socket.txt`
+- `docs/spike/evidence/gate0b/S2-containerized-docker/candidate-port.txt`
+- `docs/spike/evidence/gate0b/S2-containerized-docker/containerized-health-summary.txt`
+- `docs/spike/evidence/gate0b/S2-containerized-docker/probe-loopback.txt`
+- `docs/spike/evidence/gate0b/S2-containerized-docker/probe-bridge-gateway.txt`
+- `docs/spike/evidence/gate0b/S2-containerized-docker/probe-host-docker-internal.txt`
+- `docs/spike/evidence/gate0b/S2-containerized-docker/containers-after.txt`
+
+结论：
+
+- Docker CLI 临时容器挂载 `/var/run/docker.sock` 后可以访问 Docker Engine。
+- candidate 使用随机宿主机端口，脚本可解析端口。
+- 容器内 `127.0.0.1` 访问 candidate 随机宿主机端口失败，符合预期。
+- Docker bridge gateway `172.17.0.1` 和 `host.docker.internal` 均能从 probe 容器访问 candidate 随机宿主机端口并返回 HTTP 200。
+- 本结论只覆盖本地 Docker Desktop + bridge 网络子集；正式实现不能硬编码该地址，仍需支持显式配置 `HealthCheckHost`，Agent 和远程 Agent 仍待实测。
 
 ## 8. S3 本地 Agent
 
@@ -193,7 +213,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-local-dock
 
 当前结论：未通过。
 
-2026-07-11 已完成本地 Docker socket 子集实测，S1/S6 可作为本地公开镜像场景的正向证据，S5 仅完成辅助命名子集验证。Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
+2026-07-11 已完成本地 Docker socket 与容器化 Docker socket 子集实测，S1/S2/S6 可作为本地公开镜像场景的正向证据，S5 仅完成辅助命名子集验证。Gate 0B 仍未通过，Docker 发布执行器正式编码仍不得启动。
 
 通过前必须同时满足：
 

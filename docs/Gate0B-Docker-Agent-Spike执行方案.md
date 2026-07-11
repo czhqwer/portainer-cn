@@ -83,6 +83,25 @@ powershell -ExecutionPolicy Bypass -File docs/spike/gate0b-local-docker-spike.ps
 
 该脚本只覆盖 S1、S5、S6 的本地公开镜像子集，不覆盖容器化 Portainer、Agent、远程 Agent、私有 registry 和 digest 策略。完整 Gate 0B 通过仍必须补齐 S1 到 S7 的真实记录。
 
+### 4.2 容器化后端网络辅助脚本
+
+容器化 Portainer + Docker socket 的本地网络子集可以使用 `docs/spike/gate0b-containerized-docker-spike.ps1` 辅助执行。脚本默认 dry-run，不会运行 Docker；必须显式传入 `-Apply` 才会创建测试容器。
+
+示例：
+
+```powershell
+# 预演，不执行 Docker
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containerized-docker-spike.ps1
+
+# 执行 S2 本地子集：容器内 Docker socket、candidate 随机端口、容器内健康检查地址探测
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containerized-docker-spike.ps1 -Apply
+
+# 清理脚本创建的 helper 容器
+powershell -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containerized-docker-spike.ps1 -Cleanup -Apply
+```
+
+该脚本使用 Docker CLI 容器验证挂载 Docker socket 后的访问能力，并使用临时 probe 容器分别探测 `127.0.0.1`、Docker bridge gateway 与 `host.docker.internal` 对 candidate 随机宿主机端口的可达性。它只覆盖 S2 的本地容器网络子集，不覆盖真实 Portainer 镜像启动、Agent、远程 Agent、私有 registry 和 digest 策略。若没有任何地址可达，应记录 `NO_CONTAINERIZED_HEALTHCHECK_HOST_REACHABLE`，并要求用户显式配置 `HealthCheckHost` 或选择允许的降级验证策略。
+
 ## 5. 默认策略待决项
 
 Spike 必须给出以下默认策略，不能只记录“可配置”：

@@ -1,0 +1,11 @@
+﻿exit_code=7
+captured_at=2026-07-11T18:10:48
+
+
+status=000
+docker.exe : curl: (7) Failed to connect to 127.0.0.1 port 55003 after 0 ms: Could not connect to server
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-containerized-docker-spike.ps1:123 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (curl: (7) Faile...nnect to server:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

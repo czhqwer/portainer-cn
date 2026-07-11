@@ -1,0 +1,430 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260711180902
+Username: LAPTOP-K3G7I15Q\czh
+RunAs User: LAPTOP-K3G7I15Q\czh
+Configuration Name: 
+Machine: LAPTOP-K3G7I15Q (Microsoft Windows NT 10.0.19045.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File docs/spike/gate0b-containerized-docker-spike.ps1 -Apply
+Process ID: 46452
+PSVersion: 5.1.19041.6328
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6328
+BuildVersion: 10.0.19041.6328
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+==> Collect Docker version and context
+docker version
+Client:
+ Version:           27.2.0
+ API version:       1.47
+ Go version:        go1.21.13
+ Git commit:        3ab4256
+ Built:             Tue Aug 27 14:17:17 2024
+ OS/Arch:           windows/amd64
+ Context:           desktop-linux
+
+Server: Docker Desktop 4.34.3 (170107)
+ Engine:
+  Version:          27.2.0
+  API version:      1.47 (minimum version 1.24)
+  Go version:       go1.21.13
+  Git commit:       3ab5c7d
+  Built:            Tue Aug 27 14:15:15 2024
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          1.7.20
+  GitCommit:        8fc6bcff51318944179630522a095cc9dbf9f353
+ runc:
+  Version:          1.1.13
+  GitCommit:        v1.1.13-0-g58aa920
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+docker context ls
+NAME              DESCRIPTION                               DOCKER ENDPOINT                             ERROR
+default           Current DOCKER_HOST based configuration   npipe:////./pipe/docker_engine              
+desktop-linux *   Docker Desktop                            npipe:////./pipe/dockerDesktopLinuxEngine
+docker ps -a --filter label=com.portainer-cn.platform.spike=gate0b --format table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}
+NAMES     IMAGE     STATUS    PORTS
+
+==> Pull public image and probe images
+docker pull nginx:alpine
+alpine: Pulling from library/nginx
+Digest: sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa
+Status: Image is up to date for nginx:alpine
+docker.io/library/nginx:alpine
+docker pull curlimages/curl:8.10.1
+8.10.1: Pulling from curlimages/curl
+Digest: sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
+Status: Image is up to date for curlimages/curl:8.10.1
+docker.io/curlimages/curl:8.10.1
+docker pull docker:27-cli
+27-cli: Pulling from library/docker
+Digest: sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c
+Status: Image is up to date for docker:27-cli
+docker.io/library/docker:27-cli
+
+==> Verify Docker socket from a containerized backend surrogate
+docker run --rm --label com.portainer-cn.platform.spike=gate0b -v /var/run/docker.sock:/var/run/docker.sock docker:27-cli docker version
+Client:
+ Version:           27.5.1
+ API version:       1.47
+ Go version:        go1.22.11
+ Git commit:        9f9e405
+ Built:             Wed Jan 22 13:40:02 2025
+ OS/Arch:           linux/amd64
+ Context:           default
+
+Server: Docker Desktop 4.34.3 (170107)
+ Engine:
+  Version:          27.2.0
+  API version:      1.47 (minimum version 1.24)
+  Go version:       go1.21.13
+  Git commit:       3ab5c7d
+  Built:            Tue Aug 27 14:15:15 2024
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          1.7.20
+  GitCommit:        8fc6bcff51318944179630522a095cc9dbf9f353
+ runc:
+  Version:          1.1.13
+  GitCommit:        v1.1.13-0-g58aa920
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+
+==> Create candidate with random host port
+docker rm -f pcn-spike-gate0b-s2-candidate
+docker.exe : Error response from daemon: No such container: pcn-spike-gate0b-s2-candidate
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-containerized-docker-spike.ps1:123 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error response ...0b-s2-candidate:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+docker run -d --name pcn-spike-gate0b-s2-candidate --label com.portainer-cn.platform.spike=gate0b --label com.portainer-cn.platform.runtime-role=candidate -P nginx:alpine
+64d2505513f75320afbe12ebf597054e5aee8c91b24ead3249135f9c33e9bb85
+candidate_host_port=55003
+docker inspect pcn-spike-gate0b-s2-candidate
+[
+    {
+        "Id": "64d2505513f75320afbe12ebf597054e5aee8c91b24ead3249135f9c33e9bb85",
+        "Created": "2026-07-11T10:10:44.3958034Z",
+        "Path": "/docker-entrypoint.sh",
+        "Args": [
+            "nginx",
+            "-g",
+            "daemon off;"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 3364,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-07-11T10:10:44.5889121Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:ea51152ef8c480b999cee0271a288c698704b18483276119b1253e576ef3232f",
+        "ResolvConfPath": "/var/lib/docker/containers/64d2505513f75320afbe12ebf597054e5aee8c91b24ead3249135f9c33e9bb85/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/64d2505513f75320afbe12ebf597054e5aee8c91b24ead3249135f9c33e9bb85/hostname",
+        "HostsPath": "/var/lib/docker/containers/64d2505513f75320afbe12ebf597054e5aee8c91b24ead3249135f9c33e9bb85/hosts",
+        "LogPath": "/var/lib/docker/containers/64d2505513f75320afbe12ebf597054e5aee8c91b24ead3249135f9c33e9bb85/64d2505513f75320afbe12ebf597054e5aee8c91b24ead3249135f9c33e9bb85-json.log",
+        "Name": "/pcn-spike-gate0b-s2-candidate",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "bridge",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": true,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/3ff134f1cefeba32797d90b5c25f5500cf5227a39611803a0bef93d2438e8a63-init/diff:/var/lib/docker/overlay2/78ab46e55bb1f9d33ae1520c4e1293d3eb0b4d5e67fe245fb710081b19c480c8/diff:/var/lib/docker/overlay2/cb9fb887864c0d45d74d77e55f02b8908243fa9468f85bf068f3118df027b439/diff:/var/lib/docker/overlay2/5e7bdcd5a2badcaed5215ea34e0805c78a0e80502c7f34e0ab857d7796bed9a4/diff:/var/lib/docker/overlay2/6e45c055296c9f42cc133431566615f829920d5405d675c4407f56842472b076/diff:/var/lib/docker/overlay2/bbc0479a027682139d1c8af2abf1a02c119be44dfddb2cfe187aaba1a0044441/diff:/var/lib/docker/overlay2/fa1d82c4b58e499478227b775ef9e4aac97d4ff49bb5a984d83c9413fcc64833/diff:/var/lib/docker/overlay2/cc6fe9adbf569cd2a83e8c9d52690ef7280b99024860a1394a80af3335ce0cb2/diff:/var/lib/docker/overlay2/1b40ae8bdfdebc47ad13c9fa6a9c5fd7d9b28330efe4c4224922599d9e491685/diff",
+                "MergedDir": "/var/lib/docker/overlay2/3ff134f1cefeba32797d90b5c25f5500cf5227a39611803a0bef93d2438e8a63/merged",
+                "UpperDir": "/var/lib/docker/overlay2/3ff134f1cefeba32797d90b5c25f5500cf5227a39611803a0bef93d2438e8a63/diff",
+                "WorkDir": "/var/lib/docker/overlay2/3ff134f1cefeba32797d90b5c25f5500cf5227a39611803a0bef93d2438e8a63/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "64d2505513f7",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "80/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NGINX_VERSION=1.31.2",
+                "PKG_RELEASE=1",
+                "DYNPKG_RELEASE=1",
+                "NJS_VERSION=0.9.9",
+                "NJS_RELEASE=1",
+                "ACME_VERSION=0.4.1"
+            ],
+            "Cmd": [
+                "nginx",
+                "-g",
+                "daemon off;"
+            ],
+            "Image": "nginx:alpine",
+            "Volumes": null,
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "com.portainer-cn.platform.runtime-role": "candidate",
+                "com.portainer-cn.platform.spike": "gate0b",
+                "maintainer": "NGINX Docker Maintainers \u003cdocker-maint@nginx.com\u003e"
+            },
+            "StopSignal": "SIGQUIT"
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "d86d659ac41a981079d9a6e6e38d00296476a9be89d3c36fc5716bf7392c1124",
+            "SandboxKey": "/var/run/docker/netns/d86d659ac41a",
+            "Ports": {
+                "80/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "55003"
+                    }
+                ]
+            },
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "75ccde55f38bf5441f1c0ab32f7a454913747e52cf82f7c64a4d2c0d3f1b6bcf",
+            "Gateway": "172.17.0.1",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "172.17.0.5",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "MacAddress": "02:42:ac:11:00:05",
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "MacAddress": "02:42:ac:11:00:05",
+                    "DriverOpts": null,
+                    "NetworkID": "03f101d079c703317b83062d8ac6a0743cd75cb66f67ed371335018ec9a79fe7",
+                    "EndpointID": "75ccde55f38bf5441f1c0ab32f7a454913747e52cf82f7c64a4d2c0d3f1b6bcf",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.5",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        }
+    }
+]
+
+==> Probe candidate host port from containerized backend surrogate
+docker run --rm --label com.portainer-cn.platform.spike=gate0b curlimages/curl:8.10.1 -sS -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://127.0.0.1:55003/
+
+status=000
+docker.exe : curl: (7) Failed to connect to 127.0.0.1 port 55003 after 0 ms: Could not connect to server
+At E:\develop\Docker\Portainer\portainer-cn\docs\spike\gate0b-containerized-docker-spike.ps1:123 char:19
++         $output = & docker @DockerArgs 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (curl: (7) Faile...nnect to server:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+docker run --rm --label com.portainer-cn.platform.spike=gate0b curlimages/curl:8.10.1 -sS -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://172.17.0.1:55003/
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, nginx is successfully installed and working.
+Further configuration is required for the web server, reverse proxy, 
+API gateway, load balancer, content cache, or other features.</p>
+
+<p>For online documentation and support please refer to
+<a href="https://nginx.org/">nginx.org</a>.<br/>
+To engage with the community please visit
+<a href="https://community.nginx.org/">community.nginx.org</a>.<br/>
+For enterprise grade support, professional services, additional 
+security features and capabilities please refer to
+<a href="https://f5.com/nginx">f5.com/nginx</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+status=200
+docker run --rm --label com.portainer-cn.platform.spike=gate0b curlimages/curl:8.10.1 -sS -L --max-time 8 -o - -w 
+status=%{http_code}
+ http://host.docker.internal:55003/
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, nginx is successfully installed and working.
+Further configuration is required for the web server, reverse proxy, 
+API gateway, load balancer, content cache, or other features.</p>
+
+<p>For online documentation and support please refer to
+<a href="https://nginx.org/">nginx.org</a>.<br/>
+To engage with the community please visit
+<a href="https://community.nginx.org/">community.nginx.org</a>.<br/>
+For enterprise grade support, professional services, additional 
+security features and capabilities please refer to
+<a href="https://f5.com/nginx">f5.com/nginx</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+status=200
+
+==> Stop and remove candidate after validation
+docker rm -f pcn-spike-gate0b-s2-candidate
+pcn-spike-gate0b-s2-candidate
+
+==> Collect final helper container state
+docker ps -a --filter label=com.portainer-cn.platform.spike=gate0b --format table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}
+NAMES     IMAGE     STATUS    PORTS
+
+Containerized Docker Spike subset completed. Run with -Cleanup -Apply to remove helper-created containers if needed.
+**********************
+Windows PowerShell transcript end
+End time: 20260711181050
+**********************
