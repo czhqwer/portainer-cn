@@ -1,6 +1,7 @@
 param(
     [switch]$Apply,
     [switch]$Cleanup,
+    [switch]$RecordAllContainers,
     [string]$Image = "nginx:alpine",
     [int]$OfficialPort = 18080,
     [string]$EvidenceRoot = "docs/spike/evidence/gate0b/S1-local-docker"
@@ -71,6 +72,17 @@ function Save-CommandOutput {
     if ($exitCode -ne 0) {
         throw "$line failed with exit code $exitCode"
     }
+}
+
+function Save-ContainerSnapshot {
+    param([string]$FileName)
+
+    if ($RecordAllContainers) {
+        Save-CommandOutput $FileName "docker" @("ps", "-a", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}")
+        return
+    }
+
+    Save-CommandOutput $FileName "docker" @("ps", "-a", "--filter", "label=$LabelKey=$LabelValue", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}")
 }
 
 trap {
@@ -166,6 +178,7 @@ function Test-Http {
 Write-Host "Gate 0B local Docker Spike helper"
 Write-Host "Apply mode: $Apply"
 Write-Host "Cleanup mode: $Cleanup"
+Write-Host "RecordAllContainers: $RecordAllContainers"
 Write-Host "Image: $Image"
 Write-Host "OfficialPort: $OfficialPort"
 Write-Host "EvidenceRoot: $EvidenceRoot"
@@ -193,7 +206,7 @@ if ($Cleanup) {
 Invoke-Step "Check Docker version" {
     Save-CommandOutput "docker-version.txt" "docker" @("version")
     Save-CommandOutput "docker-context.txt" "docker" @("context", "ls")
-    Save-CommandOutput "containers-before.txt" "docker" @("ps", "-a", "--format", "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}")
+    Save-ContainerSnapshot "containers-before.txt"
 }
 
 Invoke-Step "Pull public image" {

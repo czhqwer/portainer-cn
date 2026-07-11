@@ -37,6 +37,8 @@
 
 不得提交含有 registry 密码、token、私钥、完整认证头或生产环境敏感地址的证据。
 
+本地 Docker 辅助脚本默认只记录带 `com.portainer-cn.platform.spike=gate0b` label 的 helper 容器列表；只有显式传入 `-RecordAllContainers` 时才会记录完整容器列表。若记录完整列表，提交前必须检查是否包含无关业务容器名称、端口或敏感拓扑。
+
 ## 3. 默认策略记录
 
 | 决策点 | 结论 | 证据 | 状态 |
