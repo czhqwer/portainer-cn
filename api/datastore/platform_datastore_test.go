@@ -395,6 +395,23 @@ func TestPlatformObservabilityConfigExportStripsCredentials(t *testing.T) {
 	require.Empty(t, imported.BearerTokenCipherText)
 }
 
+func TestPlatformCanaryPolicyCRUD(t *testing.T) {
+	t.Parallel()
+	_, store := MustNewTestStore(t, true, false)
+
+	policy := portainer.NewPlatformCanaryPolicy()
+	policy.ProjectID = 1
+	policy.EnvironmentID = 1
+	policy.GatewayRouteID = 1
+	policy.StableReleaseID = 1
+	policy.CanaryReleaseID = 2
+	require.NoError(t, store.PlatformCanaryPolicy().Create(&policy))
+
+	stored, err := store.PlatformCanaryPolicy().Read(policy.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, stored.CurrentWeight)
+}
+
 func samplePlatformProject() *portainer.PlatformProject {
 	return &portainer.PlatformProject{
 		Name:              "Demo",

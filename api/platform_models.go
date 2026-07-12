@@ -22,6 +22,7 @@ type (
 	PlatformDatabaseResourceID       int
 	PlatformServiceDatabaseBindingID int
 	PlatformObservabilityConfigID    int
+	PlatformCanaryPolicyID           int
 	PlatformGatewayID                int
 	PlatformGatewayRouteID           int
 	PlatformGatewayCertificateID     int
@@ -564,6 +565,21 @@ type PlatformObservabilityConfig struct {
 	PlatformLifecycle
 }
 
+// PlatformCanaryPolicy 只关联两个已经成功的 Release；Nginx upstream 始终由 Release 快照解析，
+// 不允许策略保存任意地址或配置文本，从而避免灰度接口绕过网关控制面边界。
+type PlatformCanaryPolicy struct {
+	ID                PlatformCanaryPolicyID `json:"Id" example:"1"`
+	ProjectID         PlatformProjectID      `json:"ProjectId" example:"1"`
+	EnvironmentID     PlatformEnvironmentID  `json:"EnvironmentId" example:"1"`
+	GatewayRouteID    PlatformGatewayRouteID `json:"GatewayRouteId" example:"1"`
+	StableReleaseID   PlatformReleaseID      `json:"StableReleaseId" example:"1"`
+	CanaryReleaseID   PlatformReleaseID      `json:"CanaryReleaseId" example:"2"`
+	CurrentWeight     int                    `json:"CurrentWeight" example:"0"`
+	ResourceVersion   int                    `json:"ResourceVersion" example:"1"`
+	LastFailureReason string                 `json:"LastFailureReason,omitempty"`
+	PlatformLifecycle
+}
+
 type PlatformConfigEntry struct {
 	Key               string                    `json:"Key" example:"APP_ENV"`
 	ValueType         PlatformConfigValueType   `json:"ValueType" example:"plain"`
@@ -989,6 +1005,37 @@ func NewPlatformServiceDatabaseBinding() PlatformServiceDatabaseBinding {
 
 func NewPlatformObservabilityConfig() PlatformObservabilityConfig {
 	return PlatformObservabilityConfig{Revision: 1, Enabled: true, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformCanaryPolicy() PlatformCanaryPolicy {
+	return PlatformCanaryPolicy{CurrentWeight: 0, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func ValidatePlatformCanaryWeight(weight int) error {
+	switch weight {
+	case 0, 5, 25, 50, 100:
+		return nil
+	default:
+		return fmt.Errorf("canary weight is invalid")
+	}
+}
+
+func NormalizePlatformCanaryPolicy(policy *PlatformCanaryPolicy) {
+	if policy == nil {
+		return
+	}
+	policy.LastFailureReason = strings.TrimSpace(policy.LastFailureReason)
+	if policy.ResourceVersion == 0 {
+		policy.ResourceVersion = 1
+	}
+}
+
+func ValidatePlatformCanaryPolicy(policy PlatformCanaryPolicy) error {
+	NormalizePlatformCanaryPolicy(&policy)
+	if policy.ProjectID <= 0 || policy.EnvironmentID <= 0 || policy.GatewayRouteID <= 0 || policy.StableReleaseID <= 0 || policy.CanaryReleaseID <= 0 || policy.StableReleaseID == policy.CanaryReleaseID {
+		return fmt.Errorf("canary policy ownership and two releases are required")
+	}
+	return ValidatePlatformCanaryWeight(policy.CurrentWeight)
 }
 
 // NormalizePlatformObservabilityConfig 统一观测服务地址与凭据元数据，避免后续 adapter

@@ -23,6 +23,7 @@ type (
 		PlatformDatabaseResource() PlatformDatabaseResourceService
 		PlatformServiceDatabaseBinding() PlatformServiceDatabaseBindingService
 		PlatformObservabilityConfig() PlatformObservabilityConfigService
+		PlatformCanaryPolicy() PlatformCanaryPolicyService
 		PlatformGateway() PlatformGatewayService
 		PlatformGatewayRoute() PlatformGatewayRouteService
 		PlatformGatewayCertificate() PlatformGatewayCertificateService
@@ -169,6 +170,12 @@ type (
 	// PlatformObservabilityConfigService stores the encrypted global integration configuration.
 	PlatformObservabilityConfigService interface {
 		BaseCRUD[portainer.PlatformObservabilityConfig, portainer.PlatformObservabilityConfigID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformCanaryPolicyService stores the constrained two-release traffic policy.
+	PlatformCanaryPolicyService interface {
+		BaseCRUD[portainer.PlatformCanaryPolicy, portainer.PlatformCanaryPolicyID]
 		GetNextIdentifier() int
 	}
 

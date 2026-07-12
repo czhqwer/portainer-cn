@@ -26,6 +26,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/platformartifact"
 	"github.com/portainer/portainer/api/dataservices/platformartifactstorage"
 	"github.com/portainer/portainer/api/dataservices/platformauditlog"
+	"github.com/portainer/portainer/api/dataservices/platformcanarypolicy"
 	"github.com/portainer/portainer/api/dataservices/platformconfigset"
 	"github.com/portainer/portainer/api/dataservices/platformdatabaseresource"
 	"github.com/portainer/portainer/api/dataservices/platformenvironment"
@@ -88,6 +89,7 @@ type Store struct {
 	PlatformDatabaseResourceService       *platformdatabaseresource.Service
 	PlatformServiceDatabaseBindingService *platformservicedatabasebinding.Service
 	PlatformObservabilityConfigService    *platformobservabilityconfig.Service
+	PlatformCanaryPolicyService           *platformcanarypolicy.Service
 	PlatformGatewayService                *platformgateway.Service
 	PlatformGatewayRouteService           *platformgatewayroute.Service
 	PlatformGatewayCertificateService     *platformgatewaycertificate.Service
@@ -224,6 +226,12 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.PlatformObservabilityConfigService = platformObservabilityConfigService
+
+	platformCanaryPolicyService, err := platformcanarypolicy.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformCanaryPolicyService = platformCanaryPolicyService
 
 	platformGatewayService, err := platformgateway.NewService(store.connection)
 	if err != nil {
@@ -533,6 +541,10 @@ func (store *Store) PlatformObservabilityConfig() dataservices.PlatformObservabi
 	return store.PlatformObservabilityConfigService
 }
 
+func (store *Store) PlatformCanaryPolicy() dataservices.PlatformCanaryPolicyService {
+	return store.PlatformCanaryPolicyService
+}
+
 // PlatformGateway gives access to environment-scoped gateway control-plane metadata.
 func (store *Store) PlatformGateway() dataservices.PlatformGatewayService {
 	return store.PlatformGatewayService
@@ -738,6 +750,7 @@ type storeExport struct {
 	PlatformDatabaseResource       []portainer.PlatformDatabaseResource       `json:"platform_database_resources,omitempty"`
 	PlatformServiceDatabaseBinding []portainer.PlatformServiceDatabaseBinding `json:"platform_service_database_bindings,omitempty"`
 	PlatformObservabilityConfig    []portainer.PlatformObservabilityConfig    `json:"platform_observability_configs,omitempty"`
+	PlatformCanaryPolicy           []portainer.PlatformCanaryPolicy           `json:"platform_canary_policies,omitempty"`
 	PlatformGateway                []portainer.PlatformGateway                `json:"platform_gateways,omitempty"`
 	PlatformGatewayRoute           []portainer.PlatformGatewayRoute           `json:"platform_gateway_routes,omitempty"`
 	PlatformGatewayCertificate     []portainer.PlatformGatewayCertificate     `json:"platform_gateway_certificates,omitempty"`
@@ -1069,6 +1082,14 @@ func (store *Store) Export(filename string) (err error) {
 		backup.PlatformObservabilityConfig = configs
 	}
 
+	if policies, err := store.PlatformCanaryPolicy().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Canary Policies")
+		}
+	} else {
+		backup.PlatformCanaryPolicy = policies
+	}
+
 	if g, err := store.PlatformGateway().ReadAll(); err != nil {
 		if !store.IsErrObjectNotFound(err) {
 			log.Error().Err(err).Msg("exporting Platform Gateways")
@@ -1369,6 +1390,12 @@ func (store *Store) Import(filename string) (err error) {
 	for _, v := range backup.PlatformObservabilityConfig {
 		if err := store.PlatformObservabilityConfig().Update(v.ID, &v); err != nil {
 			log.Warn().Err(err).Msg("failed to update the platform observability configuration in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformCanaryPolicy {
+		if err := store.PlatformCanaryPolicy().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform canary policy in the database")
 		}
 	}
 

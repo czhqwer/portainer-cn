@@ -68,6 +68,19 @@ func TestRenderGatewayConfigUsesDeterministicMultiHostUpstream(t *testing.T) {
 	require.Contains(t, value, "proxy_pass http://platform_route_5")
 }
 
+func TestRenderGatewayConfigRendersDeterministicCanarySplit(t *testing.T) {
+	route := gatewayRoute(6, "/")
+	config, _, err := RenderGatewayConfig([]GatewayRouteTarget{{
+		Route:           route,
+		Upstreams:       []GatewayUpstreamTarget{{Host: "10.0.0.1", Port: 18080}},
+		CanaryUpstreams: []GatewayUpstreamTarget{{Host: "10.0.0.2", Port: 18081}},
+		CanaryWeight:    25,
+	}})
+	require.NoError(t, err)
+	require.Contains(t, string(config), "split_clients")
+	require.Contains(t, string(config), "25%")
+}
+
 func gatewayRoute(id portainer.PlatformGatewayRouteID, path string) portainer.PlatformGatewayRoute {
 	route := portainer.NewPlatformGatewayRoute()
 	route.ID = id

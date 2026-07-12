@@ -14,10 +14,12 @@ import (
 // GatewayRouteTarget 是网关渲染阶段已经解析完成的安全输入。
 // upstream 只能来自本次发布记录的宿主机发布端口，不能接受用户填写的 URL 或 Nginx 片段。
 type GatewayRouteTarget struct {
-	Route        portainer.PlatformGatewayRoute
-	UpstreamHost string
-	UpstreamPort int
-	Upstreams    []GatewayUpstreamTarget
+	Route           portainer.PlatformGatewayRoute
+	UpstreamHost    string
+	UpstreamPort    int
+	Upstreams       []GatewayUpstreamTarget
+	CanaryUpstreams []GatewayUpstreamTarget
+	CanaryWeight    int
 }
 
 type GatewayUpstreamTarget struct {
@@ -45,6 +47,18 @@ func RenderGatewayConfig(routes []GatewayRouteTarget) ([]byte, string, error) {
 			return nil, "", err
 		}
 		normalized[i].Upstreams = upstreams
+		if err := portainer.ValidatePlatformCanaryWeight(normalized[i].CanaryWeight); err != nil {
+			return nil, "", err
+		}
+		if normalized[i].CanaryWeight > 0 {
+			canaryUpstreams, err := normalizeGatewayUpstreamList(normalized[i].CanaryUpstreams)
+			if err != nil {
+				return nil, "", err
+			}
+			normalized[i].CanaryUpstreams = canaryUpstreams
+		} else if len(normalized[i].CanaryUpstreams) > 0 {
+			return nil, "", fmt.Errorf("canary upstreams require a non-zero weight")
+		}
 		key := normalized[i].Route.Domain + "\x00" + normalized[i].Route.Path
 		if _, exists := seen[key]; exists {
 			return nil, "", fmt.Errorf("gateway route domain and path are duplicated")
@@ -89,6 +103,7 @@ func RenderGatewayConfig(routes []GatewayRouteTarget) ([]byte, string, error) {
 	for _, server := range serverList {
 		for _, target := range server.routes {
 			writeGatewayUpstreamBlock(&builder, target, "    ")
+			writeGatewayCanarySplit(&builder, target, "    ")
 		}
 		writeGatewayServerBlock(&builder, server, "    ")
 	}
@@ -104,6 +119,10 @@ func normalizeGatewayUpstreams(target GatewayRouteTarget) ([]GatewayUpstreamTarg
 	if len(upstreams) == 0 {
 		upstreams = []GatewayUpstreamTarget{{Host: target.UpstreamHost, Port: target.UpstreamPort}}
 	}
+	return normalizeGatewayUpstreamList(upstreams)
+}
+
+func normalizeGatewayUpstreamList(upstreams []GatewayUpstreamTarget) ([]GatewayUpstreamTarget, error) {
 	seen := make(map[string]struct{}, len(upstreams))
 	for i := range upstreams {
 		if err := validateGatewayUpstream(upstreams[i].Host, upstreams[i].Port); err != nil {
@@ -162,7 +181,7 @@ func writeGatewayServerBlock(builder *strings.Builder, server *gatewayServerConf
 	if server.enableTLS {
 		fmt.Fprintf(builder, "%sserver {\n%s    listen 443 ssl;\n%s    server_name %s;\n%s    ssl_certificate /etc/nginx/portainer/certificates/%d/cert.pem;\n%s    ssl_certificate_key /etc/nginx/portainer/certificates/%d/key.pem;\n", indentation, indentation, indentation, server.domain, indentation, server.certificateID, indentation, server.certificateID)
 		for _, target := range server.routes {
-			writeGatewayLocation(builder, target.Route, gatewayUpstreamName(target.Route.ID), indentation+"    ")
+			writeGatewayLocation(builder, target.Route, gatewayTargetUpstream(target), indentation+"    ")
 		}
 		fmt.Fprintf(builder, "%s}\n\n", indentation)
 		if server.forceHTTPS {
@@ -173,7 +192,7 @@ func writeGatewayServerBlock(builder *strings.Builder, server *gatewayServerConf
 
 	fmt.Fprintf(builder, "%sserver {\n%s    listen 80;\n%s    server_name %s;\n", indentation, indentation, indentation, server.domain)
 	for _, target := range server.routes {
-		writeGatewayLocation(builder, target.Route, gatewayUpstreamName(target.Route.ID), indentation+"    ")
+		writeGatewayLocation(builder, target.Route, gatewayTargetUpstream(target), indentation+"    ")
 	}
 	fmt.Fprintf(builder, "%s}\n\n", indentation)
 }
@@ -184,10 +203,40 @@ func writeGatewayUpstreamBlock(builder *strings.Builder, target GatewayRouteTarg
 		fmt.Fprintf(builder, "%s    server %s;\n", indentation, net.JoinHostPort(upstream.Host, strconv.Itoa(upstream.Port)))
 	}
 	fmt.Fprintf(builder, "%s}\n\n", indentation)
+	if target.CanaryWeight > 0 {
+		fmt.Fprintf(builder, "%supstream %s {\n", indentation, gatewayCanaryUpstreamName(target.Route.ID))
+		for _, upstream := range target.CanaryUpstreams {
+			fmt.Fprintf(builder, "%s    server %s;\n", indentation, net.JoinHostPort(upstream.Host, strconv.Itoa(upstream.Port)))
+		}
+		fmt.Fprintf(builder, "%s}\n\n", indentation)
+	}
+}
+
+func writeGatewayCanarySplit(builder *strings.Builder, target GatewayRouteTarget, indentation string) {
+	if target.CanaryWeight == 0 {
+		return
+	}
+	// 基于 request_id 分流可让同一请求标识稳定落到同一版本，且权重只能来自受限策略模型。
+	fmt.Fprintf(builder, "%ssplit_clients \"$request_id\" $%s {\n%s    %d%% %s;\n%s    * %s;\n%s}\n\n", indentation, gatewayCanaryVariableName(target.Route.ID), indentation, target.CanaryWeight, gatewayCanaryUpstreamName(target.Route.ID), indentation, gatewayUpstreamName(target.Route.ID), indentation)
 }
 
 func gatewayUpstreamName(routeID portainer.PlatformGatewayRouteID) string {
 	return fmt.Sprintf("platform_route_%d", routeID)
+}
+
+func gatewayCanaryUpstreamName(routeID portainer.PlatformGatewayRouteID) string {
+	return fmt.Sprintf("platform_route_%d_canary", routeID)
+}
+
+func gatewayCanaryVariableName(routeID portainer.PlatformGatewayRouteID) string {
+	return fmt.Sprintf("platform_route_%d_upstream", routeID)
+}
+
+func gatewayTargetUpstream(target GatewayRouteTarget) string {
+	if target.CanaryWeight > 0 {
+		return "$" + gatewayCanaryVariableName(target.Route.ID)
+	}
+	return gatewayUpstreamName(target.Route.ID)
 }
 
 func writeGatewayLocation(builder *strings.Builder, route portainer.PlatformGatewayRoute, upstream, indentation string) {

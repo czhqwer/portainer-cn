@@ -74,6 +74,10 @@ func (tx *StoreTx) PlatformObservabilityConfig() dataservices.PlatformObservabil
 	return tx.store.PlatformObservabilityConfigService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformCanaryPolicy() dataservices.PlatformCanaryPolicyService {
+	return tx.store.PlatformCanaryPolicyService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PlatformGateway() dataservices.PlatformGatewayService {
 	return tx.store.PlatformGatewayService.Tx(tx.tx)
 }
