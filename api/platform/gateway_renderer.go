@@ -75,9 +75,13 @@ func RenderGatewayConfig(routes []GatewayRouteTarget) ([]byte, string, error) {
 	sort.Slice(serverList, func(i, j int) bool { return serverList[i].domain < serverList[j].domain })
 
 	var builder strings.Builder
+	// 候选文件本身必须是可由 nginx -t -c 直接校验的完整配置，不能依赖先替换 active.conf。
+	// 这使预检始终指向隔离版本，失败候选不会改写被正在运行实例读取的活动配置。
+	builder.WriteString("worker_processes 1;\n\nevents {\n    worker_connections 1024;\n}\n\nhttp {\n")
 	for _, server := range serverList {
-		writeGatewayServerBlock(&builder, server)
+		writeGatewayServerBlock(&builder, server, "    ")
 	}
+	builder.WriteString("}\n")
 
 	config := []byte(builder.String())
 	hash := fmt.Sprintf("%x", sha256.Sum256(config))
@@ -120,33 +124,33 @@ type gatewayServerConfig struct {
 	routes        []GatewayRouteTarget
 }
 
-func writeGatewayServerBlock(builder *strings.Builder, server *gatewayServerConfig) {
+func writeGatewayServerBlock(builder *strings.Builder, server *gatewayServerConfig, indentation string) {
 	if server.enableTLS {
-		fmt.Fprintf(builder, "server {\n    listen 443 ssl;\n    server_name %s;\n    ssl_certificate /etc/nginx/portainer/certs/%d.crt;\n    ssl_certificate_key /etc/nginx/portainer/certs/%d.key;\n", server.domain, server.certificateID, server.certificateID)
+		fmt.Fprintf(builder, "%sserver {\n%s    listen 443 ssl;\n%s    server_name %s;\n%s    ssl_certificate /etc/nginx/portainer/certificates/%d/cert.pem;\n%s    ssl_certificate_key /etc/nginx/portainer/certificates/%d/key.pem;\n", indentation, indentation, indentation, server.domain, indentation, server.certificateID, indentation, server.certificateID)
 		for _, target := range server.routes {
-			writeGatewayLocation(builder, target.Route, net.JoinHostPort(target.UpstreamHost, strconv.Itoa(target.UpstreamPort)))
+			writeGatewayLocation(builder, target.Route, net.JoinHostPort(target.UpstreamHost, strconv.Itoa(target.UpstreamPort)), indentation+"    ")
 		}
-		builder.WriteString("}\n\n")
+		fmt.Fprintf(builder, "%s}\n\n", indentation)
 		if server.forceHTTPS {
-			fmt.Fprintf(builder, "server {\n    listen 80;\n    server_name %s;\n    return 301 https://$host$request_uri;\n}\n\n", server.domain)
+			fmt.Fprintf(builder, "%sserver {\n%s    listen 80;\n%s    server_name %s;\n%s    return 301 https://$host$request_uri;\n%s}\n\n", indentation, indentation, indentation, server.domain, indentation, indentation)
 		}
 		return
 	}
 
-	fmt.Fprintf(builder, "server {\n    listen 80;\n    server_name %s;\n", server.domain)
+	fmt.Fprintf(builder, "%sserver {\n%s    listen 80;\n%s    server_name %s;\n", indentation, indentation, indentation, server.domain)
 	for _, target := range server.routes {
-		writeGatewayLocation(builder, target.Route, net.JoinHostPort(target.UpstreamHost, strconv.Itoa(target.UpstreamPort)))
+		writeGatewayLocation(builder, target.Route, net.JoinHostPort(target.UpstreamHost, strconv.Itoa(target.UpstreamPort)), indentation+"    ")
 	}
-	builder.WriteString("}\n\n")
+	fmt.Fprintf(builder, "%s}\n\n", indentation)
 }
 
-func writeGatewayLocation(builder *strings.Builder, route portainer.PlatformGatewayRoute, upstream string) {
-	fmt.Fprintf(builder, "    location %s {\n        proxy_pass http://%s;\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_read_timeout %ds;\n", route.Path, upstream, route.ProxyTimeoutSeconds)
+func writeGatewayLocation(builder *strings.Builder, route portainer.PlatformGatewayRoute, upstream, indentation string) {
+	fmt.Fprintf(builder, "%slocation %s {\n%s    proxy_pass http://%s;\n%s    proxy_http_version 1.1;\n%s    proxy_set_header Host $host;\n%s    proxy_set_header X-Real-IP $remote_addr;\n%s    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n%s    proxy_set_header X-Forwarded-Proto $scheme;\n%s    proxy_read_timeout %ds;\n", indentation, route.Path, indentation, upstream, indentation, indentation, indentation, indentation, indentation, indentation, route.ProxyTimeoutSeconds)
 	if route.MaxRequestBodyBytes > 0 {
-		fmt.Fprintf(builder, "        client_max_body_size %d;\n", route.MaxRequestBodyBytes)
+		fmt.Fprintf(builder, "%s    client_max_body_size %d;\n", indentation, route.MaxRequestBodyBytes)
 	}
 	if route.WebSocket {
-		builder.WriteString("        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";\n")
+		fmt.Fprintf(builder, "%s    proxy_set_header Upgrade $http_upgrade;\n%s    proxy_set_header Connection \"upgrade\";\n", indentation, indentation)
 	}
-	builder.WriteString("    }\n")
+	fmt.Fprintf(builder, "%s}\n", indentation)
 }

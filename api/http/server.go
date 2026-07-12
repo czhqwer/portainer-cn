@@ -237,6 +237,7 @@ func (server *Server) Start(ctx context.Context) error {
 		platformHandler.ReleaseExecutor = releaseExecutor
 		platformHandler.ReleaseRecoveryExecutor = releaseExecutor
 		platformHandler.RuntimeInspector = dockerRuntimeDriver
+		platformHandler.GatewayRuntime = platform.NewDockerGatewayRuntime(server.DataStore, server.DockerClientFactory)
 	}
 
 	var registryHandler = registries.NewHandler(requestBouncer)

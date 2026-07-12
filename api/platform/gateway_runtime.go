@@ -22,7 +22,7 @@ const platformGatewayLabel = platformLabelPrefix + ".gateway-id"
 
 // GatewayRuntime 只暴露固定的 Nginx 校验和 reload 动作，避免 handler 把用户字符串变成容器 exec 命令。
 type GatewayRuntime interface {
-	Test(ctx context.Context, gateway portainer.PlatformGateway) error
+	Test(ctx context.Context, gateway portainer.PlatformGateway, candidateHash string) error
 	Reload(ctx context.Context, gateway portainer.PlatformGateway) error
 }
 
@@ -35,8 +35,12 @@ func NewDockerGatewayRuntime(dataStore dataservices.DataStore, factory *dockercl
 	return &DockerGatewayRuntime{dataStore: dataStore, clientFactory: factory}
 }
 
-func (runtime *DockerGatewayRuntime) Test(ctx context.Context, gateway portainer.PlatformGateway) error {
-	return runtime.exec(ctx, gateway, []string{"nginx", "-t"})
+func (runtime *DockerGatewayRuntime) Test(ctx context.Context, gateway portainer.PlatformGateway, candidateHash string) error {
+	if !isGatewayConfigHash(candidateHash) || gateway.ID <= 0 {
+		return errors.New("gateway candidate config is invalid")
+	}
+	candidatePath := fmt.Sprintf("/etc/nginx/portainer/%d/versions/%s.conf", gateway.ID, candidateHash)
+	return runtime.exec(ctx, gateway, []string{"nginx", "-t", "-c", candidatePath})
 }
 
 func (runtime *DockerGatewayRuntime) Reload(ctx context.Context, gateway portainer.PlatformGateway) error {

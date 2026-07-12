@@ -24,6 +24,7 @@ type Handler struct {
 	ReleaseExecutor         platformservice.ReleaseExecutor
 	ReleaseRecoveryExecutor platformservice.ReleaseRecoveryExecutor
 	RuntimeInspector        platformservice.RuntimeInspector
+	GatewayRuntime          platformservice.GatewayRuntime
 }
 
 // NewHandler 注册阶段 2 平台接口。路由层只完成认证和受限上下文注入，
@@ -63,6 +64,8 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteList))).Methods(http.MethodGet)
 	h.Handle("/platform/gateways/{gatewayId}/routes",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/gateways/{gatewayId}/config/apply",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayConfigApply))).Methods(http.MethodPost)
 	h.Handle("/platform/environments/{environmentId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/environments/{environmentId}",

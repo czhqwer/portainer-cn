@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -337,4 +338,179 @@ func (handler *Handler) gatewayCertificateCreate(w http.ResponseWriter, r *http.
 	}
 	certificate.MaterialRef = ""
 	return response.JSONWithStatus(w, certificate, http.StatusCreated)
+}
+
+// gatewayConfigApply 从已成功发布的运行快照生成 upstream，再执行候选预检和原子切换。
+// 它刻意不接受 upstream、Nginx 文本或文件路径，保证切流只基于控制面已经验证过的发布事实。
+func (handler *Handler) gatewayConfigApply(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
+	gateway, handlerErr := handler.gatewayFromRequest(r, platformPermissionManage)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if handlerErr = handler.requireEndpointAccess(r, gateway.EndpointID); handlerErr != nil {
+		return handlerErr
+	}
+	if handler.GatewayRuntime == nil || handler.FileService == nil {
+		return writePlatformError(w, http.StatusServiceUnavailable, errPlatformUnsupportedOperation, "Gateway runtime is unavailable", "GATEWAY_RUNTIME_UNAVAILABLE", nil)
+	}
+	targets, handlerErr := handler.gatewayRouteTargets(gateway)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	config, configHash, err := platformservice.RenderGatewayConfig(targets)
+	if err != nil {
+		return validationFailed(err)
+	}
+	userID, err := currentUserID(r)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	version, err := handler.createGatewayConfigCandidate(gateway.ID, configHash, targets, userID)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	store, err := platformservice.NewGatewayConfigStore(handler.FileService.GetDatastorePath())
+	if err != nil {
+		return handler.convertError(err)
+	}
+	publisher, err := platformservice.NewGatewayConfigPublisher(store, handler.GatewayRuntime)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	result, publishErr := publisher.Publish(ctx, *gateway, config)
+	if publishErr != nil {
+		reason := gatewayConfigFailureReason(publishErr)
+		_ = handler.finishGatewayConfigFailure(r, version.ID, gateway, reason)
+		return writePlatformError(w, http.StatusBadGateway, errPlatformValidationFailed, "Gateway configuration was not applied", reason, nil)
+	}
+	if err := handler.finishGatewayConfigSuccess(r, version.ID, gateway.ID, result.CandidateHash); err != nil {
+		return handler.convertError(err)
+	}
+	version.Status = portainer.PlatformGatewayConfigStatusActive
+	return response.JSON(w, version)
+}
+
+func (handler *Handler) gatewayRouteTargets(gateway *portainer.PlatformGateway) ([]platformservice.GatewayRouteTarget, *httperror.HandlerError) {
+	environment, err := handler.DataStore.PlatformEnvironment().Read(gateway.EnvironmentID)
+	if err != nil {
+		return nil, handler.convertError(err)
+	}
+	var workload *portainer.PlatformDeploymentTarget
+	for i := range environment.Targets {
+		target := &environment.Targets[i]
+		if target.Enabled && (target.Role == "" || target.Role == portainer.PlatformDeploymentTargetRoleWorkload) {
+			if workload != nil {
+				return nil, validationFailedError("Gateway requires exactly one enabled workload target")
+			}
+			workload = target
+		}
+	}
+	if workload == nil || strings.TrimSpace(workload.HostAddress) == "" {
+		return nil, validationFailedError("Gateway workload host address is required")
+	}
+	routes, err := handler.DataStore.PlatformGatewayRoute().ReadAll(func(route portainer.PlatformGatewayRoute) bool {
+		return route.GatewayID == gateway.ID && isActive(route.PlatformLifecycle)
+	})
+	if err != nil {
+		return nil, handler.convertError(err)
+	}
+	if len(routes) == 0 {
+		return nil, validationFailedError("Gateway has no active routes")
+	}
+	targets := make([]platformservice.GatewayRouteTarget, 0, len(routes))
+	for _, route := range routes {
+		deployment, err := handler.DataStore.PlatformServiceDeployment().Read(route.ServiceDeploymentID)
+		if err != nil {
+			return nil, handler.convertError(err)
+		}
+		if deployment.CurrentServingReleaseID <= 0 || deployment.CurrentRuntimeRef.EndpointID != workload.EndpointID {
+			return nil, validationFailedError("Route service is not serving on the workload target")
+		}
+		release, err := handler.DataStore.PlatformRelease().Read(deployment.CurrentServingReleaseID)
+		if err != nil {
+			return nil, handler.convertError(err)
+		}
+		if release.Status != portainer.PlatformReleaseStatusSucceeded || release.ServiceDeploymentID != deployment.ID {
+			return nil, validationFailedError("Route service does not have a successful release")
+		}
+		hostPort := 0
+		for _, published := range release.RuntimeSnapshot.PublishedPorts {
+			if published.ContainerPort == route.TargetPort && published.Protocol == portainer.PlatformPortProtocolTCP {
+				hostPort = published.HostPort
+				break
+			}
+		}
+		if hostPort <= 0 {
+			return nil, validationFailedError("Route service published port is unavailable")
+		}
+		targets = append(targets, platformservice.GatewayRouteTarget{Route: route, UpstreamHost: workload.HostAddress, UpstreamPort: hostPort})
+	}
+	return targets, nil
+}
+
+func (handler *Handler) createGatewayConfigCandidate(gatewayID portainer.PlatformGatewayID, configHash string, targets []platformservice.GatewayRouteTarget, userID portainer.UserID) (portainer.PlatformGatewayConfigVersion, error) {
+	version := portainer.PlatformGatewayConfigVersion{GatewayID: gatewayID, Status: portainer.PlatformGatewayConfigStatusCandidate, ConfigHash: configHash, CreatedAt: time.Now().Unix(), CreatedByUserID: userID}
+	for _, target := range targets {
+		version.RouteIDs = append(version.RouteIDs, target.Route.ID)
+	}
+	err := handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		versions, err := tx.PlatformGatewayConfigVersion().ReadAll(func(item portainer.PlatformGatewayConfigVersion) bool { return item.GatewayID == gatewayID })
+		if err != nil {
+			return err
+		}
+		for _, item := range versions {
+			if item.Revision >= version.Revision {
+				version.Revision = item.Revision + 1
+			}
+		}
+		return tx.PlatformGatewayConfigVersion().Create(&version)
+	})
+	return version, err
+}
+
+func (handler *Handler) finishGatewayConfigSuccess(r *http.Request, versionID portainer.PlatformGatewayConfigVersionID, gatewayID portainer.PlatformGatewayID, configHash string) error {
+	return handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		version, err := tx.PlatformGatewayConfigVersion().Read(versionID)
+		if err != nil {
+			return err
+		}
+		version.Status, version.FailureReason = portainer.PlatformGatewayConfigStatusActive, ""
+		if err := tx.PlatformGatewayConfigVersion().Update(version.ID, version); err != nil {
+			return err
+		}
+		gateway, err := tx.PlatformGateway().Read(gatewayID)
+		if err != nil {
+			return err
+		}
+		gateway.ActiveConfigHash = configHash
+		touchLifecycle(&gateway.PlatformLifecycle, time.Now().Unix())
+		if err := tx.PlatformGateway().Update(gateway.ID, gateway); err != nil {
+			return err
+		}
+		return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{Action: portainer.PlatformAuditActionGatewayConfigApplied, Result: portainer.PlatformAuditResultSuccess, ProjectID: gateway.ProjectID, EnvironmentID: gateway.EnvironmentID, AfterSummary: map[string]any{"gatewayId": gateway.ID, "configHash": configHash}})
+	})
+}
+
+func (handler *Handler) finishGatewayConfigFailure(r *http.Request, versionID portainer.PlatformGatewayConfigVersionID, gateway *portainer.PlatformGateway, reason string) error {
+	return handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		version, err := tx.PlatformGatewayConfigVersion().Read(versionID)
+		if err != nil {
+			return err
+		}
+		version.Status, version.FailureReason = portainer.PlatformGatewayConfigStatusFailed, reason
+		if err := tx.PlatformGatewayConfigVersion().Update(version.ID, version); err != nil {
+			return err
+		}
+		return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{Action: portainer.PlatformAuditActionGatewayConfigFailed, Result: portainer.PlatformAuditResultFailed, ProjectID: gateway.ProjectID, EnvironmentID: gateway.EnvironmentID, FailureReason: reason, AfterSummary: map[string]any{"gatewayId": gateway.ID, "configVersionId": version.ID}})
+	})
+}
+
+func gatewayConfigFailureReason(err error) string {
+	var publishErr *platformservice.GatewayConfigPublishError
+	if errors.As(err, &publishErr) {
+		return publishErr.Reason
+	}
+	return "GATEWAY_CONFIG_APPLY_FAILED"
 }

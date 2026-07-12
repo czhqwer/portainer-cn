@@ -46,7 +46,8 @@ func TestRenderGatewayConfigTLSAndWebSocket(t *testing.T) {
 	route.CertificateID = 9
 	config, _, err := RenderGatewayConfig([]GatewayRouteTarget{{Route: route, UpstreamHost: "gateway.internal", UpstreamPort: 19090}})
 	require.NoError(t, err)
-	require.Contains(t, string(config), "ssl_certificate /etc/nginx/portainer/certs/9.crt")
+	require.Contains(t, string(config), "ssl_certificate /etc/nginx/portainer/certificates/9/cert.pem")
+	require.Contains(t, string(config), "events {")
 	require.Contains(t, string(config), "return 301 https://$host$request_uri")
 	require.Contains(t, string(config), "Connection \"upgrade\"")
 }
