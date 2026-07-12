@@ -45,6 +45,16 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityConfigUpsert))).Methods(http.MethodPut)
 	h.Handle("/platform/projects/{projectId}/observability",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityQuery))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/canary-policies",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/canary-policies",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/canary-policies/{canaryPolicyId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/canary-policies/{canaryPolicyId}/weights",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyWeightChange))).Methods(http.MethodPost)
+	h.Handle("/platform/canary-policies/{canaryPolicyId}/rollback",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyRollback))).Methods(http.MethodPost)
 
 	h.Handle("/platform/projects",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectList))).Methods(http.MethodGet)

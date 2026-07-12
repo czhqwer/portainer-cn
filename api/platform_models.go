@@ -312,6 +312,9 @@ const (
 	PlatformAuditActionDatabaseBindingArchived    PlatformAuditAction = "database_binding.archived"
 	PlatformAuditActionObservabilityConfigured    PlatformAuditAction = "observability.configured"
 	PlatformAuditActionObservabilityQueried       PlatformAuditAction = "observability.queried"
+	PlatformAuditActionCanaryCreated              PlatformAuditAction = "canary.created"
+	PlatformAuditActionCanaryWeightChanged        PlatformAuditAction = "canary.weight_changed"
+	PlatformAuditActionCanaryHealthFailed         PlatformAuditAction = "canary.health_failed"
 
 	PlatformAuditResultSuccess PlatformAuditResult = "success"
 	PlatformAuditResultFailed  PlatformAuditResult = "failed"

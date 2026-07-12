@@ -572,29 +572,42 @@ func (handler *Handler) gatewayConfigApply(w http.ResponseWriter, r *http.Reques
 	if handler.GatewayRuntime == nil || handler.FileService == nil {
 		return writePlatformError(w, http.StatusServiceUnavailable, errPlatformUnsupportedOperation, "Gateway runtime is unavailable", "GATEWAY_RUNTIME_UNAVAILABLE", nil)
 	}
+	version, reason, err := handler.applyGatewayConfiguration(r, gateway)
+	if err != nil {
+		if reason != "" {
+			return writePlatformError(w, http.StatusBadGateway, errPlatformValidationFailed, "Gateway configuration was not applied", reason, nil)
+		}
+		return handler.convertError(err)
+	}
+	return response.JSON(w, version)
+}
+
+// applyGatewayConfiguration 将候选写入、预检、激活和审计封装为可复用操作；灰度放量可以先
+// 临时持久化目标权重让渲染器读取，若发布失败再恢复旧权重，避免数据库状态领先于 Nginx。
+func (handler *Handler) applyGatewayConfiguration(r *http.Request, gateway *portainer.PlatformGateway) (portainer.PlatformGatewayConfigVersion, string, error) {
 	targets, handlerErr := handler.gatewayRouteTargets(gateway)
 	if handlerErr != nil {
-		return handlerErr
+		return portainer.PlatformGatewayConfigVersion{}, "", handlerErr
 	}
 	config, configHash, err := platformservice.RenderGatewayConfig(targets)
 	if err != nil {
-		return validationFailed(err)
+		return portainer.PlatformGatewayConfigVersion{}, "", err
 	}
 	userID, err := currentUserID(r)
 	if err != nil {
-		return handler.convertError(err)
+		return portainer.PlatformGatewayConfigVersion{}, "", err
 	}
 	version, err := handler.createGatewayConfigCandidate(gateway.ID, configHash, targets, userID)
 	if err != nil {
-		return handler.convertError(err)
+		return portainer.PlatformGatewayConfigVersion{}, "", err
 	}
 	store, err := platformservice.NewGatewayConfigStore(handler.FileService.GetDatastorePath())
 	if err != nil {
-		return handler.convertError(err)
+		return portainer.PlatformGatewayConfigVersion{}, "", err
 	}
 	publisher, err := platformservice.NewGatewayConfigPublisher(store, handler.GatewayRuntime)
 	if err != nil {
-		return handler.convertError(err)
+		return portainer.PlatformGatewayConfigVersion{}, "", err
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -602,13 +615,13 @@ func (handler *Handler) gatewayConfigApply(w http.ResponseWriter, r *http.Reques
 	if publishErr != nil {
 		reason := gatewayConfigFailureReason(publishErr)
 		_ = handler.finishGatewayConfigFailure(r, version.ID, gateway, reason)
-		return writePlatformError(w, http.StatusBadGateway, errPlatformValidationFailed, "Gateway configuration was not applied", reason, nil)
+		return version, reason, publishErr
 	}
 	if err := handler.finishGatewayConfigSuccess(r, version.ID, gateway.ID, result.CandidateHash); err != nil {
-		return handler.convertError(err)
+		return portainer.PlatformGatewayConfigVersion{}, "", err
 	}
 	version.Status = portainer.PlatformGatewayConfigStatusActive
-	return response.JSON(w, version)
+	return version, "", nil
 }
 
 func (handler *Handler) gatewayRouteTargets(gateway *portainer.PlatformGateway) ([]platformservice.GatewayRouteTarget, *httperror.HandlerError) {
@@ -654,19 +667,48 @@ func (handler *Handler) gatewayRouteTargets(gateway *portainer.PlatformGateway) 
 		if release.Status != portainer.PlatformReleaseStatusSucceeded || release.ServiceDeploymentID != deployment.ID {
 			return nil, validationFailedError("Route service does not have a successful release")
 		}
-		hostPort := 0
-		for _, published := range release.RuntimeSnapshot.PublishedPorts {
-			if published.ContainerPort == route.TargetPort && published.Protocol == portainer.PlatformPortProtocolTCP {
-				hostPort = published.HostPort
-				break
-			}
-		}
+		hostPort := gatewayReleasePublishedPort(*release, route.TargetPort)
 		if hostPort <= 0 {
 			return nil, validationFailedError("Route service published port is unavailable")
 		}
-		targets = append(targets, platformservice.GatewayRouteTarget{Route: route, UpstreamHost: workload.HostAddress, UpstreamPort: hostPort})
+		target := platformservice.GatewayRouteTarget{Route: route, UpstreamHost: workload.HostAddress, UpstreamPort: hostPort}
+		policies, err := handler.DataStore.PlatformCanaryPolicy().ReadAll(func(policy portainer.PlatformCanaryPolicy) bool {
+			return policy.GatewayRouteID == route.ID && isActive(policy.PlatformLifecycle)
+		})
+		if err != nil {
+			return nil, handler.convertError(err)
+		}
+		if len(policies) > 1 {
+			return nil, validationFailedError("Gateway route has multiple active canary policies")
+		}
+		if len(policies) == 1 && policies[0].CurrentWeight > 0 {
+			policy := policies[0]
+			if policy.ProjectID != route.ProjectID || policy.EnvironmentID != route.EnvironmentID || policy.StableReleaseID != release.ID {
+				return nil, validationFailedError("Canary policy does not match the serving release")
+			}
+			canaryRelease, err := handler.DataStore.PlatformRelease().Read(policy.CanaryReleaseID)
+			if err != nil || canaryRelease.Status != portainer.PlatformReleaseStatusSucceeded || canaryRelease.ServiceDeploymentID != deployment.ID || canaryRelease.HealthCheckResult.Status != portainer.PlatformHealthCheckStatusPassed {
+				return nil, validationFailedError("Canary release is not healthy")
+			}
+			canaryPort := gatewayReleasePublishedPort(*canaryRelease, route.TargetPort)
+			if canaryPort <= 0 {
+				return nil, validationFailedError("Canary release published port is unavailable")
+			}
+			target.CanaryUpstreams = []platformservice.GatewayUpstreamTarget{{Host: workload.HostAddress, Port: canaryPort}}
+			target.CanaryWeight = policy.CurrentWeight
+		}
+		targets = append(targets, target)
 	}
 	return targets, nil
+}
+
+func gatewayReleasePublishedPort(release portainer.PlatformRelease, targetPort int) int {
+	for _, published := range release.RuntimeSnapshot.PublishedPorts {
+		if published.ContainerPort == targetPort && published.Protocol == portainer.PlatformPortProtocolTCP {
+			return published.HostPort
+		}
+	}
+	return 0
 }
 
 func (handler *Handler) createGatewayConfigCandidate(gatewayID portainer.PlatformGatewayID, configHash string, targets []platformservice.GatewayRouteTarget, userID portainer.UserID) (portainer.PlatformGatewayConfigVersion, error) {
