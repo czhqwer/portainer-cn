@@ -4385,12 +4385,12 @@
     },
     "alerts": {
       "productionRisk": {
-        "title": "技术预览",
-        "body": "V0.1 是技术预览版本。生产部署必须预期短暂停机，不能按无损发布处理。"
+        "title": "V0.5 部署安全提示",
+        "body": "V0.5 会将受支持制品包装为镜像并记录发布。生产部署仍可能短暂停机，不能按无损发布处理。"
       },
       "adminOnly": {
-        "title": "仅管理员可访问",
-        "body": "V0.1 中所有 /api/platform 业务接口，包括读取接口，都仅限管理员访问。"
+        "title": "服务端权限强制校验",
+        "body": "项目角色控制平台操作；Docker、registry 和发布动作还必须具备目标 Endpoint 的访问权限。"
       },
       "roleAccess": {
         "title": "项目角色权限",
@@ -4421,7 +4421,18 @@
     "artifacts": {
       "tableTitle": "制品",
       "sourceImage": "已有镜像地址",
-      "sourceUpload": "上传 Jar、dist ZIP 或镜像归档"
+      "sourceUpload": "上传 Jar、dist ZIP 或镜像归档",
+      "types": {
+        "javaJar": "Java 8 Jar",
+        "frontendDist": "前端 dist ZIP",
+        "dockerTar": "Docker 镜像 tar",
+        "ociArchive": "OCI 归档"
+      },
+      "retention": {
+        "cleanable": "已保留 / 可清理",
+        "protected": "已保留 / 受保护",
+        "cleaned": "原始文件已清理"
+      }
     },
     "releases": { "tableTitle": "发布记录" },
     "config": {
@@ -4590,7 +4601,8 @@
       "staticNotFoundPage": "dist 内可选 404 页面",
       "pushArtifact": "候选制品",
       "registryId": "已配置的 registry ID",
-      "cleanupArtifact": "原始制品"
+      "cleanupArtifact": "原始制品",
+      "readyArtifact": "已就绪制品"
     },
     "formTitles": {
       "project": "创建项目",
@@ -4622,13 +4634,6 @@
       "warningBody": "最终 registry 镜像和 Artifact 事实会保留。服务端会阻止正在执行任务或被 Release 引用的制品清理。",
       "confirm": "我已知晓此操作会删除保留的原始文件。"
     },
-    "artifacts": {
-      "retention": {
-        "cleanable": "已保留 / 可清理",
-        "protected": "已保留 / 受保护",
-        "cleaned": "原始文件已清理"
-      }
-    },
     "environmentTypes": {
       "dev": "开发",
       "test": "测试",
@@ -4651,8 +4656,8 @@
     "deploy": {
       "steps": {
         "basic": "基础信息",
-        "image": "已有镜像",
-        "registry": "镜像与仓库",
+        "image": "制品",
+        "registry": "最终镜像",
         "health": "端口与健康检查",
         "env": "环境变量",
         "strategy": "发布策略",
@@ -4665,6 +4670,10 @@
         "environment": "环境",
         "service": "服务",
         "image": "镜像",
+        "artifact": "制品",
+        "manualImage": "手工镜像引用",
+        "digest": "Digest",
+        "notAvailable": "暂无",
         "validation": "校验",
         "notValidated": "未校验",
         "existingDeployment": "发布前将更新已有部署配置 #{{id}}。",
@@ -4680,12 +4689,12 @@
         "body": "登记制品前先选择项目、环境、应用和服务。"
       },
       "image": {
-        "title": "仅支持已有镜像",
-        "body": "阶段 1 支持 image-reference 输入。Git 仓库、源码构建和内置 registry 均不在范围内。"
+        "title": "已就绪制品或已有镜像",
+        "body": "请选择与服务类型匹配的已就绪制品，或登记已有镜像引用。源码构建、Git 和内置 registry 仍不在范围内。"
       },
       "registry": {
-        "title": "仓库与追溯信息",
-        "body": "Digest 为可选项。image-reference 制品的可追溯等级记录为 weak。"
+        "title": "最终镜像与追溯信息",
+        "body": "已就绪制品会携带最终 registry tag 和 digest。手工镜像引用在提供 digest 前仍以 weak 追溯。"
       },
       "health": {
         "title": "端口与健康检查",
@@ -4701,7 +4710,7 @@
       },
       "validate": {
         "title": "校验结果",
-        "body": "点击校验发布会先保存部署配置，登记或复用镜像制品，再执行控制面校验。",
+        "body": "点击校验发布会先保存部署配置，选择或登记制品，再执行控制面校验。",
         "empty": "尚未执行校验。"
       },
       "confirm": {
@@ -4712,9 +4721,11 @@
       "confirmRelease": "现在创建这个发布？",
       "confirmProductionRelease": "当前是生产环境。V0.1 replace 策略可能造成短暂停机，确认继续创建发布？",
       "productionWarningTitle": "生产环境提示",
-      "productionWarningBody": "V0.1 replace 策略可能造成服务短暂停止，请确认窗口可接受后再继续。",
+      "productionWarningBody": "V0.5 replace 策略可能造成服务短暂停止，请确认窗口可接受后再继续。",
       "releaseCreated": "发布已创建",
       "releaseCreatedBody": "发布 #{{id}} 已创建。",
+      "manualImageOption": "使用手工已有镜像引用",
+      "noReadyArtifact": "没有与当前服务匹配的已就绪制品。请先上传、准备并推送受支持制品，或使用已有镜像引用。",
       "sample": {
         "image": "示例镜像引用",
         "digest": "示例 digest"

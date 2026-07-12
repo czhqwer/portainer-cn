@@ -949,6 +949,19 @@ export function PlatformDeployView() {
   );
   const artifactsQuery = usePlatformArtifacts();
   const artifacts = artifactsQuery.data ?? [];
+	const [selectedArtifactId, setSelectedArtifactId] = useState<number>();
+	const readyArtifacts = artifacts.filter(
+		(artifact) =>
+			artifact.ProjectId === currentProject?.Id &&
+			artifact.ApplicationId === currentApplication?.Id &&
+			artifact.ServiceDefinitionId === currentService?.Id &&
+			artifact.Status === 'ready' &&
+			!!artifact.ImageRef &&
+			artifactMatchesService(artifact, currentService)
+	);
+	const selectedArtifact = readyArtifacts.find(
+		(artifact) => artifact.Id === selectedArtifactId
+	);
   const createDeploymentMutation = useCreatePlatformServiceDeploymentMutation();
   const updateDeploymentMutation = useUpdatePlatformServiceDeploymentMutation();
   const createArtifactMutation = useCreateImageReferenceArtifactMutation();
@@ -972,7 +985,7 @@ export function PlatformDeployView() {
   const steps = useMemo(
     () => [
       t('platform.deploy.steps.basic', { defaultValue: 'Basic information' }),
-      t('platform.deploy.steps.image', { defaultValue: 'Existing image' }),
+      t('platform.deploy.steps.image', { defaultValue: 'Artifact' }),
       t('platform.deploy.steps.registry', {
         defaultValue: 'Image and registry',
       }),
@@ -1026,6 +1039,15 @@ export function PlatformDeployView() {
     !!version.trim() &&
     containerPort > 0 &&
     hostPort > 0;
+
+	useEffect(() => {
+		if (
+			selectedArtifactId !== undefined &&
+			!readyArtifacts.some((artifact) => artifact.Id === selectedArtifactId)
+		) {
+			setSelectedArtifactId(undefined);
+		}
+	}, [readyArtifacts, selectedArtifactId]);
   const isBusy =
     createDeploymentMutation.isLoading ||
     updateDeploymentMutation.isLoading ||
@@ -1058,11 +1080,13 @@ export function PlatformDeployView() {
             DesiredSpec: desiredSpec,
           },
         });
-    const reusableArtifact = artifacts.find(
+    const reusableArtifact = selectedArtifact ?? artifacts.find(
       (artifact) =>
         artifact.ProjectId === currentProject.Id &&
         artifact.ApplicationId === currentApplication.Id &&
         artifact.ServiceDefinitionId === currentService.Id &&
+			artifact.Type === 'image' &&
+			artifact.SourceType === 'image-reference' &&
         artifact.ImageRef === imageRef.trim() &&
         artifact.Version === version.trim()
     );
@@ -1171,6 +1195,20 @@ export function PlatformDeployView() {
             currentEnvironment={currentEnvironment}
             currentApplication={currentApplication}
             currentService={currentService}
+			readyArtifacts={readyArtifacts}
+			selectedArtifact={selectedArtifact}
+			onArtifactSelect={(artifactId) => {
+				setSelectedArtifactId(artifactId);
+				const artifact = readyArtifacts.find((item) => item.Id === artifactId);
+				if (artifact) {
+					setArtifactName(artifact.Name);
+					setVersion(artifact.Version);
+					setImageRef(artifact.ImageRef ?? '');
+					setImageDigest(artifact.ImageDigest ?? '');
+				}
+				setValidationResult(undefined);
+				setReleaseResult(undefined);
+			}}
             selectedProjectId={currentProject?.Id}
             selectedEnvironmentId={currentEnvironment?.Id}
             selectedApplicationId={currentApplication?.Id}
@@ -1180,22 +1218,26 @@ export function PlatformDeployView() {
               setSelectedEnvironmentId(undefined);
               setSelectedApplicationId(undefined);
               setSelectedServiceId(undefined);
+				setSelectedArtifactId(undefined);
               setValidationResult(undefined);
               setReleaseResult(undefined);
             }}
             onEnvironmentChange={(environmentId) => {
               setSelectedEnvironmentId(environmentId);
+				setSelectedArtifactId(undefined);
               setValidationResult(undefined);
               setReleaseResult(undefined);
             }}
             onApplicationChange={(applicationId) => {
               setSelectedApplicationId(applicationId);
               setSelectedServiceId(undefined);
+				setSelectedArtifactId(undefined);
               setValidationResult(undefined);
               setReleaseResult(undefined);
             }}
             onServiceChange={(serviceId) => {
               setSelectedServiceId(serviceId);
+				setSelectedArtifactId(undefined);
               setValidationResult(undefined);
               setReleaseResult(undefined);
             }}
@@ -1301,6 +1343,25 @@ export function PlatformDeployView() {
                 t('platform.deploy.summary.image', { defaultValue: 'Image' }),
                 imageRef,
               ],
+				[
+					t('platform.deploy.summary.artifact', {
+						defaultValue: 'Artifact',
+					}),
+					selectedArtifact
+						? `${selectedArtifact.Name} · ${selectedArtifact.Version}`
+						: t('platform.deploy.summary.manualImage', {
+							defaultValue: 'Manual image reference',
+						}),
+				],
+				[
+					t('platform.deploy.summary.digest', {
+						defaultValue: 'Digest',
+					}),
+					imageDigest ||
+						t('platform.deploy.summary.notAvailable', {
+							defaultValue: 'Not available',
+						}),
+				],
               [
                 t('platform.deploy.summary.validation', {
                   defaultValue: 'Validation',
@@ -2029,10 +2090,26 @@ function CreateArtifactPanel({
 				  setUploadType(event.target.value as typeof uploadType)
 				}
 			  >
-				<option value="java-jar">Java 8 Jar</option>
-				<option value="frontend-dist">Frontend dist ZIP</option>
-				<option value="docker-image-tar">Docker image tar</option>
-				<option value="oci-archive">OCI archive</option>
+				<option value="java-jar">
+					{t('platform.artifacts.types.javaJar', {
+						defaultValue: 'Java 8 Jar',
+					})}
+				</option>
+				<option value="frontend-dist">
+					{t('platform.artifacts.types.frontendDist', {
+						defaultValue: 'Frontend dist ZIP',
+					})}
+				</option>
+				<option value="docker-image-tar">
+					{t('platform.artifacts.types.dockerTar', {
+						defaultValue: 'Docker image tar',
+					})}
+				</option>
+				<option value="oci-archive">
+					{t('platform.artifacts.types.ociArchive', {
+						defaultValue: 'OCI archive',
+					})}
+				</option>
 			  </select>
 			</label>
 			<label className="form-control-label self-end">
@@ -3845,6 +3922,8 @@ function WizardStepContent({
   environments,
   applications,
   services,
+	readyArtifacts,
+	selectedArtifact,
   currentEnvironment,
   currentDeployment,
   selectedProjectId,
@@ -3855,6 +3934,7 @@ function WizardStepContent({
   onEnvironmentChange,
   onApplicationChange,
   onServiceChange,
+	onArtifactSelect,
   artifactName,
   onArtifactNameChange,
   version,
@@ -3886,6 +3966,8 @@ function WizardStepContent({
   environments: PlatformEnvironment[];
   applications: PlatformApplication[];
   services: PlatformServiceDefinition[];
+	readyArtifacts: PlatformArtifact[];
+	selectedArtifact?: PlatformArtifact;
   currentProject?: PlatformProject;
   currentEnvironment?: PlatformEnvironment;
   currentApplication?: PlatformApplication;
@@ -3899,6 +3981,7 @@ function WizardStepContent({
   onEnvironmentChange: (environmentId: number | undefined) => void;
   onApplicationChange: (applicationId: number | undefined) => void;
   onServiceChange: (serviceId: number | undefined) => void;
+	onArtifactSelect: (artifactId: number | undefined) => void;
   artifactName: string;
   onArtifactNameChange: (value: string) => void;
   version: string;
@@ -4002,53 +4085,111 @@ function WizardStepContent({
         title={
           step === 1
             ? t('platform.deploy.image.title', {
-                defaultValue: 'Existing image only',
+                defaultValue: 'Ready artifact or existing image',
               })
             : t('platform.deploy.registry.title', {
-                defaultValue: 'Registry and traceability',
+                defaultValue: 'Final image and traceability',
               })
         }
         description={
           step === 1
             ? t('platform.deploy.image.body', {
                 defaultValue:
-                  'Stage 1 supports image-reference input. Git repositories, source builds, and embedded registries are intentionally out of scope.',
+                  'Select a ready artifact that matches the service type, or register an existing image reference. Source builds, Git, and embedded registries remain out of scope.',
               })
             : t('platform.deploy.registry.body', {
                 defaultValue:
-                  'Digest is optional. Traceability is stored as weak for image-reference artifacts.',
+                  'Ready artifacts carry their final registry tag and digest. A manual image reference remains weakly traceable until a digest is provided.',
               })
         }
       >
         <div className="grid gap-3 md:grid-cols-2">
-          <TextInputField
-            label={t('platform.forms.imageRef', {
-              defaultValue: 'Image reference',
+          <label className="form-control-label">
+            {t('platform.forms.readyArtifact', {
+              defaultValue: 'Ready artifact',
             })}
-            value={imageRef}
-            required
-            onChange={onImageRefChange}
-          />
-          <TextInputField
-            label={t('platform.forms.version', { defaultValue: 'Version' })}
-            value={version}
-            required
-            onChange={onVersionChange}
-          />
-          <TextInputField
-            label={t('platform.forms.artifactName', {
-              defaultValue: 'Artifact name',
-            })}
-            value={artifactName}
-            onChange={onArtifactNameChange}
-          />
-          <TextInputField
-            label={t('platform.forms.imageDigest', {
-              defaultValue: 'Image digest',
-            })}
-            value={imageDigest}
-            onChange={onImageDigestChange}
-          />
+            <select
+              className="form-control mt-1"
+              value={selectedArtifact?.Id ?? ''}
+              onChange={(event) =>
+                onArtifactSelect(
+                  event.target.value ? Number(event.target.value) : undefined
+                )
+              }
+            >
+              <option value="">
+                {t('platform.deploy.manualImageOption', {
+                  defaultValue: 'Use a manual existing image reference',
+                })}
+              </option>
+              {readyArtifacts.map((artifact) => (
+                <option key={artifact.Id} value={artifact.Id}>
+                  {artifact.Name} · {artifact.Version} · {artifact.Type}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedArtifact ? (
+            <SummaryList
+              rows={[
+                [
+                  t('platform.columns.image', { defaultValue: 'Image' }),
+                  selectedArtifact.ImageTag ?? selectedArtifact.ImageRef ?? '',
+                ],
+                [
+                  t('platform.columns.imageDigest', {
+                    defaultValue: 'Image digest',
+                  }),
+                  selectedArtifact.ImageDigest ?? '',
+                ],
+                [
+                  t('platform.columns.status', { defaultValue: 'Status' }),
+                  selectedArtifact.Status ?? '',
+                ],
+              ]}
+            />
+          ) : (
+            <>
+              <TextInputField
+                label={t('platform.forms.imageRef', {
+                  defaultValue: 'Image reference',
+                })}
+                value={imageRef}
+                required
+                onChange={onImageRefChange}
+              />
+              <TextInputField
+                label={t('platform.forms.version', {
+                  defaultValue: 'Version',
+                })}
+                value={version}
+                required
+                onChange={onVersionChange}
+              />
+              <TextInputField
+                label={t('platform.forms.artifactName', {
+                  defaultValue: 'Artifact name',
+                })}
+                value={artifactName}
+                onChange={onArtifactNameChange}
+              />
+              <TextInputField
+                label={t('platform.forms.imageDigest', {
+                  defaultValue: 'Image digest',
+                })}
+                value={imageDigest}
+                onChange={onImageDigestChange}
+              />
+            </>
+          )}
+          {!selectedArtifact && readyArtifacts.length === 0 && (
+            <div className="text-muted text-sm md:col-span-2">
+              {t('platform.deploy.noReadyArtifact', {
+                defaultValue:
+                  'No ready artifact matches this service. Upload, prepare, and push a supported artifact first, or use an existing image reference.',
+              })}
+            </div>
+          )}
         </div>
       </WizardPanel>
     );
@@ -4393,6 +4534,27 @@ function buildDeployDesiredSpec({
       Type: 'replace',
     },
   };
+}
+
+// 制品页已完成的镜像仍需按服务类型筛选，避免前端把 Java/dist 原始输入误导为可投放到不匹配服务的运行时；后端发布校验仍是最终边界。
+function artifactMatchesService(
+  artifact: PlatformArtifact,
+  service?: PlatformServiceDefinition
+) {
+  if (!service) {
+    return false;
+  }
+  if (artifact.Type === 'java-jar') {
+    return service.Type === 'java-service';
+  }
+  if (artifact.Type === 'frontend-dist') {
+    return service.Type === 'frontend' || service.Type === 'static-site';
+  }
+  return (
+    artifact.Type === 'image' ||
+    artifact.Type === 'docker-image-tar' ||
+    artifact.Type === 'oci-archive'
+  );
 }
 
 function parseEnvOverrides(envText: string) {

@@ -4326,12 +4326,12 @@
     },
     "alerts": {
       "productionRisk": {
-        "title": "Technical preview",
-        "body": "V0.1 is a technical preview. Production deployments must assume short downtime and should not be treated as lossless releases."
+        "title": "V0.5 deployment safety notice",
+        "body": "V0.5 packages supported artifacts into images and records releases. Production deployments may still have short downtime and must not be treated as lossless releases."
       },
       "adminOnly": {
-        "title": "Administrator access only",
-        "body": "All /api/platform business APIs, including read requests, are limited to administrators in V0.1."
+        "title": "Server-side permission enforcement",
+        "body": "Project roles control platform operations, while Docker, registry, and deployment actions additionally require access to the target Endpoint."
       },
       "roleAccess": {
         "title": "Project-based access",
@@ -4362,7 +4362,18 @@
     "artifacts": {
       "tableTitle": "Artifacts",
       "sourceImage": "Existing image reference",
-      "sourceUpload": "Upload Jar, dist ZIP, or image archive"
+      "sourceUpload": "Upload Jar, dist ZIP, or image archive",
+      "types": {
+        "javaJar": "Java 8 Jar",
+        "frontendDist": "Frontend dist ZIP",
+        "dockerTar": "Docker image tar",
+        "ociArchive": "OCI archive"
+      },
+      "retention": {
+        "cleanable": "Retained / cleanable",
+        "protected": "Retained / protected",
+        "cleaned": "Original cleaned"
+      }
     },
     "releases": { "tableTitle": "Release records" },
     "config": {
@@ -4531,7 +4542,8 @@
       "staticNotFoundPage": "Optional 404 page in dist",
       "pushArtifact": "Candidate artifact",
       "registryId": "Configured registry ID",
-      "cleanupArtifact": "Original artifact"
+      "cleanupArtifact": "Original artifact",
+      "readyArtifact": "Ready artifact"
     },
     "formTitles": {
       "project": "Create project",
@@ -4563,13 +4575,6 @@
       "warningBody": "The final registry image and Artifact facts are retained. The server blocks cleanup for active tasks and Release references.",
       "confirm": "I understand this removes the retained original file."
     },
-    "artifacts": {
-      "retention": {
-        "cleanable": "Retained / cleanable",
-        "protected": "Retained / protected",
-        "cleaned": "Original cleaned"
-      }
-    },
     "environmentTypes": {
       "dev": "Dev",
       "test": "Test",
@@ -4592,8 +4597,8 @@
     "deploy": {
       "steps": {
         "basic": "Basic information",
-        "image": "Existing image",
-        "registry": "Image and registry",
+        "image": "Artifact",
+        "registry": "Final image",
         "health": "Ports and health check",
         "env": "Environment variables",
         "strategy": "Release strategy",
@@ -4606,6 +4611,10 @@
         "environment": "Environment",
         "service": "Service",
         "image": "Image",
+        "artifact": "Artifact",
+        "manualImage": "Manual image reference",
+        "digest": "Digest",
+        "notAvailable": "Not available",
         "validation": "Validation",
         "notValidated": "Not validated",
         "existingDeployment": "Existing deployment config #{{id}} will be updated before release.",
@@ -4621,12 +4630,12 @@
         "body": "Choose project, environment, application, and service before registering an artifact."
       },
       "image": {
-        "title": "Existing image only",
-        "body": "Stage 1 supports image-reference input. Git repositories, source builds, and embedded registries are intentionally out of scope."
+        "title": "Ready artifact or existing image",
+        "body": "Select a ready artifact that matches the service type, or register an existing image reference. Source builds, Git, and embedded registries remain out of scope."
       },
       "registry": {
-        "title": "Registry and traceability",
-        "body": "Digest is optional. Traceability is stored as weak for image-reference artifacts."
+        "title": "Final image and traceability",
+        "body": "Ready artifacts carry their final registry tag and digest. A manual image reference remains weakly traceable until a digest is provided."
       },
       "health": {
         "title": "Ports and health check",
@@ -4642,7 +4651,7 @@
       },
       "validate": {
         "title": "Validation result",
-        "body": "Click Validate release to persist the deployment config, register or reuse the image artifact, and run control-plane validation.",
+        "body": "Click Validate release to persist the deployment config, select or register the artifact, and run control-plane validation.",
         "empty": "No validation has been run yet."
       },
       "confirm": {
@@ -4653,9 +4662,11 @@
       "confirmRelease": "Create this release now?",
       "confirmProductionRelease": "This is a production environment. V0.1 replace strategy may cause short downtime. Continue creating the release?",
       "productionWarningTitle": "Production warning",
-      "productionWarningBody": "V0.1 replace strategy may briefly stop service. Confirm only when the window is acceptable.",
+      "productionWarningBody": "V0.5 replace strategy may briefly stop service. Confirm only when the window is acceptable.",
       "releaseCreated": "Release created",
       "releaseCreatedBody": "Release #{{id}} was created.",
+      "manualImageOption": "Use a manual existing image reference",
+      "noReadyArtifact": "No ready artifact matches this service. Upload, prepare, and push a supported artifact first, or use an existing image reference.",
       "sample": {
         "image": "Sample image reference",
         "digest": "Sample digest"
