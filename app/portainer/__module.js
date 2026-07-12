@@ -375,7 +375,7 @@ angular
 
       var platformProjects = {
         name: 'portainer.platform.projects',
-        url: '/projects?projectId',
+        url: '/projects?projectId&applicationId&environmentId&serviceId',
         data: { docs: '/user/app-delivery/platform/projects' },
         views: {
           'content@': {
@@ -419,7 +419,7 @@ angular
 
       var platformConfig = {
         name: 'portainer.platform.config',
-        url: '/config',
+        url: '/config?projectId&environmentId&applicationId&serviceId',
         data: { docs: '/user/app-delivery/platform/config' },
         views: {
           'content@': {

@@ -4320,6 +4320,8 @@
     "pages": {
       "home": { "title": "Delivery overview" },
       "projects": { "title": "Projects" },
+      "projectDetail": { "title": "Project" },
+      "applicationDetail": { "title": "Application workspace" },
       "applications": { "title": "Applications and services" },
       "deploy": { "title": "Deploy service" },
       "artifacts": { "title": "Artifacts" },
@@ -4364,6 +4366,14 @@
     },
     "projects": {
       "tableTitle": "Project list",
+      "openProject": "Open project",
+      "openApplication": "Open application",
+      "detailDescription": "Manage this project’s applications and environments. Deployment, configuration, and release operations begin inside an application.",
+      "tabs": {
+        "applications": "Applications",
+        "environments": "Environments",
+        "audit": "Audit"
+      },
       "workspaceTitle": "Project workspace",
       "workspaceDescription": "Applications and services belong to this project. Select an environment to inspect the matching deployment runtime.",
       "environmentView": "Environment view",
@@ -4377,6 +4387,27 @@
       "selectApplicationAction": "View services",
       "selectedService": "Selected",
       "selectServiceAction": "Inspect runtime"
+    },
+    "application": {
+      "workspaceTitle": "Application delivery workspace",
+      "environmentView": "Environment",
+      "tabs": {
+        "deployments": "Services and deployments",
+        "config": "Configuration",
+        "releases": "Release records",
+        "artifacts": "Artifacts",
+        "logs": "Logs",
+        "audit": "Audit"
+      },
+      "servicesTitle": "Services",
+      "servicesEmpty": "Create a service to configure and deploy it.",
+      "configServiceTitle": "Select service configuration",
+      "configEmpty": "Select a service deployment to inspect its project, environment, and service configuration layers.",
+      "releasesTitle": "Release records",
+      "releasesEmpty": "No releases exist for this application and environment.",
+      "artifactsTitle": "Application artifacts",
+      "artifactsEmpty": "No artifacts are associated with this application.",
+      "auditTitle": "Application audit"
     },
     "environments": { "tableTitle": "Environments" },
     "applications": { "tableTitle": "Applications" },
@@ -4484,6 +4515,10 @@
       "maskedValue": "••••••",
       "noEffectiveEntries": "No effective configuration entries."
     },
+    "runtime": {
+      "title": "Runtime status and logs",
+      "logsTitle": "Runtime logs"
+    },
     "rollback": {
       "previewTitle": "Rollback to release #{{id}}",
       "imageSummary": "{{current}} -> {{source}}",
@@ -4562,6 +4597,10 @@
       "validateRelease": "Validate release",
       "createRelease": "Create release",
       "createConfigSet": "Create config set",
+      "manageConfiguration": "Manage configuration layers",
+      "backToProjects": "All projects",
+      "backToProject": "Project",
+      "backToApplication": "Back to application",
       "edit": "Edit",
       "archive": "Archive",
       "reveal": "Reveal",

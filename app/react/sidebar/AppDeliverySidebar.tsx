@@ -1,10 +1,7 @@
 import {
   Box,
-  History,
   LayoutDashboard,
   Package,
-  Rocket,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -33,35 +30,12 @@ export function AppDeliverySidebar() {
       />
 
       <SidebarItem
-        label={t('platform.navigation.deploy', { defaultValue: 'Deploy' })}
-        to="portainer.platform.deploy"
-        icon={Rocket}
-        data-cy="portainerSidebar-platform-deploy"
-      />
-
-      <SidebarItem
         label={t('platform.navigation.artifacts', {
           defaultValue: 'Artifacts',
         })}
         to="portainer.platform.artifacts"
         icon={Package}
         data-cy="portainerSidebar-platform-artifacts"
-      />
-
-      <SidebarItem
-        label={t('platform.navigation.config', {
-          defaultValue: 'Configuration',
-        })}
-        to="portainer.platform.config"
-        icon={SlidersHorizontal}
-        data-cy="portainerSidebar-platform-config"
-      />
-
-      <SidebarItem
-        label={t('platform.navigation.releases', { defaultValue: 'Releases' })}
-        to="portainer.platform.releases"
-        icon={History}
-        data-cy="portainerSidebar-platform-releases"
       />
 
     </SidebarSection>

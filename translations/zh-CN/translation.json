@@ -4379,6 +4379,8 @@
     "pages": {
       "home": { "title": "交付概览" },
       "projects": { "title": "项目" },
+      "projectDetail": { "title": "项目详情" },
+      "applicationDetail": { "title": "应用交付工作台" },
       "applications": { "title": "应用与服务" },
       "deploy": { "title": "部署服务" },
       "artifacts": { "title": "制品" },
@@ -4423,6 +4425,14 @@
     },
     "projects": {
       "tableTitle": "项目列表",
+      "openProject": "进入项目",
+      "openApplication": "进入应用",
+      "detailDescription": "在项目中管理应用与环境；部署、配置和发布操作从具体应用内开始。",
+      "tabs": {
+        "applications": "应用",
+        "environments": "环境",
+        "audit": "审计"
+      },
       "workspaceTitle": "项目工作台",
       "workspaceDescription": "应用和服务都归属于当前项目；选择环境后可查看对应部署配置的运行状态。",
       "environmentView": "环境视图",
@@ -4436,6 +4446,27 @@
       "selectApplicationAction": "查看服务",
       "selectedService": "已选择",
       "selectServiceAction": "查看运行状态"
+    },
+    "application": {
+      "workspaceTitle": "应用交付工作台",
+      "environmentView": "环境",
+      "tabs": {
+        "deployments": "服务与部署",
+        "config": "配置",
+        "releases": "发布记录",
+        "artifacts": "制品",
+        "logs": "日志",
+        "audit": "审计"
+      },
+      "servicesTitle": "服务",
+      "servicesEmpty": "请先创建服务，再进行配置和部署。",
+      "configServiceTitle": "选择服务配置",
+      "configEmpty": "请选择服务部署配置，以查看项目、环境和服务三级配置的合并结果。",
+      "releasesTitle": "发布记录",
+      "releasesEmpty": "当前应用与环境下暂无发布记录。",
+      "artifactsTitle": "应用制品",
+      "artifactsEmpty": "当前应用尚未关联制品。",
+      "auditTitle": "应用审计"
     },
     "environments": { "tableTitle": "环境" },
     "applications": { "tableTitle": "应用" },
@@ -4543,6 +4574,10 @@
       "maskedValue": "••••••",
       "noEffectiveEntries": "暂无有效配置条目。"
     },
+    "runtime": {
+      "title": "运行状态与日志",
+      "logsTitle": "运行日志"
+    },
     "rollback": {
       "previewTitle": "回滚到发布 #{{id}}",
       "imageSummary": "{{current}} -> {{source}}",
@@ -4621,6 +4656,10 @@
       "validateRelease": "校验发布",
       "createRelease": "创建发布",
       "createConfigSet": "创建配置集",
+      "manageConfiguration": "管理配置层级",
+      "backToProjects": "全部项目",
+      "backToProject": "返回项目",
+      "backToApplication": "返回应用",
       "edit": "编辑",
       "archive": "归档",
       "reveal": "查看",
