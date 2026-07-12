@@ -4446,8 +4446,9 @@
       "taskFinished": "This operation has finished.",
       "taskFailureTitle": "Operation failed",
       "taskWaiting": "Waiting for the control plane to accept the operation.",
-      "taskNoEvents": "No safe execution events are available for this artifact.",
-      "taskSecurityNotice": "Only platform-defined stages and reason codes are shown. Raw Docker, registry, and artifact output is intentionally excluded to protect credentials and server details.",
+      "taskLogsTitle": "Operation output",
+      "taskLogsEmpty": "No terminal output is available for this operation.",
+      "taskLogsSecurityNotice": "Docker build output is shown after server-side redaction. Credentials, sensitive values, signed URLs, and server paths are not shown.",
       "taskStatuses": {
         "running": "Running",
         "succeeded": "Succeeded",

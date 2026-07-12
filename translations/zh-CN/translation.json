@@ -4505,8 +4505,9 @@
       "taskFinished": "本次操作已结束。",
       "taskFailureTitle": "操作失败",
       "taskWaiting": "正在等待控制面受理该操作。",
-      "taskNoEvents": "该制品暂无可展示的安全执行记录。",
-      "taskSecurityNotice": "这里只展示平台定义的阶段和原因码；Docker、registry 与原始制品输出可能包含凭据或服务器细节，因此不会显示。",
+      "taskLogsTitle": "操作输出",
+      "taskLogsEmpty": "本次操作暂无可展示的终端输出。",
+      "taskLogsSecurityNotice": "这里展示经过服务端脱敏的 Docker 构建输出；凭据、敏感变量、签名 URL 与服务器路径不会显示。",
       "taskStatuses": {
         "running": "执行中",
         "succeeded": "已完成",

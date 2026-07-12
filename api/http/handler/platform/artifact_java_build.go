@@ -70,6 +70,7 @@ func (h *Handler) artifactJavaBuild(w http.ResponseWriter, r *http.Request) *htt
 		artifact.BuildTemplate = platformservice.Java8BuildTemplate
 		artifact.FailureReason = ""
 		resetArtifactTaskEvents(artifact, "prepare", now)
+		resetArtifactTaskLogs(artifact)
 		touchLifecycle(&artifact.PlatformLifecycle, now)
 		return tx.PlatformArtifact().Update(artifact.ID, artifact)
 	})
@@ -102,7 +103,14 @@ func (h *Handler) artifactJavaBuild(w http.ResponseWriter, r *http.Request) *htt
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	h.recordArtifactTaskEvent(artifact.ID, lease, "build-image", artifactTaskEventRunning, "")
-	result, err := h.JavaImageBuilder.Build(ctx, platformservice.JavaImageBuildRequest{EndpointID: int(p.EndpointID), Context: bytes.NewReader(contextTar), CandidateRef: candidate})
+	result, err := h.JavaImageBuilder.Build(ctx, platformservice.JavaImageBuildRequest{
+		EndpointID:   int(p.EndpointID),
+		Context:      bytes.NewReader(contextTar),
+		CandidateRef: candidate,
+		LogWriter: func(output string) {
+			h.recordArtifactTaskLog(artifact.ID, lease, output)
+		},
+	})
 	if err != nil {
 		_ = h.JavaImageBuilder.Cleanup(context.Background(), int(p.EndpointID), candidate)
 		return h.finishJavaBuild(w, r, *artifact, lease, p.EndpointID, platformservice.ControlledBuildFailureReason(err))

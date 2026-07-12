@@ -86,6 +86,7 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 		buildArtifact.BuildTemplate = platformservice.StaticBuildTemplateName(options)
 		buildArtifact.FailureReason = ""
 		resetArtifactTaskEvents(buildArtifact, "prepare", now)
+		resetArtifactTaskLogs(buildArtifact)
 		touchLifecycle(&buildArtifact.PlatformLifecycle, now)
 		return tx.PlatformArtifact().Update(buildArtifact.ID, buildArtifact)
 	})
@@ -118,6 +119,9 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 		EndpointID:   int(payload.EndpointID),
 		Context:      contextFile,
 		CandidateRef: candidateRef,
+		LogWriter: func(output string) {
+			handler.recordArtifactTaskLog(buildArtifact.ID, leaseID, output)
+		},
 	})
 	if err != nil || result.CandidateRef == "" || result.ImageID == "" {
 		_ = handler.StaticImageBuilder.Cleanup(context.Background(), int(payload.EndpointID), candidateRef)

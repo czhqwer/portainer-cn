@@ -232,6 +232,7 @@ export interface PlatformArtifact extends PlatformLifecycle {
 	TaskId?: string;
 	TaskLeaseExpiresAt?: number;
 	TaskEvents?: PlatformArtifactTaskEvent[];
+	TaskLogs?: string[];
 	FailureReason?: string;
 	Retained?: boolean;
 	Cleanable?: boolean;

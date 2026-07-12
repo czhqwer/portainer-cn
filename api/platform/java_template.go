@@ -27,6 +27,7 @@ type JavaImageBuildRequest struct {
 	EndpointID   int
 	Context      io.Reader
 	CandidateRef string
+	LogWriter    func(string)
 }
 type JavaImageBuildResult struct {
 	CandidateRef string

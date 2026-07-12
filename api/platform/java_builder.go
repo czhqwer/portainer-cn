@@ -25,7 +25,11 @@ func (err controlledBuildError) Error() string {
 }
 
 type dockerBuildStreamMessage struct {
-	Error string `json:"error"`
+	Stream   string `json:"stream"`
+	Status   string `json:"status"`
+	ID       string `json:"id"`
+	Progress string `json:"progress"`
+	Error    string `json:"error"`
 }
 
 // ControlledBuildFailureReason 仅将 Docker 构建输出归类为固定原因码。
@@ -41,7 +45,7 @@ func ControlledBuildFailureReason(err error) string {
 	return "CONTROLLED_BUILD_FAILED"
 }
 
-func consumeDockerBuildOutput(reader io.Reader) error {
+func consumeDockerBuildOutput(reader io.Reader, logWriter func(string)) error {
 	decoder := json.NewDecoder(reader)
 	for {
 		var message dockerBuildStreamMessage
@@ -51,7 +55,23 @@ func consumeDockerBuildOutput(reader io.Reader) error {
 			}
 			return controlledBuildError{reason: "CONTROLLED_BUILD_FAILED"}
 		}
+		if message.Stream != "" && logWriter != nil {
+			logWriter(message.Stream)
+		}
+		if message.Status != "" && logWriter != nil {
+			status := strings.TrimSpace(message.Status)
+			if message.ID != "" {
+				status += " " + message.ID
+			}
+			if message.Progress != "" {
+				status += " " + strings.TrimSpace(message.Progress)
+			}
+			logWriter(status)
+		}
 		if message.Error != "" {
+			if logWriter != nil {
+				logWriter(message.Error)
+			}
 			return controlledBuildError{reason: classifyDockerBuildFailure(message.Error)}
 		}
 	}
@@ -93,7 +113,7 @@ func (b *DockerJavaImageBuilder) Build(ctx context.Context, request JavaImageBui
 		return JavaImageBuildResult{}, err
 	}
 	defer logs.CloseAndLogErr(response.Body)
-	if err := consumeDockerBuildOutput(response.Body); err != nil {
+	if err := consumeDockerBuildOutput(response.Body, request.LogWriter); err != nil {
 		return JavaImageBuildResult{}, err
 	}
 	inspect, _, err := cli.ImageInspectWithRaw(ctx, request.CandidateRef)

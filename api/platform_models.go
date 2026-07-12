@@ -528,6 +528,7 @@ type PlatformArtifact struct {
 	TaskID              string                      `json:"TaskId,omitempty"`
 	TaskLeaseExpiresAt  int64                       `json:"TaskLeaseExpiresAt,omitempty"`
 	TaskEvents          []PlatformArtifactTaskEvent `json:"TaskEvents,omitempty"`
+	TaskLogs            []string                    `json:"TaskLogs,omitempty"`
 	FailureReason       string                      `json:"FailureReason,omitempty"`
 	PlatformLifecycle
 }

@@ -63,7 +63,6 @@ import {
   PlatformApplication,
   PlatformAuditLog,
   PlatformArtifact,
-  PlatformArtifactTaskEvent,
   PlatformConfigEntry,
   PlatformConfigScopeType,
   PlatformConfigSet,
@@ -81,6 +80,7 @@ import {
   PlatformServiceDeployment,
   PlatformServiceDefinition,
 } from './types';
+import { ArtifactTaskTerminal } from './ArtifactTaskTerminal';
 
 export function PlatformHomeView() {
   const { t } = useTranslation();
@@ -3880,21 +3880,6 @@ type PlatformTranslation = (
   options?: { defaultValue?: string }
 ) => string;
 
-function artifactTaskStageLabel(t: PlatformTranslation, stage: string) {
-  return t(`platform.artifacts.taskStages.${stage}`, {
-    defaultValue: stage,
-  });
-}
-
-function artifactTaskStatusLabel(
-  t: PlatformTranslation,
-  status: PlatformArtifactTaskEvent['Status']
-) {
-  return t(`platform.artifacts.taskStatuses.${status}`, {
-    defaultValue: status,
-  });
-}
-
 function artifactTaskReasonLabel(t: PlatformTranslation, reason?: string) {
   if (!reason) {
     return '';
@@ -3964,53 +3949,30 @@ function ArtifactTaskProgress({
           {artifactTaskReasonLabel(t, artifact.FailureReason)}
         </Alert>
       )}
-      <div className="mt-3 overflow-x-auto">
-        <PlatformTable
-          columns={[
-            t('platform.columns.time', { defaultValue: 'Time' }),
-            t('platform.columns.stage', { defaultValue: 'Stage' }),
-            t('platform.columns.status', { defaultValue: 'Status' }),
-            t('platform.columns.failureReason', {
-              defaultValue: 'Failure reason',
-            }),
-          ]}
-          rows={events.map((event, index) => ({
-            key: `${event.Stage}-${event.OccurredAt}-${index}`,
-            cells: [
-              formatUnixTime(event.OccurredAt),
-              artifactTaskStageLabel(t, event.Stage),
-              <span
-                key="status"
-                className={`inline-flex rounded border border-solid px-2 py-0.5 text-xs font-semibold ${
-                  event.Status === 'failed'
-                    ? 'border-red-7 bg-red-1 text-red-9 th-dark:bg-red-11'
-                    : event.Status === 'succeeded'
-                      ? 'border-green-7 bg-green-1 text-green-9 th-dark:bg-green-11'
-                      : 'border-blue-7 bg-blue-1 text-blue-9 th-dark:bg-blue-11'
-                }`}
-              >
-                {artifactTaskStatusLabel(t, event.Status)}
-              </span>,
-              artifactTaskReasonLabel(t, event.Reason),
-            ],
-          }))}
+      <div className="mt-3">
+        <div className="mb-2 text-sm font-semibold">
+          {t('platform.artifacts.taskLogsTitle', {
+            defaultValue: 'Operation output',
+          })}
+        </div>
+        <ArtifactTaskTerminal
+          logs={artifact.TaskLogs}
+          emptyMessage={
+            isPolling
+              ? t('platform.artifacts.taskWaiting', {
+                  defaultValue:
+                    'Waiting for the control plane to accept the operation.',
+                })
+              : t('platform.artifacts.taskLogsEmpty', {
+                  defaultValue: 'No terminal output is available for this operation.',
+                })
+          }
         />
       </div>
-      {events.length === 0 && (
-        <div className="text-muted mt-3 text-sm">
-          {isPolling
-            ? t('platform.artifacts.taskWaiting', {
-                defaultValue: 'Waiting for the control plane to accept the operation.',
-              })
-            : t('platform.artifacts.taskNoEvents', {
-                defaultValue: 'No safe execution events are available for this artifact.',
-              })}
-        </div>
-      )}
       <div className="text-muted mt-3 text-xs">
-        {t('platform.artifacts.taskSecurityNotice', {
+        {t('platform.artifacts.taskLogsSecurityNotice', {
           defaultValue:
-            'Only platform-defined stages and reason codes are shown. Raw Docker, registry, and artifact output is intentionally excluded to protect credentials and server details.',
+            'Docker build output is shown after server-side redaction. Credentials, sensitive values, signed URLs, and server paths are not shown.',
         })}
       </div>
     </section>
