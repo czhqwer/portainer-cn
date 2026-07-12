@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	portainer "github.com/portainer/portainer/api"
 	"github.com/portainer/portainer/api/dataservices"
@@ -31,6 +33,7 @@ type GatewayRuntime interface {
 	Ensure(ctx context.Context, gateway portainer.PlatformGateway, datastorePath string) (string, error)
 	Test(ctx context.Context, gateway portainer.PlatformGateway, candidateHash string) error
 	Reload(ctx context.Context, gateway portainer.PlatformGateway) error
+	ProbeHTTP(ctx context.Context, gateway portainer.PlatformGateway, host string, port int) error
 }
 
 type DockerGatewayRuntime struct {
@@ -109,6 +112,21 @@ func (runtime *DockerGatewayRuntime) Test(ctx context.Context, gateway portainer
 
 func (runtime *DockerGatewayRuntime) Reload(ctx context.Context, gateway portainer.PlatformGateway) error {
 	return runtime.exec(ctx, gateway, []string{"nginx", "-s", "reload"})
+}
+
+// ProbeHTTP 通过受控网关容器内置的 BusyBox wget 验证网关网络命名空间到 workload 发布端口可达。
+// 参数只来自已校验的环境目标和 Release 快照，且以 argv 传递，不经 shell 解释。
+func (runtime *DockerGatewayRuntime) ProbeHTTP(ctx context.Context, gateway portainer.PlatformGateway, host string, port int) error {
+	if !validGatewayProbeHost(host) || port < 1 || port > 65535 {
+		return errors.New("gateway probe target is invalid")
+	}
+	url := "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+	return runtime.exec(ctx, gateway, []string{"wget", "-T", "3", "-q", "--spider", url})
+}
+
+func validGatewayProbeHost(host string) bool {
+	host = strings.TrimSpace(host)
+	return net.ParseIP(host) != nil || isGatewayHostname(host)
 }
 
 // exec 在执行前确认容器带有网关 ID 和 platform managed 标签，

@@ -93,3 +93,7 @@ func (runtime *fakeGatewayRuntime) Reload(context.Context, portainer.PlatformGat
 	runtime.reloadErrors = runtime.reloadErrors[1:]
 	return err
 }
+
+func (runtime *fakeGatewayRuntime) ProbeHTTP(context.Context, portainer.PlatformGateway, string, int) error {
+	return nil
+}

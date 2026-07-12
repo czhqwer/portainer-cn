@@ -85,6 +85,10 @@ func (platformGatewayRuntimeFake) Reload(context.Context, portainer.PlatformGate
 	return nil
 }
 
+func (platformGatewayRuntimeFake) ProbeHTTP(context.Context, portainer.PlatformGateway, string, int) error {
+	return nil
+}
+
 func TestPlatformCRUDAdminCreatesFullChain(t *testing.T) {
 	ctx := newPlatformTestContext(t)
 

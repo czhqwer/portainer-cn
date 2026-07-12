@@ -88,6 +88,8 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentUpdate))).Methods(http.MethodPut)
 	h.Handle("/platform/environments/{environmentId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/environments/{environmentId}/targets/preflight",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentTargetPreflight))).Methods(http.MethodPost)
 
 	h.Handle("/platform/projects/{projectId}/applications",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.applicationList))).Methods(http.MethodGet)
