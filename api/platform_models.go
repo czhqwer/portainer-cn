@@ -2,6 +2,8 @@ package portainer
 
 import (
 	"fmt"
+	"net/url"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -14,44 +16,47 @@ type (
 	PlatformServiceDeploymentID int
 	PlatformConfigSetID         int
 	PlatformArtifactID          int
+	PlatformArtifactStorageID   int
 	PlatformReleaseID           int
 	PlatformAuditLogID          int
 
-	PlatformProjectRole           string
-	PlatformLifecycleStatus       string
-	PlatformEnvironmentType       string
-	PlatformTargetMode            string
-	PlatformDeploymentTargetRole  string
-	PlatformReleasePolicyType     string
-	PlatformServiceType           string
-	PlatformArtifactType          string
-	PlatformArtifactSourceType    string
-	PlatformTraceability          string
-	PlatformStorageProvider       string
-	PlatformImagePullPolicy       string
-	PlatformPortProtocol          string
-	PlatformPortExposeMode        string
-	PlatformEnvVarSource          string
-	PlatformConfigScopeType       string
-	PlatformConfigValueType       string
-	PlatformConfigEntrySource     string
-	PlatformHealthVerification    string
-	PlatformHealthCheckType       string
-	PlatformHealthCheckStatus     string
-	PlatformRuntimeDriver         string
-	PlatformRuntimeResourceType   string
-	PlatformRuntimeRestartPolicy  string
-	PlatformVolumeType            string
-	PlatformReleaseStrategyType   string
-	PlatformReleaseTriggerType    string
-	PlatformReleaseStatus         string
-	PlatformReleaseStepStatus     string
-	PlatformReleaseResolution     string
-	PlatformReleaseTargetStatus   string
-	PlatformExecutorMode          string
-	PlatformDeploymentDriftStatus string
-	PlatformAuditAction           string
-	PlatformAuditResult           string
+	PlatformProjectRole             string
+	PlatformLifecycleStatus         string
+	PlatformEnvironmentType         string
+	PlatformTargetMode              string
+	PlatformDeploymentTargetRole    string
+	PlatformReleasePolicyType       string
+	PlatformServiceType             string
+	PlatformArtifactType            string
+	PlatformArtifactSourceType      string
+	PlatformTraceability            string
+	PlatformStorageProvider         string
+	PlatformArtifactStorageProvider string
+	PlatformArtifactStatus          string
+	PlatformImagePullPolicy         string
+	PlatformPortProtocol            string
+	PlatformPortExposeMode          string
+	PlatformEnvVarSource            string
+	PlatformConfigScopeType         string
+	PlatformConfigValueType         string
+	PlatformConfigEntrySource       string
+	PlatformHealthVerification      string
+	PlatformHealthCheckType         string
+	PlatformHealthCheckStatus       string
+	PlatformRuntimeDriver           string
+	PlatformRuntimeResourceType     string
+	PlatformRuntimeRestartPolicy    string
+	PlatformVolumeType              string
+	PlatformReleaseStrategyType     string
+	PlatformReleaseTriggerType      string
+	PlatformReleaseStatus           string
+	PlatformReleaseStepStatus       string
+	PlatformReleaseResolution       string
+	PlatformReleaseTargetStatus     string
+	PlatformExecutorMode            string
+	PlatformDeploymentDriftStatus   string
+	PlatformAuditAction             string
+	PlatformAuditResult             string
 )
 
 const (
@@ -104,6 +109,21 @@ const (
 	PlatformStorageProviderMinio     PlatformStorageProvider = "minio"
 	PlatformStorageProviderS3        PlatformStorageProvider = "s3"
 	PlatformStorageProviderAliyunOSS PlatformStorageProvider = "aliyun-oss"
+
+	// V0.5 只接入 S3 Compatible 协议；MinIO 通过相同协议接入，避免引入独立厂商 adapter。
+	PlatformArtifactStorageProviderS3Compatible PlatformArtifactStorageProvider = "s3-compatible"
+
+	PlatformArtifactStatusUploaded  PlatformArtifactStatus = "uploaded"
+	PlatformArtifactStatusFetched   PlatformArtifactStatus = "fetched"
+	PlatformArtifactStatusValidated PlatformArtifactStatus = "validated"
+	PlatformArtifactStatusImporting PlatformArtifactStatus = "importing"
+	PlatformArtifactStatusBuilding  PlatformArtifactStatus = "building"
+	PlatformArtifactStatusBuilt     PlatformArtifactStatus = "built"
+	PlatformArtifactStatusPushing   PlatformArtifactStatus = "pushing"
+	PlatformArtifactStatusReady     PlatformArtifactStatus = "ready"
+	PlatformArtifactStatusFailed    PlatformArtifactStatus = "failed"
+
+	PlatformArtifactStorageCredentialEncryptionVersion = "boltdb-v1"
 
 	PlatformImagePullPolicyAlways       PlatformImagePullPolicy = "always"
 	PlatformImagePullPolicyIfNotPresent PlatformImagePullPolicy = "if-not-present"
@@ -468,10 +488,38 @@ type PlatformArtifact struct {
 	FileName            string                      `json:"FileName,omitempty"`
 	Size                int64                       `json:"Size,omitempty"`
 	SHA256              string                      `json:"SHA256,omitempty"`
+	StorageID           PlatformArtifactStorageID   `json:"StorageId,omitempty" example:"1"`
 	StorageProvider     PlatformStorageProvider     `json:"StorageProvider,omitempty"`
 	StoragePath         string                      `json:"StoragePath,omitempty"`
 	Retained            bool                        `json:"Retained" example:"false"`
 	Cleanable           bool                        `json:"Cleanable" example:"false"`
+	Status              PlatformArtifactStatus      `json:"Status" example:"ready"`
+	CandidateImageRef   string                      `json:"CandidateImageRef,omitempty"`
+	CandidateImageID    string                      `json:"CandidateImageId,omitempty"`
+	ImageTag            string                      `json:"ImageTag,omitempty"`
+	BuildTemplate       string                      `json:"BuildTemplate,omitempty"`
+	TaskID              string                      `json:"TaskId,omitempty"`
+	TaskLeaseExpiresAt  int64                       `json:"TaskLeaseExpiresAt,omitempty"`
+	FailureReason       string                      `json:"FailureReason,omitempty"`
+	PlatformLifecycle
+}
+
+// PlatformArtifactStorage 保存平台受管对象存储的非敏感定位信息和加密后的凭据。
+// 只有密文可以进入 BoltDB，后续 handler 会在请求内完成加密并在响应中移除凭据字段。
+type PlatformArtifactStorage struct {
+	ID                          PlatformArtifactStorageID       `json:"Id" example:"1"`
+	Name                        string                          `json:"Name" example:"delivery-minio"`
+	Provider                    PlatformArtifactStorageProvider `json:"Provider" example:"s3-compatible"`
+	Endpoint                    string                          `json:"Endpoint" example:"https://minio.example.com"`
+	Region                      string                          `json:"Region,omitempty" example:"us-east-1"`
+	Bucket                      string                          `json:"Bucket" example:"artifacts"`
+	PathPrefix                  string                          `json:"PathPrefix,omitempty" example:"releases"`
+	UseTLS                      bool                            `json:"UseTLS" example:"true"`
+	SkipTLSVerify               bool                            `json:"SkipTLSVerify" example:"false"`
+	AccessKeyCipherText         string                          `json:"-" swaggerignore:"true"`
+	SecretKeyCipherText         string                          `json:"-" swaggerignore:"true"`
+	CredentialEncryptionVersion string                          `json:"CredentialEncryptionVersion,omitempty"`
+	CredentialHash              string                          `json:"CredentialHash,omitempty"`
 	PlatformLifecycle
 }
 
@@ -535,9 +583,12 @@ type PlatformArtifactSnapshot struct {
 	RegistryID      RegistryID                 `json:"RegistryId,omitempty"`
 	SHA256          string                     `json:"SHA256,omitempty"`
 	Size            int64                      `json:"Size,omitempty"`
+	StorageID       PlatformArtifactStorageID  `json:"StorageId,omitempty"`
 	StorageProvider PlatformStorageProvider    `json:"StorageProvider,omitempty"`
 	StoragePath     string                     `json:"StoragePath,omitempty"`
 	Retained        bool                       `json:"Retained" example:"false"`
+	ImageTag        string                     `json:"ImageTag,omitempty"`
+	BuildTemplate   string                     `json:"BuildTemplate,omitempty"`
 }
 
 type PlatformServiceConfigSnapshot struct {
@@ -668,6 +719,7 @@ func NewPlatformLifecycle() PlatformLifecycle {
 }
 
 var platformConfigEntryKeyPattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+var platformArtifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 // NewPlatformConfigSet creates the safe metadata-only baseline for a configuration set.
 // 敏感值的加密保存将在阶段 2 批次 4 接入；这里先固定默认配置集和版本，避免
@@ -677,6 +729,161 @@ func NewPlatformConfigSet() PlatformConfigSet {
 		Name:              PlatformConfigSetDefaultName,
 		Revision:          1,
 		PlatformLifecycle: NewPlatformLifecycle(),
+	}
+}
+
+// NewPlatformArtifactStorage 创建只包含 S3 Compatible 默认值的存储配置。
+// 凭据必须在后续 handler 中使用 Portainer 已启用的加密能力填充，避免任何调用方误把明文当成默认值写入 BoltDB。
+func NewPlatformArtifactStorage() PlatformArtifactStorage {
+	return PlatformArtifactStorage{
+		Provider:          PlatformArtifactStorageProviderS3Compatible,
+		UseTLS:            true,
+		PlatformLifecycle: NewPlatformLifecycle(),
+	}
+}
+
+// NormalizePlatformArtifactStorage 统一存储定位字段，保证后续 S3 adapter 只接收逻辑对象前缀。
+// 这里不会处理密文，避免 dataservice 在没有密钥上下文时接触任何凭据明文。
+func NormalizePlatformArtifactStorage(storage *PlatformArtifactStorage) {
+	if storage == nil {
+		return
+	}
+
+	storage.Name = strings.TrimSpace(storage.Name)
+	storage.Endpoint = strings.TrimSpace(storage.Endpoint)
+	storage.Region = strings.TrimSpace(storage.Region)
+	storage.Bucket = strings.TrimSpace(storage.Bucket)
+	storage.PathPrefix = strings.Trim(strings.TrimSpace(storage.PathPrefix), "/")
+	storage.CredentialEncryptionVersion = strings.TrimSpace(storage.CredentialEncryptionVersion)
+	storage.CredentialHash = strings.TrimSpace(storage.CredentialHash)
+}
+
+// ValidatePlatformArtifactStorage 在 adapter 尚未接入前固定存储模型的安全边界。
+// endpoint、bucket 和逻辑前缀可以持久化，但必须拒绝绝对/穿越前缀及不成对的加密凭据，防止后续下载绕开受管 bucket。
+func ValidatePlatformArtifactStorage(storage PlatformArtifactStorage) error {
+	NormalizePlatformArtifactStorage(&storage)
+
+	if storage.Name == "" {
+		return fmt.Errorf("artifact storage name is required")
+	}
+	if storage.Provider != PlatformArtifactStorageProviderS3Compatible {
+		return fmt.Errorf("artifact storage provider %q is not supported", storage.Provider)
+	}
+	endpoint, err := url.ParseRequestURI(storage.Endpoint)
+	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") {
+		return fmt.Errorf("artifact storage endpoint is invalid")
+	}
+	if storage.Bucket == "" {
+		return fmt.Errorf("artifact storage bucket is required")
+	}
+	if storage.PathPrefix != "" && (strings.HasPrefix(storage.PathPrefix, ".") || path.Clean(storage.PathPrefix) != storage.PathPrefix) {
+		return fmt.Errorf("artifact storage path prefix is unsafe")
+	}
+
+	hasAccessKey := storage.AccessKeyCipherText != ""
+	hasSecretKey := storage.SecretKeyCipherText != ""
+	if hasAccessKey != hasSecretKey {
+		return fmt.Errorf("artifact storage credentials must be stored together")
+	}
+	if hasAccessKey && storage.CredentialEncryptionVersion != PlatformArtifactStorageCredentialEncryptionVersion {
+		return fmt.Errorf("artifact storage credential encryption version is invalid")
+	}
+	if !hasAccessKey && (storage.CredentialEncryptionVersion != "" || storage.CredentialHash != "") {
+		return fmt.Errorf("artifact storage credential metadata requires encrypted credentials")
+	}
+
+	return nil
+}
+
+// NormalizePlatformArtifact 为阶段 1 已有镜像和阶段 3 文件制品提供兼容的生命周期默认值。
+// 已有 image-reference 没有构建步骤，必须直接标为 ready，避免迁移后把可用历史制品误判为不可发布。
+func NormalizePlatformArtifact(artifact *PlatformArtifact) {
+	if artifact == nil {
+		return
+	}
+
+	artifact.Name = strings.TrimSpace(artifact.Name)
+	artifact.Version = strings.TrimSpace(artifact.Version)
+	artifact.FileName = strings.TrimSpace(artifact.FileName)
+	artifact.ImageRef = strings.TrimSpace(artifact.ImageRef)
+	artifact.ImageDigest = strings.TrimSpace(artifact.ImageDigest)
+	artifact.ImageTag = strings.TrimSpace(artifact.ImageTag)
+	artifact.StoragePath = strings.Trim(strings.TrimSpace(artifact.StoragePath), "/")
+	artifact.SHA256 = strings.TrimSpace(artifact.SHA256)
+	artifact.CandidateImageRef = strings.TrimSpace(artifact.CandidateImageRef)
+	artifact.CandidateImageID = strings.TrimSpace(artifact.CandidateImageID)
+	artifact.BuildTemplate = strings.TrimSpace(artifact.BuildTemplate)
+	artifact.TaskID = strings.TrimSpace(artifact.TaskID)
+	artifact.FailureReason = strings.TrimSpace(artifact.FailureReason)
+
+	if artifact.Status == "" {
+		if artifact.Type == PlatformArtifactTypeImage && artifact.SourceType == PlatformArtifactSourceImageReference {
+			artifact.Status = PlatformArtifactStatusReady
+		} else if artifact.SourceType == PlatformArtifactSourceObjectStorage {
+			artifact.Status = PlatformArtifactStatusFetched
+		} else {
+			artifact.Status = PlatformArtifactStatusUploaded
+		}
+	}
+	if !artifact.Retained {
+		artifact.Cleanable = false
+	}
+}
+
+// ValidatePlatformArtifact 保护批次 2 之后所有数据写入的制品契约；它只验证持久化事实，
+// 不会在事务中执行文件读取、对象存储、Docker 或 registry 操作。
+func ValidatePlatformArtifact(artifact PlatformArtifact) error {
+	NormalizePlatformArtifact(&artifact)
+
+	if artifact.ProjectID <= 0 || artifact.Name == "" || artifact.Version == "" {
+		return fmt.Errorf("artifact project, name and version are required")
+	}
+	if artifact.Type != PlatformArtifactTypeImage &&
+		artifact.Type != PlatformArtifactTypeDockerTar &&
+		artifact.Type != PlatformArtifactTypeOCIArchive &&
+		artifact.Type != PlatformArtifactTypeJavaJar &&
+		artifact.Type != PlatformArtifactTypeFrontendDist {
+		return fmt.Errorf("artifact type %q is not supported", artifact.Type)
+	}
+	if artifact.SourceType != PlatformArtifactSourceImageReference &&
+		artifact.SourceType != PlatformArtifactSourceUpload &&
+		artifact.SourceType != PlatformArtifactSourceObjectStorage {
+		return fmt.Errorf("artifact source type %q is not supported", artifact.SourceType)
+	}
+	if artifact.Type == PlatformArtifactTypeImage {
+		if artifact.SourceType != PlatformArtifactSourceImageReference || artifact.ImageRef == "" {
+			return fmt.Errorf("image artifact requires an image reference source")
+		}
+	} else if artifact.SourceType == PlatformArtifactSourceImageReference {
+		return fmt.Errorf("file artifact cannot use an image reference source")
+	}
+	if artifact.SHA256 != "" && !platformArtifactSHA256Pattern.MatchString(artifact.SHA256) {
+		return fmt.Errorf("artifact SHA256 is invalid")
+	}
+	if artifact.StoragePath != "" && (strings.HasPrefix(artifact.StoragePath, ".") || path.Clean(artifact.StoragePath) != artifact.StoragePath) {
+		return fmt.Errorf("artifact storage path is unsafe")
+	}
+	if artifact.SourceType == PlatformArtifactSourceObjectStorage && artifact.StorageID <= 0 {
+		return fmt.Errorf("object storage artifact requires a storage ID")
+	}
+	if artifact.Cleanable && !artifact.Retained {
+		return fmt.Errorf("removed artifact cannot remain cleanable")
+	}
+	if !isPlatformArtifactStatus(artifact.Status) {
+		return fmt.Errorf("artifact status %q is invalid", artifact.Status)
+	}
+
+	return nil
+}
+
+func isPlatformArtifactStatus(status PlatformArtifactStatus) bool {
+	switch status {
+	case PlatformArtifactStatusUploaded, PlatformArtifactStatusFetched, PlatformArtifactStatusValidated,
+		PlatformArtifactStatusImporting, PlatformArtifactStatusBuilding, PlatformArtifactStatusBuilt,
+		PlatformArtifactStatusPushing, PlatformArtifactStatusReady, PlatformArtifactStatusFailed:
+		return true
+	default:
+		return false
 	}
 }
 

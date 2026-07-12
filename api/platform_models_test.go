@@ -134,3 +134,60 @@ func TestValidatePlatformConfigSetRejectsUnsafeOrInvalidEntries(t *testing.T) {
 		require.NoError(t, ValidatePlatformConfigSet(configSet))
 	})
 }
+
+func TestPlatformArtifactStorageDefaultsAndValidation(t *testing.T) {
+	storage := NewPlatformArtifactStorage()
+	storage.Name = "delivery-minio"
+	storage.Endpoint = "https://minio.example.com"
+	storage.Bucket = "artifacts"
+	storage.PathPrefix = "releases/v05"
+	storage.AccessKeyCipherText = "encrypted-access-key"
+	storage.SecretKeyCipherText = "encrypted-secret-key"
+	storage.CredentialEncryptionVersion = PlatformArtifactStorageCredentialEncryptionVersion
+	storage.CredentialHash = "credential-hash"
+
+	require.Equal(t, PlatformArtifactStorageProviderS3Compatible, storage.Provider)
+	require.True(t, storage.UseTLS)
+	require.NoError(t, ValidatePlatformArtifactStorage(storage))
+
+	storage.PathPrefix = "../escape"
+	require.Error(t, ValidatePlatformArtifactStorage(storage))
+
+	storage.PathPrefix = "releases"
+	storage.SecretKeyCipherText = ""
+	require.Error(t, ValidatePlatformArtifactStorage(storage))
+}
+
+func TestPlatformArtifactNormalizationAndValidation(t *testing.T) {
+	image := PlatformArtifact{
+		ProjectID:  1,
+		Name:       "orders",
+		Version:    "1.0.0",
+		Type:       PlatformArtifactTypeImage,
+		SourceType: PlatformArtifactSourceImageReference,
+		ImageRef:   "registry.example.com/orders:1.0.0",
+	}
+
+	NormalizePlatformArtifact(&image)
+	require.Equal(t, PlatformArtifactStatusReady, image.Status)
+	require.NoError(t, ValidatePlatformArtifact(image))
+
+	archive := PlatformArtifact{
+		ProjectID:   1,
+		Name:        "orders",
+		Version:     "1.0.1",
+		Type:        PlatformArtifactTypeOCIArchive,
+		SourceType:  PlatformArtifactSourceObjectStorage,
+		StorageID:   1,
+		StoragePath: "releases/orders.oci.tar",
+		SHA256:      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		Retained:    true,
+	}
+
+	NormalizePlatformArtifact(&archive)
+	require.Equal(t, PlatformArtifactStatusFetched, archive.Status)
+	require.NoError(t, ValidatePlatformArtifact(archive))
+
+	archive.StoragePath = "../../escape"
+	require.Error(t, ValidatePlatformArtifact(archive))
+}

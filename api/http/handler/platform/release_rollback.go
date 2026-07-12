@@ -326,7 +326,12 @@ func artifactFromRollbackSource(source *portainer.PlatformRelease) *portainer.Pl
 		RegistryID:          source.ArtifactSnapshot.RegistryID,
 		SHA256:              source.ArtifactSnapshot.SHA256,
 		Size:                source.ArtifactSnapshot.Size,
+		StorageID:           source.ArtifactSnapshot.StorageID,
+		StorageProvider:     source.ArtifactSnapshot.StorageProvider,
+		StoragePath:         source.ArtifactSnapshot.StoragePath,
 		Retained:            source.ArtifactSnapshot.Retained,
+		ImageTag:            source.ArtifactSnapshot.ImageTag,
+		BuildTemplate:       source.ArtifactSnapshot.BuildTemplate,
 	}
 }
 

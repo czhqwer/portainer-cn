@@ -532,18 +532,23 @@ func (handler *Handler) persistReleaseExecutionResult(r *http.Request, result pl
 
 func artifactSnapshotFromArtifact(artifact *portainer.PlatformArtifact) portainer.PlatformArtifactSnapshot {
 	return portainer.PlatformArtifactSnapshot{
-		ArtifactID:   artifact.ID,
-		Name:         artifact.Name,
-		Version:      artifact.Version,
-		Type:         artifact.Type,
-		SourceType:   artifact.SourceType,
-		ImageRef:     artifact.ImageRef,
-		ImageDigest:  artifact.ImageDigest,
-		Traceability: artifact.Traceability,
-		RegistryID:   artifact.RegistryID,
-		SHA256:       artifact.SHA256,
-		Size:         artifact.Size,
-		Retained:     artifact.Retained,
+		ArtifactID:      artifact.ID,
+		Name:            artifact.Name,
+		Version:         artifact.Version,
+		Type:            artifact.Type,
+		SourceType:      artifact.SourceType,
+		ImageRef:        artifact.ImageRef,
+		ImageDigest:     artifact.ImageDigest,
+		Traceability:    artifact.Traceability,
+		RegistryID:      artifact.RegistryID,
+		SHA256:          artifact.SHA256,
+		Size:            artifact.Size,
+		StorageID:       artifact.StorageID,
+		StorageProvider: artifact.StorageProvider,
+		StoragePath:     artifact.StoragePath,
+		Retained:        artifact.Retained,
+		ImageTag:        artifact.ImageTag,
+		BuildTemplate:   artifact.BuildTemplate,
 	}
 }
 

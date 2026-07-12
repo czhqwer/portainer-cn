@@ -54,6 +54,10 @@ func (tx *StoreTx) PlatformArtifact() dataservices.PlatformArtifactService {
 	return tx.store.PlatformArtifactService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformArtifactStorage() dataservices.PlatformArtifactStorageService {
+	return tx.store.PlatformArtifactStorageService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PlatformRelease() dataservices.PlatformReleaseService {
 	return tx.store.PlatformReleaseService.Tx(tx.tx)
 }

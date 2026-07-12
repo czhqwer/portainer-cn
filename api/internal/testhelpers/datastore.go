@@ -23,6 +23,7 @@ type testDatastore struct {
 	platformServiceDeployment dataservices.PlatformServiceDeploymentService
 	platformConfigSet         dataservices.PlatformConfigSetService
 	platformArtifact          dataservices.PlatformArtifactService
+	platformArtifactStorage   dataservices.PlatformArtifactStorageService
 	platformRelease           dataservices.PlatformReleaseService
 	platformReleaseLock       dataservices.PlatformReleaseLockService
 	platformAuditLog          dataservices.PlatformAuditLogService
@@ -92,6 +93,9 @@ func (d *testDatastore) PlatformConfigSet() dataservices.PlatformConfigSetServic
 }
 func (d *testDatastore) PlatformArtifact() dataservices.PlatformArtifactService {
 	return d.platformArtifact
+}
+func (d *testDatastore) PlatformArtifactStorage() dataservices.PlatformArtifactStorageService {
+	return d.platformArtifactStorage
 }
 func (d *testDatastore) PlatformRelease() dataservices.PlatformReleaseService {
 	return d.platformRelease

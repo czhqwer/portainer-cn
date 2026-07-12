@@ -18,6 +18,7 @@ type (
 		PlatformServiceDeployment() PlatformServiceDeploymentService
 		PlatformConfigSet() PlatformConfigSetService
 		PlatformArtifact() PlatformArtifactService
+		PlatformArtifactStorage() PlatformArtifactStorageService
 		PlatformRelease() PlatformReleaseService
 		PlatformReleaseLock() PlatformReleaseLockService
 		PlatformAuditLog() PlatformAuditLogService
@@ -129,6 +130,13 @@ type (
 	// PlatformArtifactService represents a service to manage platform artifacts.
 	PlatformArtifactService interface {
 		BaseCRUD[portainer.PlatformArtifact, portainer.PlatformArtifactID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformArtifactStorageService manages encrypted-credential metadata for S3 Compatible artifact storage.
+	// Callers must encrypt credentials before persistence; the service never returns or transforms plaintext credentials.
+	PlatformArtifactStorageService interface {
+		BaseCRUD[portainer.PlatformArtifactStorage, portainer.PlatformArtifactStorageID]
 		GetNextIdentifier() int
 	}
 

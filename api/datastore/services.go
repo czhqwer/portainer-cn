@@ -24,6 +24,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/pendingactions"
 	"github.com/portainer/portainer/api/dataservices/platformapplication"
 	"github.com/portainer/portainer/api/dataservices/platformartifact"
+	"github.com/portainer/portainer/api/dataservices/platformartifactstorage"
 	"github.com/portainer/portainer/api/dataservices/platformauditlog"
 	"github.com/portainer/portainer/api/dataservices/platformconfigset"
 	"github.com/portainer/portainer/api/dataservices/platformenvironment"
@@ -74,6 +75,7 @@ type Store struct {
 	PlatformServiceDeploymentService *platformservicedeployment.Service
 	PlatformConfigSetService         *platformconfigset.Service
 	PlatformArtifactService          *platformartifact.Service
+	PlatformArtifactStorageService   *platformartifactstorage.Service
 	PlatformReleaseService           *platformrelease.Service
 	PlatformReleaseLockService       *platformreleaselock.Service
 	PlatformAuditLogService          *platformauditlog.Service
@@ -176,6 +178,12 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.PlatformArtifactService = platformArtifactService
+
+	platformArtifactStorageService, err := platformartifactstorage.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformArtifactStorageService = platformArtifactStorageService
 
 	platformReleaseService, err := platformrelease.NewService(store.connection)
 	if err != nil {
@@ -436,6 +444,11 @@ func (store *Store) PlatformArtifact() dataservices.PlatformArtifactService {
 	return store.PlatformArtifactService
 }
 
+// PlatformArtifactStorage gives access to S3 Compatible artifact storage configuration metadata.
+func (store *Store) PlatformArtifactStorage() dataservices.PlatformArtifactStorageService {
+	return store.PlatformArtifactStorageService
+}
+
 // PlatformRelease gives access to the platform release data management layer
 func (store *Store) PlatformRelease() dataservices.PlatformReleaseService {
 	return store.PlatformReleaseService
@@ -616,6 +629,7 @@ type storeExport struct {
 	PlatformServiceDeployment []portainer.PlatformServiceDeployment `json:"platform_service_deployments,omitempty"`
 	PlatformConfigSet         []portainer.PlatformConfigSet         `json:"platform_config_sets,omitempty"`
 	PlatformArtifact          []portainer.PlatformArtifact          `json:"platform_artifacts,omitempty"`
+	PlatformArtifactStorage   []portainer.PlatformArtifactStorage   `json:"platform_artifact_storages,omitempty"`
 	PlatformRelease           []portainer.PlatformRelease           `json:"platform_releases,omitempty"`
 	PlatformReleaseLock       []portainer.PlatformReleaseLock       `json:"platform_release_locks,omitempty"`
 	PlatformAuditLog          []portainer.PlatformAuditLog          `json:"platform_audit_logs,omitempty"`
@@ -881,6 +895,22 @@ func (store *Store) Export(filename string) (err error) {
 		backup.PlatformArtifact = a
 	}
 
+	if s, err := store.PlatformArtifactStorage().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Artifact Storages")
+		}
+	} else {
+		// 导出文件可能在未加密环境中传递，因此保留连接定位配置以便恢复，
+		// 但绝不导出任何凭据密文或其元数据；恢复后必须由管理员重新填写凭据。
+		for i := range s {
+			s[i].AccessKeyCipherText = ""
+			s[i].SecretKeyCipherText = ""
+			s[i].CredentialEncryptionVersion = ""
+			s[i].CredentialHash = ""
+		}
+		backup.PlatformArtifactStorage = s
+	}
+
 	if r, err := store.PlatformRelease().ReadAll(); err != nil {
 		if !store.IsErrObjectNotFound(err) {
 			log.Error().Err(err).Msg("exporting Platform Releases")
@@ -1114,6 +1144,12 @@ func (store *Store) Import(filename string) (err error) {
 	for _, v := range backup.PlatformArtifact {
 		if err := store.PlatformArtifact().Update(v.ID, &v); err != nil {
 			log.Warn().Err(err).Msg("failed to update the platform artifact in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformArtifactStorage {
+		if err := store.PlatformArtifactStorage().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform artifact storage in the database")
 		}
 	}
 

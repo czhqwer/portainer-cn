@@ -103,6 +103,7 @@
   "helm_user_repository": null,
   "pending_actions": null,
   "platform_applications": null,
+  "platform_artifact_storages": null,
   "platform_artifacts": null,
   "platform_audit_logs": null,
   "platform_config_sets": null,

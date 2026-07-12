@@ -84,6 +84,14 @@ func TestPlatformDataServicesCRUDAndArchive(t *testing.T) {
 	artifact.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
 	require.NoError(t, store.PlatformArtifact().Update(artifact.ID, artifact))
 
+	storage := samplePlatformArtifactStorage()
+	require.NoError(t, store.PlatformArtifactStorage().Create(storage))
+	gotStorage, err := store.PlatformArtifactStorage().Read(storage.ID)
+	require.NoError(t, err)
+	require.Equal(t, storage.Bucket, gotStorage.Bucket)
+	storage.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
+	require.NoError(t, store.PlatformArtifactStorage().Update(storage.ID, storage))
+
 	release := samplePlatformRelease(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID)
 	require.NoError(t, store.PlatformRelease().Create(release))
 	gotRelease, err := store.PlatformRelease().Read(release.ID)
@@ -119,6 +127,9 @@ func TestPlatformDataServicesTxAndReleaseLock(t *testing.T) {
 			return err
 		}
 		if err := tx.PlatformConfigSet().Create(samplePlatformConfigSet(project.ID)); err != nil {
+			return err
+		}
+		if err := tx.PlatformArtifactStorage().Create(samplePlatformArtifactStorage()); err != nil {
 			return err
 		}
 
@@ -174,6 +185,8 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	require.NoError(t, store.PlatformConfigSet().Create(configSet))
 	artifact := samplePlatformArtifact(project.ID, application.ID, definition.ID)
 	require.NoError(t, store.PlatformArtifact().Create(artifact))
+	storage := samplePlatformArtifactStorage()
+	require.NoError(t, store.PlatformArtifactStorage().Create(storage))
 	release := samplePlatformRelease(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID)
 	require.NoError(t, store.PlatformRelease().Create(release))
 	lock := &portainer.PlatformReleaseLock{
@@ -207,6 +220,14 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	importedConfigSet, err := importedStore.PlatformConfigSet().Read(configSet.ID)
 	require.NoError(t, err)
 	require.Equal(t, configSet.Entries, importedConfigSet.Entries)
+
+	importedStorage, err := importedStore.PlatformArtifactStorage().Read(storage.ID)
+	require.NoError(t, err)
+	require.Equal(t, storage.Bucket, importedStorage.Bucket)
+	require.Empty(t, importedStorage.AccessKeyCipherText)
+	require.Empty(t, importedStorage.SecretKeyCipherText)
+	require.Empty(t, importedStorage.CredentialEncryptionVersion)
+	require.Empty(t, importedStorage.CredentialHash)
 
 	importedLock, err := importedStore.PlatformReleaseLock().Read(lock.ID)
 	require.NoError(t, err)
@@ -328,6 +349,20 @@ func samplePlatformArtifact(
 		Traceability:        portainer.PlatformTraceabilityWeak,
 		PlatformLifecycle:   portainer.NewPlatformLifecycle(),
 	}
+}
+
+func samplePlatformArtifactStorage() *portainer.PlatformArtifactStorage {
+	storage := portainer.NewPlatformArtifactStorage()
+	storage.Name = "delivery-minio"
+	storage.Endpoint = "https://minio.example.com"
+	storage.Region = "us-east-1"
+	storage.Bucket = "artifacts"
+	storage.PathPrefix = "releases"
+	storage.AccessKeyCipherText = "encrypted-access-key"
+	storage.SecretKeyCipherText = "encrypted-secret-key"
+	storage.CredentialEncryptionVersion = portainer.PlatformArtifactStorageCredentialEncryptionVersion
+	storage.CredentialHash = "credential-hash"
+	return &storage
 }
 
 func samplePlatformRelease(
