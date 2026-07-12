@@ -288,9 +288,12 @@ export function PlatformHomeView() {
 export function PlatformProjectsView() {
   const { t } = useTranslation();
   const { isPureAdmin } = useCurrentUser();
+  const router = useRouter();
   const projectsQuery = usePlatformProjects();
   const projects = projectsQuery.data ?? [];
-  const [selectedProjectId, setSelectedProjectId] = useState<number>();
+  const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(
+    () => routeParamID(router.globals.params.projectId)
+  );
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [isEnvironmentFormOpen, setIsEnvironmentFormOpen] = useState(false);
   const currentProject =
@@ -426,6 +429,15 @@ export function PlatformProjectsView() {
       >
         <EnvironmentsTable environments={environments} />
       </DataSection>
+      {currentProject && (
+        <ProjectApplicationWorkspace
+          key={currentProject.Id}
+          project={currentProject}
+          projects={projects}
+          environments={environments}
+          canManage={canManageCurrentProject}
+        />
+      )}
       {canViewProjectAudit && (
         <DataSection
           title={t('platform.audit.tableTitle')}
@@ -441,20 +453,40 @@ export function PlatformProjectsView() {
 }
 
 export function PlatformApplicationsView() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // 应用不再是与项目平行的业务入口；保留旧地址的跳转只为兼容已收藏链接。
+    router.stateService.go('portainer.platform.projects');
+  }, [router]);
+
+  return <PlatformProjectsView />;
+}
+
+function ProjectApplicationWorkspace({
+  project,
+  projects,
+  environments,
+  canManage,
+}: {
+  project: PlatformProject;
+  projects: PlatformProject[];
+  environments: PlatformEnvironment[];
+  canManage: boolean;
+}) {
   const { t } = useTranslation();
-  const projectsQuery = usePlatformProjects();
-  const projects = projectsQuery.data ?? [];
-  const [selectedProjectId, setSelectedProjectId] = useState<number>();
+  const router = useRouter();
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<number>();
   const [selectedApplicationId, setSelectedApplicationId] = useState<number>();
   const [selectedServiceId, setSelectedServiceId] = useState<number>();
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<number>();
   const [isApplicationFormOpen, setIsApplicationFormOpen] = useState(false);
   const [isServiceFormOpen, setIsServiceFormOpen] = useState(false);
-  const currentProject =
-    projects.find((project) => project.Id === selectedProjectId) ?? projects[0];
-  const canManageCurrentProject =
-    !!currentProject?.Permissions?.CanManageResources;
-  const applicationsQuery = usePlatformApplications(currentProject?.Id);
+  const currentEnvironment =
+    environments.find(
+      (environment) => environment.Id === selectedEnvironmentId
+    ) ?? environments[0];
+  const applicationsQuery = usePlatformApplications(project.Id);
   const applications = applicationsQuery.data ?? [];
   const currentApplication =
     applications.find(
@@ -466,164 +498,237 @@ export function PlatformApplicationsView() {
     services.find((service) => service.Id === selectedServiceId) ?? services[0];
   const deploymentsQuery = usePlatformServiceDeployments(currentService?.Id);
   const deployments = deploymentsQuery.data ?? [];
+  const environmentDeployments = currentEnvironment
+    ? deployments.filter(
+        (deployment) => deployment.EnvironmentId === currentEnvironment.Id
+      )
+    : deployments;
   const currentDeployment =
-    deployments.find((deployment) => deployment.Id === selectedDeploymentId) ??
-    deployments[0];
+    environmentDeployments.find(
+      (deployment) => deployment.Id === selectedDeploymentId
+    ) ?? environmentDeployments[0];
+
+  function selectApplication(applicationId: number | undefined) {
+    setSelectedApplicationId(applicationId);
+    setSelectedServiceId(undefined);
+    setSelectedDeploymentId(undefined);
+  }
+
+  function selectService(serviceId: number | undefined) {
+    setSelectedServiceId(serviceId);
+    setSelectedDeploymentId(undefined);
+  }
+
+  function openDeploy() {
+    if (!currentEnvironment || !currentApplication || !currentService) {
+      return;
+    }
+    router.stateService.go('portainer.platform.deploy', {
+      projectId: project.Id,
+      environmentId: currentEnvironment.Id,
+      applicationId: currentApplication.Id,
+      serviceId: currentService.Id,
+    });
+  }
 
   return (
-    <PlatformPage
-      titleKey="platform.pages.applications.title"
-      titleDefault="Applications"
-    >
-      <PlatformNoticeStack />
-      <ActionBar>
-        <Button
-          color="primary"
-          icon={Plus}
-          disabled={!currentProject || !canManageCurrentProject}
-          onClick={() => setIsApplicationFormOpen((value) => !value)}
-          data-cy="platform-create-application-open"
-        >
-          {t('platform.actions.createApplication', {
-            defaultValue: 'Create application',
-          })}
-        </Button>
-        <Button
-          color="light"
-          icon={Plus}
-          disabled={!currentApplication || !canManageCurrentProject}
-          onClick={() => setIsServiceFormOpen((value) => !value)}
-          data-cy="platform-create-service-open"
-        >
-          {t('platform.actions.createService', {
-            defaultValue: 'Create service',
-          })}
-        </Button>
-      </ActionBar>
-      {isApplicationFormOpen && canManageCurrentProject && (
+    <>
+      <section className="mx-4 mb-4 rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">
+              {t('platform.projects.workspaceTitle', {
+                defaultValue: 'Project workspace',
+              })}
+            </h2>
+            <p className="text-muted mt-1 text-sm">
+              {t('platform.projects.workspaceDescription', {
+                defaultValue:
+                  'Applications and services belong to this project. Select an environment to inspect the matching deployment runtime.',
+              })}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              color="primary"
+              icon={Plus}
+              disabled={!canManage}
+              onClick={() => setIsApplicationFormOpen((value) => !value)}
+              data-cy="platform-project-create-application-open"
+            >
+              {t('platform.actions.createApplication', {
+                defaultValue: 'Create application',
+              })}
+            </Button>
+            <Button
+              color="light"
+              icon={Plus}
+              disabled={!currentApplication || !canManage}
+              onClick={() => setIsServiceFormOpen((value) => !value)}
+              data-cy="platform-project-create-service-open"
+            >
+              {t('platform.actions.createService', {
+                defaultValue: 'Create service',
+              })}
+            </Button>
+            <Button
+              color="light"
+              icon={Rocket}
+              disabled={
+                !currentEnvironment ||
+                !currentApplication ||
+                !currentService ||
+                !project.Permissions?.CanDeploy
+              }
+              onClick={openDeploy}
+              data-cy="platform-project-deploy-service"
+            >
+              {t('platform.actions.deployService', {
+                defaultValue: 'Deploy service',
+              })}
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-muted text-sm">
+            {t('platform.projects.environmentView', {
+              defaultValue: 'Environment view',
+            })}
+          </span>
+          {environments.map((environment) => (
+            <Button
+              key={environment.Id}
+              color={
+                currentEnvironment?.Id === environment.Id ? 'primary' : 'light'
+              }
+              size="xsmall"
+              onClick={() => {
+                setSelectedEnvironmentId(environment.Id);
+                setSelectedDeploymentId(undefined);
+              }}
+              data-cy={`platform-project-environment-${environment.Id}`}
+            >
+              {environment.Name}
+            </Button>
+          ))}
+        </div>
+        {currentEnvironment?.IsProduction && (
+          <Alert
+            className="mt-4"
+            color="warn"
+            title={t('platform.deploy.productionWarningTitle', {
+              defaultValue: 'Production warning',
+            })}
+          >
+            {t('platform.deploy.productionWarningBody', {
+              defaultValue:
+                'V0.5 replace strategy may briefly stop service. Confirm only when the window is acceptable.',
+            })}
+          </Alert>
+        )}
+      </section>
+      {isApplicationFormOpen && canManage && (
         <CreateApplicationPanel
           projects={projects}
-          projectId={currentProject?.Id}
-          onProjectChange={(projectId) => {
-            setSelectedProjectId(projectId);
-            setSelectedApplicationId(undefined);
-            setSelectedServiceId(undefined);
-            setSelectedDeploymentId(undefined);
-          }}
+          projectId={project.Id}
+          onProjectChange={() => undefined}
           onDone={() => setIsApplicationFormOpen(false)}
+          lockProject
         />
       )}
-      {isServiceFormOpen && canManageCurrentProject && (
+      {isServiceFormOpen && canManage && (
         <CreateServicePanel
           applications={applications}
           applicationId={currentApplication?.Id}
-          onApplicationChange={(applicationId) => {
-            setSelectedApplicationId(applicationId);
-            setSelectedServiceId(undefined);
-            setSelectedDeploymentId(undefined);
-          }}
+          onApplicationChange={selectApplication}
           onDone={() => setIsServiceFormOpen(false)}
+          lockApplication
         />
       )}
-      <div className="mx-4 mb-4 grid gap-3 lg:grid-cols-4">
-        <SelectField
-          label={t('platform.filters.project', { defaultValue: 'Project' })}
-          value={currentProject?.Id}
-          disabled={projects.length === 0}
-          onChange={(projectId) => {
-            setSelectedProjectId(projectId);
-            setSelectedApplicationId(undefined);
-            setSelectedServiceId(undefined);
-            setSelectedDeploymentId(undefined);
-          }}
-        >
-          {projects.map((project) => (
-            <option key={project.Id} value={project.Id}>
-              {project.Name}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label={t('platform.filters.application', {
-            defaultValue: 'Application',
-          })}
-          value={currentApplication?.Id}
-          disabled={applications.length === 0}
-          onChange={(applicationId) => {
-            setSelectedApplicationId(applicationId);
-            setSelectedServiceId(undefined);
-            setSelectedDeploymentId(undefined);
-          }}
-        >
-          {applications.map((application) => (
-            <option key={application.Id} value={application.Id}>
-              {application.Name}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label={t('platform.filters.service', { defaultValue: 'Service' })}
-          value={currentService?.Id}
-          disabled={services.length === 0}
-          onChange={(serviceId) => {
-            setSelectedServiceId(serviceId);
-            setSelectedDeploymentId(undefined);
-          }}
-        >
-          {services.map((service) => (
-            <option key={service.Id} value={service.Id}>
-              {service.Name}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label={t('platform.filters.deployment', {
-            defaultValue: 'Deployment config',
-          })}
-          value={currentDeployment?.Id}
-          disabled={deployments.length === 0}
-          onChange={setSelectedDeploymentId}
-        >
-          {deployments.map((deployment) => (
-            <option key={deployment.Id} value={deployment.Id}>
-              #{deployment.Id} / env {deployment.EnvironmentId}
-            </option>
-          ))}
-        </SelectField>
+      <div className="mx-4 mb-4 grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+          <h3 className="mb-3 text-base font-semibold">
+            {t('platform.projects.applicationsTitle', {
+              defaultValue: 'Applications in this project',
+            })}
+          </h3>
+          {applicationsQuery.isLoading ? (
+            <div className="text-muted text-sm">
+              {t('common.loading', { defaultValue: 'Loading...' })}
+            </div>
+          ) : applications.length ? (
+            <ApplicationsTable
+              applications={applications}
+              selectedApplicationId={currentApplication?.Id}
+              onSelect={selectApplication}
+            />
+          ) : (
+            <div className="text-muted rounded border border-dashed border-gray-5 p-4 text-sm">
+              {t('platform.projects.applicationsEmpty', {
+                defaultValue:
+                  'Create an application in this project before adding services.',
+              })}
+            </div>
+          )}
+        </section>
+        <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+          <h3 className="mb-3 text-base font-semibold">
+            {currentApplication
+              ? t('platform.projects.servicesForApplication', {
+                  defaultValue: 'Services in {{application}}',
+                  application: currentApplication.Name,
+                })
+              : t('platform.projects.servicesTitle', {
+                  defaultValue: 'Services',
+                })}
+          </h3>
+          {servicesQuery.isLoading ? (
+            <div className="text-muted text-sm">
+              {t('common.loading', { defaultValue: 'Loading...' })}
+            </div>
+          ) : currentApplication && services.length ? (
+            <ServicesTable
+              services={services}
+              selectedServiceId={currentService?.Id}
+              onSelect={selectService}
+            />
+          ) : (
+            <div className="text-muted rounded border border-dashed border-gray-5 p-4 text-sm">
+              {currentApplication
+                ? t('platform.projects.servicesEmpty', {
+                    defaultValue:
+                      'Create a service in the selected application to configure its deployment.',
+                  })
+                : t('platform.projects.selectApplication', {
+                    defaultValue: 'Select an application to view its services.',
+                  })}
+            </div>
+          )}
+        </section>
       </div>
-      <div className="mx-4 grid gap-4 xl:grid-cols-2">
-        <DataSection
-          title={t('platform.applications.tableTitle', {
-            defaultValue: 'Applications',
-          })}
-          isLoading={projectsQuery.isLoading || applicationsQuery.isLoading}
-          empty={applications.length === 0}
-          emptyMessage={t('platform.empty.applications', {
-            defaultValue:
-              'Select a project with applications to view application-level deployment status.',
-          })}
-        >
-          <ApplicationsTable applications={applications} />
-        </DataSection>
-        <DataSection
-          title={t('platform.services.tableTitle', {
-            defaultValue: 'Services',
-          })}
-          isLoading={servicesQuery.isLoading}
-          empty={services.length === 0}
-          emptyMessage={t('platform.empty.services', {
-            defaultValue:
-              'Services appear after an application is selected. Each service can later own one deployment config per environment.',
-          })}
-        >
-          <ServicesTable services={services} />
-        </DataSection>
-      </div>
+      {currentService && (
+        <div className="mx-4 mb-4 max-w-md">
+          <SelectField
+            label={t('platform.filters.deployment', {
+              defaultValue: 'Deployment config',
+            })}
+            value={currentDeployment?.Id}
+            disabled={environmentDeployments.length === 0}
+            onChange={setSelectedDeploymentId}
+          >
+            {environmentDeployments.map((deployment) => (
+              <option key={deployment.Id} value={deployment.Id}>
+                #{deployment.Id} / {currentEnvironment?.Name ?? deployment.EnvironmentId}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      )}
       <ServiceRuntimePanel
         deployment={currentDeployment}
         isDeploymentLoading={deploymentsQuery.isLoading}
       />
-    </PlatformPage>
+    </>
   );
 }
 
@@ -1162,30 +1267,39 @@ export function PlatformConfigView() {
 
 export function PlatformDeployView() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const projectsQuery = usePlatformProjects();
   const projects = projectsQuery.data ?? [];
-  const [selectedProjectId, setSelectedProjectId] = useState<number>();
+  const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>(
+    () => routeParamID(router.globals.params.projectId)
+  );
   const currentProject =
     projects.find((project) => project.Id === selectedProjectId) ?? projects[0];
   const canDeployCurrentProject = !!currentProject?.Permissions?.CanDeploy;
   const environmentsQuery = usePlatformEnvironments(currentProject?.Id);
   const environments = environmentsQuery.data ?? [];
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<number>();
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<number | undefined>(
+    () => routeParamID(router.globals.params.environmentId)
+  );
   const currentEnvironment =
     environments.find(
       (environment) => environment.Id === selectedEnvironmentId
     ) ?? environments[0];
   const applicationsQuery = usePlatformApplications(currentProject?.Id);
   const applications = applicationsQuery.data ?? [];
-  const [selectedApplicationId, setSelectedApplicationId] = useState<number>();
+  const [selectedApplicationId, setSelectedApplicationId] = useState<number | undefined>(
+    () => routeParamID(router.globals.params.applicationId)
+  );
   const currentApplication =
     applications.find(
       (application) => application.Id === selectedApplicationId
     ) ?? applications[0];
   const servicesQuery = usePlatformServices(currentApplication?.Id);
   const services = servicesQuery.data ?? [];
-  const [selectedServiceId, setSelectedServiceId] = useState<number>();
+  const [selectedServiceId, setSelectedServiceId] = useState<number | undefined>(
+    () => routeParamID(router.globals.params.serviceId)
+  );
   const currentService =
     services.find((service) => service.Id === selectedServiceId) ?? services[0];
   const deploymentsQuery = usePlatformServiceDeployments(currentService?.Id);
@@ -1948,11 +2062,13 @@ function CreateApplicationPanel({
   projectId,
   onProjectChange,
   onDone,
+  lockProject = false,
 }: {
   projects: PlatformProject[];
   projectId?: number;
   onProjectChange: (projectId: number | undefined) => void;
   onDone: () => void;
+  lockProject?: boolean;
 }) {
   const { t } = useTranslation();
   const mutation = useCreatePlatformApplicationMutation();
@@ -1997,7 +2113,7 @@ function CreateApplicationPanel({
         <SelectField
           label={t('platform.forms.project', { defaultValue: 'Project' })}
           value={projectId}
-          disabled={projects.length === 0}
+          disabled={lockProject || projects.length === 0}
           onChange={onProjectChange}
         >
           {projects.map((project) => (
@@ -2051,11 +2167,13 @@ function CreateServicePanel({
   applicationId,
   onApplicationChange,
   onDone,
+  lockApplication = false,
 }: {
   applications: PlatformApplication[];
   applicationId?: number;
   onApplicationChange: (applicationId: number | undefined) => void;
   onDone: () => void;
+  lockApplication?: boolean;
 }) {
   const { t } = useTranslation();
   const mutation = useCreatePlatformServiceDefinitionMutation();
@@ -2105,7 +2223,7 @@ function CreateServicePanel({
             defaultValue: 'Application',
           })}
           value={applicationId}
-          disabled={applications.length === 0}
+          disabled={lockApplication || applications.length === 0}
           onChange={onApplicationChange}
         >
           {applications.map((application) => (
@@ -2799,8 +2917,12 @@ function EnvironmentsTable({
 
 function ApplicationsTable({
   applications,
+  selectedApplicationId,
+  onSelect,
 }: {
   applications: PlatformApplication[];
+  selectedApplicationId?: number;
+  onSelect?: (applicationId: number) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -2809,6 +2931,9 @@ function ApplicationsTable({
         t('platform.columns.name', { defaultValue: 'Name' }),
         t('platform.columns.slug', { defaultValue: 'Slug' }),
         t('platform.columns.status', { defaultValue: 'Status' }),
+        ...(onSelect
+          ? [t('platform.columns.actions', { defaultValue: 'Actions' })]
+          : []),
       ]}
       rows={applications.map((application) => ({
         key: String(application.Id),
@@ -2816,6 +2941,29 @@ function ApplicationsTable({
           application.Name,
           application.Slug,
           application.LifecycleStatus,
+          ...(onSelect
+            ? [
+                <Button
+                  key={`select-${application.Id}`}
+                  color={
+                    selectedApplicationId === application.Id
+                      ? 'primary'
+                      : 'light'
+                  }
+                  size="xsmall"
+                  onClick={() => onSelect(application.Id)}
+                  data-cy={`platform-application-${application.Id}-select`}
+                >
+                  {selectedApplicationId === application.Id
+                    ? t('platform.projects.selectedApplication', {
+                        defaultValue: 'Selected',
+                      })
+                    : t('platform.projects.selectApplicationAction', {
+                        defaultValue: 'View services',
+                      })}
+                </Button>,
+              ]
+            : []),
         ],
       }))}
     />
@@ -2824,8 +2972,12 @@ function ApplicationsTable({
 
 function ServicesTable({
   services,
+  selectedServiceId,
+  onSelect,
 }: {
   services: PlatformServiceDefinition[];
+  selectedServiceId?: number;
+  onSelect?: (serviceId: number) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -2835,6 +2987,9 @@ function ServicesTable({
         t('platform.columns.type', { defaultValue: 'Type' }),
         t('platform.columns.slug', { defaultValue: 'Slug' }),
         t('platform.columns.status', { defaultValue: 'Status' }),
+        ...(onSelect
+          ? [t('platform.columns.actions', { defaultValue: 'Actions' })]
+          : []),
       ]}
       rows={services.map((service) => ({
         key: String(service.Id),
@@ -2843,6 +2998,27 @@ function ServicesTable({
           service.Type,
           service.Slug,
           service.LifecycleStatus,
+          ...(onSelect
+            ? [
+                <Button
+                  key={`select-${service.Id}`}
+                  color={
+                    selectedServiceId === service.Id ? 'primary' : 'light'
+                  }
+                  size="xsmall"
+                  onClick={() => onSelect(service.Id)}
+                  data-cy={`platform-service-${service.Id}-select`}
+                >
+                  {selectedServiceId === service.Id
+                    ? t('platform.projects.selectedService', {
+                        defaultValue: 'Selected',
+                      })
+                    : t('platform.projects.selectServiceAction', {
+                        defaultValue: 'Inspect runtime',
+                      })}
+                </Button>,
+              ]
+            : []),
         ],
       }))}
     />
@@ -5110,6 +5286,11 @@ function createRollbackIdempotencyKey(releaseId: number) {
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   return ['platform', 'rollback', releaseId, randomId].join('-');
+}
+
+function routeParamID(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function slugify(value: string) {

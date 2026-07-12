@@ -2,7 +2,6 @@ import {
   Box,
   History,
   LayoutDashboard,
-  Layers,
   Package,
   Rocket,
   SlidersHorizontal,
@@ -31,15 +30,6 @@ export function AppDeliverySidebar() {
         to="portainer.platform.projects"
         icon={Box}
         data-cy="portainerSidebar-platform-projects"
-      />
-
-      <SidebarItem
-        label={t('platform.navigation.applications', {
-          defaultValue: 'Applications',
-        })}
-        to="portainer.platform.applications"
-        icon={Layers}
-        data-cy="portainerSidebar-platform-applications"
       />
 
       <SidebarItem
