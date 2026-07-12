@@ -52,6 +52,22 @@ func TestRenderGatewayConfigTLSAndWebSocket(t *testing.T) {
 	require.Contains(t, string(config), "Connection \"upgrade\"")
 }
 
+func TestRenderGatewayConfigUsesDeterministicMultiHostUpstream(t *testing.T) {
+	route := gatewayRoute(5, "/")
+	config, _, err := RenderGatewayConfig([]GatewayRouteTarget{{
+		Route: route,
+		Upstreams: []GatewayUpstreamTarget{
+			{Host: "10.0.0.12", Port: 18080},
+			{Host: "10.0.0.11", Port: 18080},
+		},
+	}})
+	require.NoError(t, err)
+	value := string(config)
+	require.Contains(t, value, "upstream platform_route_5")
+	require.Less(t, stringIndex(t, value, "10.0.0.11:18080"), stringIndex(t, value, "10.0.0.12:18080"))
+	require.Contains(t, value, "proxy_pass http://platform_route_5")
+}
+
 func gatewayRoute(id portainer.PlatformGatewayRouteID, path string) portainer.PlatformGatewayRoute {
 	route := portainer.NewPlatformGatewayRoute()
 	route.ID = id

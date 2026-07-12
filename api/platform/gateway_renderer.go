@@ -17,6 +17,12 @@ type GatewayRouteTarget struct {
 	Route        portainer.PlatformGatewayRoute
 	UpstreamHost string
 	UpstreamPort int
+	Upstreams    []GatewayUpstreamTarget
+}
+
+type GatewayUpstreamTarget struct {
+	Host string
+	Port int
 }
 
 // RenderGatewayConfig 将受控路由渲染为确定性 Nginx 配置。
@@ -34,9 +40,11 @@ func RenderGatewayConfig(routes []GatewayRouteTarget) ([]byte, string, error) {
 		if err := portainer.ValidatePlatformGatewayRoute(normalized[i].Route); err != nil {
 			return nil, "", err
 		}
-		if err := validateGatewayUpstream(normalized[i].UpstreamHost, normalized[i].UpstreamPort); err != nil {
+		upstreams, err := normalizeGatewayUpstreams(normalized[i])
+		if err != nil {
 			return nil, "", err
 		}
+		normalized[i].Upstreams = upstreams
 		key := normalized[i].Route.Domain + "\x00" + normalized[i].Route.Path
 		if _, exists := seen[key]; exists {
 			return nil, "", fmt.Errorf("gateway route domain and path are duplicated")
@@ -79,6 +87,9 @@ func RenderGatewayConfig(routes []GatewayRouteTarget) ([]byte, string, error) {
 	// 这使预检始终指向隔离版本，失败候选不会改写被正在运行实例读取的活动配置。
 	builder.WriteString("worker_processes 1;\n\nevents {\n    worker_connections 1024;\n}\n\nhttp {\n")
 	for _, server := range serverList {
+		for _, target := range server.routes {
+			writeGatewayUpstreamBlock(&builder, target, "    ")
+		}
 		writeGatewayServerBlock(&builder, server, "    ")
 	}
 	builder.WriteString("}\n")
@@ -86,6 +97,29 @@ func RenderGatewayConfig(routes []GatewayRouteTarget) ([]byte, string, error) {
 	config := []byte(builder.String())
 	hash := fmt.Sprintf("%x", sha256.Sum256(config))
 	return config, hash, nil
+}
+
+func normalizeGatewayUpstreams(target GatewayRouteTarget) ([]GatewayUpstreamTarget, error) {
+	upstreams := append([]GatewayUpstreamTarget(nil), target.Upstreams...)
+	if len(upstreams) == 0 {
+		upstreams = []GatewayUpstreamTarget{{Host: target.UpstreamHost, Port: target.UpstreamPort}}
+	}
+	seen := make(map[string]struct{}, len(upstreams))
+	for i := range upstreams {
+		if err := validateGatewayUpstream(upstreams[i].Host, upstreams[i].Port); err != nil {
+			return nil, err
+		}
+		key := net.JoinHostPort(upstreams[i].Host, strconv.Itoa(upstreams[i].Port))
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("gateway upstream is duplicated")
+		}
+		seen[key] = struct{}{}
+	}
+	sort.Slice(upstreams, func(i, j int) bool {
+		left, right := net.JoinHostPort(upstreams[i].Host, strconv.Itoa(upstreams[i].Port)), net.JoinHostPort(upstreams[j].Host, strconv.Itoa(upstreams[j].Port))
+		return left < right
+	})
+	return upstreams, nil
 }
 
 func validateGatewayUpstream(host string, port int) error {
@@ -128,7 +162,7 @@ func writeGatewayServerBlock(builder *strings.Builder, server *gatewayServerConf
 	if server.enableTLS {
 		fmt.Fprintf(builder, "%sserver {\n%s    listen 443 ssl;\n%s    server_name %s;\n%s    ssl_certificate /etc/nginx/portainer/certificates/%d/cert.pem;\n%s    ssl_certificate_key /etc/nginx/portainer/certificates/%d/key.pem;\n", indentation, indentation, indentation, server.domain, indentation, server.certificateID, indentation, server.certificateID)
 		for _, target := range server.routes {
-			writeGatewayLocation(builder, target.Route, net.JoinHostPort(target.UpstreamHost, strconv.Itoa(target.UpstreamPort)), indentation+"    ")
+			writeGatewayLocation(builder, target.Route, gatewayUpstreamName(target.Route.ID), indentation+"    ")
 		}
 		fmt.Fprintf(builder, "%s}\n\n", indentation)
 		if server.forceHTTPS {
@@ -139,9 +173,21 @@ func writeGatewayServerBlock(builder *strings.Builder, server *gatewayServerConf
 
 	fmt.Fprintf(builder, "%sserver {\n%s    listen 80;\n%s    server_name %s;\n", indentation, indentation, indentation, server.domain)
 	for _, target := range server.routes {
-		writeGatewayLocation(builder, target.Route, net.JoinHostPort(target.UpstreamHost, strconv.Itoa(target.UpstreamPort)), indentation+"    ")
+		writeGatewayLocation(builder, target.Route, gatewayUpstreamName(target.Route.ID), indentation+"    ")
 	}
 	fmt.Fprintf(builder, "%s}\n\n", indentation)
+}
+
+func writeGatewayUpstreamBlock(builder *strings.Builder, target GatewayRouteTarget, indentation string) {
+	fmt.Fprintf(builder, "%supstream %s {\n", indentation, gatewayUpstreamName(target.Route.ID))
+	for _, upstream := range target.Upstreams {
+		fmt.Fprintf(builder, "%s    server %s;\n", indentation, net.JoinHostPort(upstream.Host, strconv.Itoa(upstream.Port)))
+	}
+	fmt.Fprintf(builder, "%s}\n\n", indentation)
+}
+
+func gatewayUpstreamName(routeID portainer.PlatformGatewayRouteID) string {
+	return fmt.Sprintf("platform_route_%d", routeID)
 }
 
 func writeGatewayLocation(builder *strings.Builder, route portainer.PlatformGatewayRoute, upstream, indentation string) {
