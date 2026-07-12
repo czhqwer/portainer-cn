@@ -289,6 +289,9 @@ const (
 	PlatformAuditActionGatewayCertificateArchived PlatformAuditAction = "gateway_certificate.archived"
 	PlatformAuditActionGatewayConfigApplied       PlatformAuditAction = "gateway_config.applied"
 	PlatformAuditActionGatewayConfigFailed        PlatformAuditAction = "gateway_config.failed"
+	PlatformAuditActionHostGroupCreated           PlatformAuditAction = "host_group.created"
+	PlatformAuditActionHostGroupUpdated           PlatformAuditAction = "host_group.updated"
+	PlatformAuditActionHostGroupArchived          PlatformAuditAction = "host_group.archived"
 
 	PlatformAuditResultSuccess PlatformAuditResult = "success"
 	PlatformAuditResultFailed  PlatformAuditResult = "failed"

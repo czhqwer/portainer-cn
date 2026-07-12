@@ -1,7 +1,9 @@
 package platform
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	portainer "github.com/portainer/portainer/api"
@@ -72,6 +74,7 @@ func (handler *Handler) environmentCreate(w http.ResponseWriter, r *http.Request
 		DefaultRegistryID: payload.DefaultRegistryID,
 		HealthCheckHost:   payload.HealthCheckHost,
 		ReleasePolicy:     payload.ReleasePolicy,
+		BatchPolicy:       payload.BatchPolicy,
 		PlatformLifecycle: newLifecycle(now),
 	}
 	normalizeEnvironment(environment)
@@ -165,7 +168,29 @@ func (handler *Handler) environmentUpdate(w http.ResponseWriter, r *http.Request
 		if payload.ReleasePolicy != nil {
 			environment.ReleasePolicy = *payload.ReleasePolicy
 		}
+		if payload.HostGroupID != nil {
+			if *payload.HostGroupID == 0 {
+				environment.HostGroupID = 0
+			} else {
+				group, err := tx.PlatformHostGroup().Read(*payload.HostGroupID)
+				if err != nil {
+					return err
+				}
+				if !isActive(group.PlatformLifecycle) || group.ProjectID != environment.ProjectID || group.EnvironmentID != environment.ID {
+					return validationFailedError("HostGroupId does not belong to environment")
+				}
+				environment.HostGroupID = group.ID
+			}
+		}
+		if payload.BatchPolicy != nil {
+			environment.BatchPolicy = *payload.BatchPolicy
+		}
 		normalizeEnvironment(environment)
+		if environment.TargetMode == portainer.PlatformTargetModeMulti {
+			if err := validateMultiEnvironmentTargets(*environment); err != nil {
+				return validationFailedError(err.Error())
+			}
+		}
 		touchLifecycle(&environment.PlatformLifecycle, now)
 
 		return tx.PlatformEnvironment().Update(environment.ID, environment)
@@ -175,6 +200,40 @@ func (handler *Handler) environmentUpdate(w http.ResponseWriter, r *http.Request
 	}
 
 	return response.JSON(w, environment)
+}
+
+// validateMultiEnvironmentTargets 将多主机边界放在服务端，避免客户端通过缺失 gateway、重复 target
+// 或容器内部地址制造无法恢复的发布拓扑。HostAddress 是网关转发和发布预检的唯一入口。
+func validateMultiEnvironmentTargets(environment portainer.PlatformEnvironment) error {
+	workloads, gateways := 0, 0
+	seen := map[portainer.EndpointID]struct{}{}
+	for _, target := range environment.Targets {
+		if !target.Enabled {
+			continue
+		}
+		if target.EndpointID <= 0 {
+			return errors.New("multi target endpoint is required")
+		}
+		if _, exists := seen[target.EndpointID]; exists {
+			return errors.New("multi target endpoint is duplicated")
+		}
+		seen[target.EndpointID] = struct{}{}
+		switch target.Role {
+		case portainer.PlatformDeploymentTargetRoleWorkload:
+			if strings.TrimSpace(target.HostAddress) == "" || strings.ContainsAny(target.HostAddress, "\r\n\x00/\\@") {
+				return errors.New("multi workload host address is invalid")
+			}
+			workloads++
+		case portainer.PlatformDeploymentTargetRoleGateway:
+			gateways++
+		default:
+			return errors.New("multi target role is invalid")
+		}
+	}
+	if workloads == 0 || gateways != 1 {
+		return errors.New("multi environment requires workload targets and one gateway target")
+	}
+	return portainer.ValidatePlatformBatchPolicy(environment.BatchPolicy)
 }
 
 func (handler *Handler) environmentArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {

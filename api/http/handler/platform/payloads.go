@@ -62,6 +62,7 @@ type createEnvironmentPayload struct {
 	DefaultRegistryID portainer.RegistryID                 `json:"DefaultRegistryId,omitempty"`
 	HealthCheckHost   string                               `json:"HealthCheckHost,omitempty"`
 	ReleasePolicy     portainer.PlatformReleasePolicy      `json:"ReleasePolicy,omitempty"`
+	BatchPolicy       portainer.PlatformBatchPolicy        `json:"BatchPolicy,omitempty"`
 }
 
 func (payload *createEnvironmentPayload) Validate(_ *http.Request) error {
@@ -82,6 +83,8 @@ type updateEnvironmentPayload struct {
 	DefaultRegistryID *portainer.RegistryID                 `json:"DefaultRegistryId,omitempty"`
 	HealthCheckHost   *string                               `json:"HealthCheckHost,omitempty"`
 	ReleasePolicy     *portainer.PlatformReleasePolicy      `json:"ReleasePolicy,omitempty"`
+	HostGroupID       *portainer.PlatformHostGroupID        `json:"HostGroupId,omitempty"`
+	BatchPolicy       *portainer.PlatformBatchPolicy        `json:"BatchPolicy,omitempty"`
 }
 
 func (payload *updateEnvironmentPayload) Validate(_ *http.Request) error {

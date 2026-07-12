@@ -58,6 +58,16 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateList))).Methods(http.MethodGet)
 	h.Handle("/platform/projects/{projectId}/gateway-certificates",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/host-groups",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/host-groups",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/host-groups/{hostGroupId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/host-groups/{hostGroupId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/host-groups/{hostGroupId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupArchive))).Methods(http.MethodDelete)
 	h.Handle("/platform/gateway-certificates/{certificateId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateArchive))).Methods(http.MethodDelete)
 	h.Handle("/platform/gateways/{gatewayId}",

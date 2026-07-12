@@ -132,6 +132,9 @@ func normalizeEnvironment(environment *portainer.PlatformEnvironment) {
 	if environment.ReleasePolicy.Type == "" {
 		environment.ReleasePolicy = portainer.NewPlatformReleasePolicy()
 	}
+	if environment.BatchPolicy.BatchSize == 0 {
+		environment.BatchPolicy = portainer.NewPlatformBatchPolicy()
+	}
 
 	for i := range environment.Targets {
 		if environment.Targets[i].Role == "" {
