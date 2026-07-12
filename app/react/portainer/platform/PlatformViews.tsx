@@ -81,6 +81,7 @@ import {
   PlatformServiceDefinition,
 } from './types';
 import { ArtifactTaskTerminal } from './ArtifactTaskTerminal';
+import { runArtifactOperation } from './artifactOperation';
 
 export function PlatformHomeView() {
   const { t } = useTranslation();
@@ -2691,25 +2692,32 @@ function CreateArtifactPanel({
 			return;
 		}
 		setUploadProgress(0);
-		await uploadMutation.mutateAsync({
-			ProjectId: selectedProjectId,
-			ApplicationId: currentApplication?.Id,
-			ServiceDefinitionId: currentService.Id,
-			Name: name.trim(),
-			Version: version.trim(),
-			Type: uploadType,
-			ExpectedSHA256: expectedSHA256.trim() || undefined,
-			File: uploadFile,
-			onProgress: setUploadProgress,
-		});
-		setUploadFile(undefined);
-		setExpectedSHA256('');
-		setUploadProgress(undefined);
-		onDone();
+		await runArtifactOperation(
+			() =>
+				uploadMutation.mutateAsync({
+					ProjectId: selectedProjectId,
+					ApplicationId: currentApplication?.Id,
+					ServiceDefinitionId: currentService.Id,
+					Name: name.trim(),
+					Version: version.trim(),
+					Type: uploadType,
+					ExpectedSHA256: expectedSHA256.trim() || undefined,
+					File: uploadFile,
+					onProgress: setUploadProgress,
+				}),
+			() => {
+				setUploadFile(undefined);
+				setExpectedSHA256('');
+				onDone();
+			},
+			() => setUploadProgress(undefined)
+		);
 		return;
 	 }
-	 await mutation.mutateAsync({
-		ProjectId: selectedProjectId,
+	 await runArtifactOperation(
+		() =>
+			mutation.mutateAsync({
+				ProjectId: selectedProjectId,
         ApplicationId: currentApplication?.Id,
         ServiceDefinitionId: currentService?.Id,
         Name: name.trim(),
@@ -2717,12 +2725,15 @@ function CreateArtifactPanel({
         ImageRef: imageRef.trim(),
         ImageDigest: imageDigest.trim() || undefined,
         Traceability: 'weak',
-	 });
-	 setName('');
-	 setVersion('');
-	 setImageRef('');
-	 setImageDigest('');
-	 onDone();
+			}),
+		() => {
+			setName('');
+			setVersion('');
+			setImageRef('');
+			setImageDigest('');
+			onDone();
+		}
+	 );
   }
 
   return (
@@ -3460,7 +3471,27 @@ function JavaBuildPanel({
   const [jvmArgs, setJvmArgs] = useState('');
   const [appArgs, setAppArgs] = useState('');
   const tokens = (value: string) => value.split(/\s+/).map((item) => item.trim()).filter(Boolean);
-  async function submit(event: FormEvent) { event.preventDefault(); if (!artifactId || !Number(endpointId) || !Number(port)) return; onOperationStart(artifactId); try { await mutation.mutateAsync({ artifactId, payload: { EndpointId: Number(endpointId), Port: Number(port), JvmArgs: tokens(jvmArgs), AppArgs: tokens(appArgs) } }); onDone(); } finally { onOperationFinished(); } }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!artifactId || !Number(endpointId) || !Number(port)) {
+      return;
+    }
+    onOperationStart(artifactId);
+    await runArtifactOperation(
+      () =>
+        mutation.mutateAsync({
+          artifactId,
+          payload: {
+            EndpointId: Number(endpointId),
+            Port: Number(port),
+            JvmArgs: tokens(jvmArgs),
+            AppArgs: tokens(appArgs),
+          },
+        }),
+      onDone,
+      onOperationFinished
+    );
+  }
   return <ActionPanel title={t('platform.formTitles.javaBuild', { defaultValue: 'Package Java 8 artifact' })}><form className="grid gap-3 md:grid-cols-3" onSubmit={submit}>
     <label className="form-control-label">{t('platform.forms.javaArtifact', { defaultValue: 'Java artifact' })}<select className="form-control mt-1" value={artifactId} onChange={(event) => setArtifactId(Number(event.target.value))}>{javaArtifacts.map((artifact) => <option key={artifact.Id} value={artifact.Id}>{artifact.Name} · {artifact.Version}</option>)}</select></label>
     <TextInputField label={t('platform.forms.endpointId', { defaultValue: 'Docker endpoint ID' })} value={endpointId} required onChange={setEndpointId} />
@@ -3545,20 +3576,20 @@ function StaticBuildPanel({
       return;
     }
     onOperationStart(artifactId);
-    try {
-      await mutation.mutateAsync({
-        artifactId,
-        payload: {
-          EndpointId: Number(endpointId),
-          Mode: mode,
-          CachePolicy: cachePolicy,
-          NotFoundPage: notFoundPage.trim() || undefined,
-        },
-      });
-      onDone();
-    } finally {
-      onOperationFinished();
-    }
+    await runArtifactOperation(
+      () =>
+        mutation.mutateAsync({
+          artifactId,
+          payload: {
+            EndpointId: Number(endpointId),
+            Mode: mode,
+            CachePolicy: cachePolicy,
+            NotFoundPage: notFoundPage.trim() || undefined,
+          },
+        }),
+      onDone,
+      onOperationFinished
+    );
   }
 
   return (
@@ -3696,18 +3727,18 @@ function ArtifactPushPanel({
       return;
     }
     onOperationStart(artifactId);
-    try {
-      await mutation.mutateAsync({
-        artifactId,
-        payload: {
-          EndpointId: Number(endpointId),
-          RegistryId: Number(registryId),
-        },
-      });
-      onDone();
-    } finally {
-      onOperationFinished();
-    }
+    await runArtifactOperation(
+      () =>
+        mutation.mutateAsync({
+          artifactId,
+          payload: {
+            EndpointId: Number(endpointId),
+            RegistryId: Number(registryId),
+          },
+        }),
+      onDone,
+      onOperationFinished
+    );
   }
 
   return (
@@ -3798,12 +3829,11 @@ function ArtifactCleanupPanel({
       return;
     }
     onOperationStart(artifactId);
-    try {
-      await mutation.mutateAsync(artifactId);
-      onDone();
-    } finally {
-      onOperationFinished();
-    }
+    await runArtifactOperation(
+      () => mutation.mutateAsync(artifactId),
+      onDone,
+      onOperationFinished
+    );
   }
 
   return (
