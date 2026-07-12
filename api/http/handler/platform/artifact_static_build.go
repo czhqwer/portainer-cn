@@ -77,8 +77,8 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 		if buildArtifact.Type != portainer.PlatformArtifactTypeFrontendDist || buildArtifact.StorageProvider != portainer.PlatformStorageProviderLocal || buildArtifact.StoragePath == "" {
 			return validationFailedError("Artifact cannot use static template")
 		}
-		if buildArtifact.Status == portainer.PlatformArtifactStatusBuilding && buildArtifact.TaskLeaseExpiresAt > now {
-			return conflictError("Artifact build is already running")
+		if artifactTaskActive(*buildArtifact, now) {
+			return conflictError("Artifact task is already running")
 		}
 		buildArtifact.Status = portainer.PlatformArtifactStatusBuilding
 		buildArtifact.TaskID = leaseID

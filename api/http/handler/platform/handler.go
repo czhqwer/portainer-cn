@@ -20,6 +20,7 @@ type Handler struct {
 	ArchiveImageImporter    platformservice.ArchiveImageImporter
 	JavaImageBuilder        platformservice.JavaImageBuilder
 	StaticImageBuilder      platformservice.StaticImageBuilder
+	RegistryImagePusher     platformservice.RegistryImagePusher
 	ReleaseExecutor         platformservice.ReleaseExecutor
 	ReleaseRecoveryExecutor platformservice.ReleaseRecoveryExecutor
 	RuntimeInspector        platformservice.RuntimeInspector
@@ -142,6 +143,10 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactJavaBuild))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/{artifactId}/build-static",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactStaticBuild))).Methods(http.MethodPost)
+	h.Handle("/platform/artifacts/{artifactId}/push",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactRegistryPush))).Methods(http.MethodPost)
+	h.Handle("/platform/artifacts/{artifactId}/cleanup-original",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactOriginalCleanup))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/{artifactId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactArchive))).Methods(http.MethodDelete)
 

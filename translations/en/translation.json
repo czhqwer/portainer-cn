@@ -4447,6 +4447,8 @@
       "version": "Version",
       "source": "Source",
       "image": "Image",
+      "imageDigest": "Image digest",
+      "retention": "Retention",
       "sha256": "SHA256",
       "releaseId": "Release ID",
       "failureReason": "Failure reason",
@@ -4475,6 +4477,8 @@
       "createArtifact": "Register image artifact",
       "packageJava": "Package Java 8 artifact",
       "packageStatic": "Package frontend dist",
+      "pushArtifact": "Push candidate image",
+      "cleanupArtifactOriginal": "Clean original artifact",
       "validateRelease": "Validate release",
       "createRelease": "Create release",
       "createConfigSet": "Create config set",
@@ -4524,7 +4528,10 @@
       "staticArtifact": "Frontend dist artifact",
       "staticMode": "Site mode",
       "staticCachePolicy": "Static cache policy",
-      "staticNotFoundPage": "Optional 404 page in dist"
+      "staticNotFoundPage": "Optional 404 page in dist",
+      "pushArtifact": "Candidate artifact",
+      "registryId": "Configured registry ID",
+      "cleanupArtifact": "Original artifact"
     },
     "formTitles": {
       "project": "Create project",
@@ -4533,7 +4540,9 @@
       "service": "Create service",
       "artifact": "Register image artifact",
       "javaBuild": "Package Java 8 artifact",
-      "staticBuild": "Package frontend dist"
+      "staticBuild": "Package frontend dist",
+      "artifactPush": "Push candidate image",
+      "artifactCleanup": "Clean original artifact"
     },
     "javaBuild": {
       "restriction": "Uses the platform Java 8 template. Dockerfile, shell commands, and custom base images are not accepted."
@@ -4545,6 +4554,21 @@
       "cacheNoStore": "No-store",
       "cacheImmutable": "Immutable static assets",
       "restriction": "SPA requires index.html. The platform validates ZIP entries and uses a fixed Nginx image; custom Nginx configuration, Node, and SSR are not accepted."
+    },
+    "artifactPush": {
+      "restriction": "The platform re-tags the candidate with a unique project/service/version tag and records the registry digest. Credentials remain in the configured Portainer registry."
+    },
+    "artifactCleanup": {
+      "warningTitle": "Delete only the retained original",
+      "warningBody": "The final registry image and Artifact facts are retained. The server blocks cleanup for active tasks and Release references.",
+      "confirm": "I understand this removes the retained original file."
+    },
+    "artifacts": {
+      "retention": {
+        "cleanable": "Retained / cleanable",
+        "protected": "Retained / protected",
+        "cleaned": "Original cleaned"
+      }
     },
     "environmentTypes": {
       "dev": "Dev",

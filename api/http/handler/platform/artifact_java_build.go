@@ -61,8 +61,8 @@ func (h *Handler) artifactJavaBuild(w http.ResponseWriter, r *http.Request) *htt
 		if artifact.Type != portainer.PlatformArtifactTypeJavaJar || artifact.StorageProvider != portainer.PlatformStorageProviderLocal {
 			return validationFailedError("Artifact cannot use Java template")
 		}
-		if artifact.Status == portainer.PlatformArtifactStatusBuilding && artifact.TaskLeaseExpiresAt > now {
-			return conflictError("Artifact build is already running")
+		if artifactTaskActive(*artifact, now) {
+			return conflictError("Artifact task is already running")
 		}
 		artifact.Status = portainer.PlatformArtifactStatusBuilding
 		artifact.TaskID = lease

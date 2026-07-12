@@ -409,8 +409,11 @@ func validateReleaseReferenceSet(tx dataservices.DataStoreTx, payload createRele
 	if artifact.ServiceDefinitionID != 0 && artifact.ServiceDefinitionID != payload.ServiceDefinitionID {
 		return nil, validationFailedError("Artifact does not belong to ServiceDefinition")
 	}
-	if artifact.Type != portainer.PlatformArtifactTypeImage || artifact.SourceType != portainer.PlatformArtifactSourceImageReference || artifact.ImageRef == "" {
-		return nil, validationFailedError("Only image-reference artifacts are supported in V0.1")
+	if artifact.Type == portainer.PlatformArtifactTypeImage && artifact.SourceType == portainer.PlatformArtifactSourceImageReference && artifact.ImageRef != "" {
+		// 保持阶段 1 的已有镜像兼容性；它们可以继续以弱追溯方式进入原有发布链路。
+	} else if artifact.Status != portainer.PlatformArtifactStatusReady || artifact.ImageRef == "" || artifact.ImageDigest == "" || artifact.RegistryID <= 0 {
+		// 阶段 3 文件制品只有在推送得到标准 tag 和 digest 后才可发布，避免 Docker Endpoint 直接使用本地候选镜像。
+		return nil, validationFailedError("Artifact is not ready for release")
 	}
 	if deployment.SpecRevision != payload.ExpectedSpecRevision {
 		return nil, validationFailedError("ExpectedSpecRevision does not match current deployment SpecRevision")

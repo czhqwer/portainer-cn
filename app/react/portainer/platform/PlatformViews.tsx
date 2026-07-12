@@ -52,6 +52,8 @@ import {
 	useUploadPlatformArtifactMutation,
 	useBuildJavaArtifactMutation,
 	useBuildStaticArtifactMutation,
+	usePushPlatformArtifactMutation,
+	useCleanupPlatformArtifactOriginalMutation,
   useValidatePlatformReleaseMutation,
 } from './queries';
 import {
@@ -430,13 +432,34 @@ export function PlatformArtifactsView() {
   );
   const [isArtifactFormOpen, setIsArtifactFormOpen] = useState(false);
   const [isJavaBuildFormOpen, setIsJavaBuildFormOpen] = useState(false);
-	const [isStaticBuildFormOpen, setIsStaticBuildFormOpen] = useState(false);
+  const [isStaticBuildFormOpen, setIsStaticBuildFormOpen] = useState(false);
+	const [isArtifactPushFormOpen, setIsArtifactPushFormOpen] = useState(false);
+	const [isArtifactCleanupFormOpen, setIsArtifactCleanupFormOpen] = useState(false);
 	const buildableStaticArtifacts = artifacts.filter(
 		(artifact) =>
 			artifact.Type === 'frontend-dist' &&
 			projects.some(
 				(project) =>
 					project.Id === artifact.ProjectId && project.Permissions?.CanDeploy
+			)
+	);
+	const pushableArtifacts = artifacts.filter(
+		(artifact) =>
+			artifact.Status === 'built' &&
+			!!artifact.CandidateImageRef &&
+			projects.some(
+				(project) =>
+					project.Id === artifact.ProjectId && project.Permissions?.CanDeploy
+			)
+	);
+	const cleanupableArtifacts = artifacts.filter(
+		(artifact) =>
+			artifact.Retained &&
+			artifact.Cleanable &&
+			projects.some(
+				(project) =>
+					project.Id === artifact.ProjectId &&
+					project.Permissions?.CanManageProject
 			)
 	);
 
@@ -478,6 +501,26 @@ export function PlatformArtifactsView() {
 				defaultValue: 'Package frontend dist',
 			})}
 		</Button>
+		<Button
+			color="light"
+			disabled={pushableArtifacts.length === 0}
+			onClick={() => setIsArtifactPushFormOpen((value) => !value)}
+			data-cy="platform-artifact-push-open"
+		>
+			{t('platform.actions.pushArtifact', {
+				defaultValue: 'Push candidate image',
+			})}
+		</Button>
+		<Button
+			color="danger"
+			disabled={cleanupableArtifacts.length === 0}
+			onClick={() => setIsArtifactCleanupFormOpen((value) => !value)}
+			data-cy="platform-artifact-cleanup-open"
+		>
+			{t('platform.actions.cleanupArtifactOriginal', {
+				defaultValue: 'Clean original artifact',
+			})}
+		</Button>
 		</ActionBar>
       {isArtifactFormOpen && (
         <CreateArtifactPanel
@@ -490,6 +533,18 @@ export function PlatformArtifactsView() {
 			<StaticBuildPanel
 				artifacts={buildableStaticArtifacts}
 				onDone={() => setIsStaticBuildFormOpen(false)}
+			/>
+		)}
+		{isArtifactPushFormOpen && (
+			<ArtifactPushPanel
+				artifacts={pushableArtifacts}
+				onDone={() => setIsArtifactPushFormOpen(false)}
+			/>
+		)}
+		{isArtifactCleanupFormOpen && (
+			<ArtifactCleanupPanel
+				artifacts={cleanupableArtifacts}
+				onDone={() => setIsArtifactCleanupFormOpen(false)}
 			/>
 		)}
       <DataSection
@@ -2626,6 +2681,174 @@ function StaticBuildPanel({
   );
 }
 
+function ArtifactPushPanel({
+  artifacts,
+  onDone,
+}: {
+  artifacts: PlatformArtifact[];
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const mutation = usePushPlatformArtifactMutation();
+  const [artifactId, setArtifactId] = useState<number | undefined>(
+    artifacts[0]?.Id
+  );
+  const [endpointId, setEndpointId] = useState('');
+  const [registryId, setRegistryId] = useState('');
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!artifactId || !Number(endpointId) || !Number(registryId)) {
+      return;
+    }
+    await mutation.mutateAsync({
+      artifactId,
+      payload: {
+        EndpointId: Number(endpointId),
+        RegistryId: Number(registryId),
+      },
+    });
+    onDone();
+  }
+
+  return (
+    <ActionPanel
+      title={t('platform.formTitles.artifactPush', {
+        defaultValue: 'Push candidate image',
+      })}
+    >
+      <form className="grid gap-3 md:grid-cols-3" onSubmit={submit}>
+        <label className="form-control-label">
+          {t('platform.forms.pushArtifact', {
+            defaultValue: 'Candidate artifact',
+          })}
+          <select
+            className="form-control mt-1"
+            value={artifactId}
+            onChange={(event) => setArtifactId(Number(event.target.value))}
+          >
+            {artifacts.map((artifact) => (
+              <option key={artifact.Id} value={artifact.Id}>
+                {artifact.Name} · {artifact.Version}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextInputField
+          label={t('platform.forms.endpointId', {
+            defaultValue: 'Docker endpoint ID',
+          })}
+          value={endpointId}
+          required
+          onChange={setEndpointId}
+        />
+        <TextInputField
+          label={t('platform.forms.registryId', {
+            defaultValue: 'Configured registry ID',
+          })}
+          value={registryId}
+          required
+          onChange={setRegistryId}
+        />
+        <div className="text-muted self-end text-sm">
+          {t('platform.artifactPush.restriction', {
+            defaultValue:
+              'The platform re-tags the candidate with a unique project/service/version tag and records the registry digest. Credentials remain in the configured Portainer registry.',
+          })}
+        </div>
+        <FormActions
+          isSubmitting={mutation.isLoading}
+          submitLabel={t('platform.actions.pushArtifact', {
+            defaultValue: 'Push candidate image',
+          })}
+          submitDisabled={!artifactId || !endpointId || !registryId}
+          onCancel={onDone}
+        />
+      </form>
+    </ActionPanel>
+  );
+}
+
+function ArtifactCleanupPanel({
+  artifacts,
+  onDone,
+}: {
+  artifacts: PlatformArtifact[];
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const mutation = useCleanupPlatformArtifactOriginalMutation();
+  const [artifactId, setArtifactId] = useState<number | undefined>(
+    artifacts[0]?.Id
+  );
+  const [confirmed, setConfirmed] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!artifactId || !confirmed) {
+      return;
+    }
+    await mutation.mutateAsync(artifactId);
+    onDone();
+  }
+
+  return (
+    <ActionPanel
+      title={t('platform.formTitles.artifactCleanup', {
+        defaultValue: 'Clean original artifact',
+      })}
+    >
+      <form className="grid gap-3 md:grid-cols-2" onSubmit={submit}>
+        <label className="form-control-label">
+          {t('platform.forms.cleanupArtifact', {
+            defaultValue: 'Original artifact',
+          })}
+          <select
+            className="form-control mt-1"
+            value={artifactId}
+            onChange={(event) => setArtifactId(Number(event.target.value))}
+          >
+            {artifacts.map((artifact) => (
+              <option key={artifact.Id} value={artifact.Id}>
+                {artifact.Name} · {artifact.Version}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Alert
+          color="warn"
+          title={t('platform.artifactCleanup.warningTitle', {
+            defaultValue: 'Delete only the retained original',
+          })}
+        >
+          {t('platform.artifactCleanup.warningBody', {
+            defaultValue:
+              'The final registry image and Artifact facts are retained. The server blocks cleanup for active tasks and Release references.',
+          })}
+        </Alert>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
+          {t('platform.artifactCleanup.confirm', {
+            defaultValue: 'I understand this removes the retained original file.',
+          })}
+        </label>
+        <FormActions
+          isSubmitting={mutation.isLoading}
+          submitLabel={t('platform.actions.cleanupArtifactOriginal', {
+            defaultValue: 'Clean original artifact',
+          })}
+          submitDisabled={!artifactId || !confirmed}
+          onCancel={onDone}
+        />
+      </form>
+    </ActionPanel>
+  );
+}
+
 function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
   const { t } = useTranslation();
   return (
@@ -2635,8 +2858,10 @@ function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
         t('platform.columns.version', { defaultValue: 'Version' }),
 		t('platform.columns.type', { defaultValue: 'Type' }),
         t('platform.columns.source', { defaultValue: 'Source' }),
-		t('platform.columns.status', { defaultValue: 'Status' }),
+        t('platform.columns.status', { defaultValue: 'Status' }),
         t('platform.columns.image', { defaultValue: 'Image' }),
+		t('platform.columns.imageDigest', { defaultValue: 'Image digest' }),
+		t('platform.columns.retention', { defaultValue: 'Retention' }),
         t('platform.columns.sha256', { defaultValue: 'SHA256' }),
 		t('platform.columns.failureReason', { defaultValue: 'Failure reason' }),
       ]}
@@ -2647,8 +2872,20 @@ function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
           artifact.Version,
 			artifact.Type,
           artifact.SourceType,
-			<StatusPill key="status" value={artifact.Status ?? ''} />,
+          <StatusPill key="status" value={artifact.Status ?? ''} />,
           artifact.CandidateImageRef ?? artifact.ImageRef ?? '',
+			artifact.ImageDigest ?? '',
+			artifact.Retained
+				? artifact.Cleanable
+					? t('platform.artifacts.retention.cleanable', {
+						defaultValue: 'Retained / cleanable',
+					})
+					: t('platform.artifacts.retention.protected', {
+						defaultValue: 'Retained / protected',
+					})
+				: t('platform.artifacts.retention.cleaned', {
+						defaultValue: 'Original cleaned',
+					}),
           artifact.SHA256 ?? artifact.ImageDigest ?? '',
 			artifact.FailureReason ?? '',
         ],

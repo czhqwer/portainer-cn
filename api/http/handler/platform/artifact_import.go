@@ -67,8 +67,8 @@ func (handler *Handler) artifactArchiveImport(w http.ResponseWriter, r *http.Req
 		if importArtifact.StorageProvider != portainer.PlatformStorageProviderLocal || importArtifact.StoragePath == "" {
 			return validationFailedError("Artifact source is unavailable")
 		}
-		if importArtifact.Status == portainer.PlatformArtifactStatusImporting && importArtifact.TaskLeaseExpiresAt > now {
-			return conflictError("Artifact import is already running")
+		if artifactTaskActive(*importArtifact, now) {
+			return conflictError("Artifact task is already running")
 		}
 		importArtifact.Status = portainer.PlatformArtifactStatusImporting
 		importArtifact.TaskID = leaseID

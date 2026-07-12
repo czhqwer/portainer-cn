@@ -86,6 +86,11 @@ func touchLifecycle(lifecycle *portainer.PlatformLifecycle, now int64) {
 	lifecycle.UpdatedAt = now
 }
 
+// artifactTaskActive 统一构建、导入、推送和原始制品清理的租约判断，防止不同操作绕过彼此的短锁并竞争同一 Artifact。
+func artifactTaskActive(artifact portainer.PlatformArtifact, now int64) bool {
+	return artifact.TaskID != "" && artifact.TaskLeaseExpiresAt > now
+}
+
 func archiveLifecycle(lifecycle *portainer.PlatformLifecycle, now int64, userID portainer.UserID) {
 	lifecycle.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
 	lifecycle.ArchivedAt = now

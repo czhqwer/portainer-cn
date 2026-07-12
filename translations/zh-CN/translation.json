@@ -4506,6 +4506,8 @@
       "version": "版本",
       "source": "来源",
       "image": "镜像",
+      "imageDigest": "镜像 digest",
+      "retention": "保留状态",
       "sha256": "SHA256",
       "releaseId": "发布 ID",
       "failureReason": "失败原因",
@@ -4534,6 +4536,8 @@
       "createArtifact": "登记镜像制品",
       "packageJava": "包装 Java 8 制品",
       "packageStatic": "包装前端 dist 制品",
+      "pushArtifact": "推送候选镜像",
+      "cleanupArtifactOriginal": "清理原始制品",
       "validateRelease": "校验发布",
       "createRelease": "创建发布",
       "createConfigSet": "创建配置集",
@@ -4583,7 +4587,10 @@
       "staticArtifact": "前端 dist 制品",
       "staticMode": "站点模式",
       "staticCachePolicy": "静态缓存策略",
-      "staticNotFoundPage": "dist 内可选 404 页面"
+      "staticNotFoundPage": "dist 内可选 404 页面",
+      "pushArtifact": "候选制品",
+      "registryId": "已配置的 registry ID",
+      "cleanupArtifact": "原始制品"
     },
     "formTitles": {
       "project": "创建项目",
@@ -4592,7 +4599,9 @@
       "service": "创建服务",
       "artifact": "登记镜像制品",
       "javaBuild": "包装 Java 8 制品",
-      "staticBuild": "包装前端 dist 制品"
+      "staticBuild": "包装前端 dist 制品",
+      "artifactPush": "推送候选镜像",
+      "artifactCleanup": "清理原始制品"
     },
     "javaBuild": {
       "restriction": "仅使用平台维护的 Java 8 模板；不接受 Dockerfile、Shell 命令或自定义基础镜像。"
@@ -4604,6 +4613,21 @@
       "cacheNoStore": "不缓存",
       "cacheImmutable": "静态资源长期不可变缓存",
       "restriction": "SPA 必须包含 index.html。平台会校验 ZIP 条目并使用固定 Nginx 镜像；不接受自定义 Nginx 配置、Node 或 SSR。"
+    },
+    "artifactPush": {
+      "restriction": "平台会以唯一的项目/服务/版本 tag 重新标记候选镜像并记录 registry digest。凭据仍只保存在已配置的 Portainer registry 中。"
+    },
+    "artifactCleanup": {
+      "warningTitle": "只删除仍被保留的原始文件",
+      "warningBody": "最终 registry 镜像和 Artifact 事实会保留。服务端会阻止正在执行任务或被 Release 引用的制品清理。",
+      "confirm": "我已知晓此操作会删除保留的原始文件。"
+    },
+    "artifacts": {
+      "retention": {
+        "cleanable": "已保留 / 可清理",
+        "protected": "已保留 / 受保护",
+        "cleaned": "原始文件已清理"
+      }
     },
     "environmentTypes": {
       "dev": "开发",

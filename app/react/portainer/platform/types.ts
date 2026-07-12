@@ -226,8 +226,12 @@ export interface PlatformArtifact extends PlatformLifecycle {
 	Status?: string;
 	CandidateImageRef?: string;
 	CandidateImageId?: string;
+	ImageTag?: string;
+	RegistryId?: number;
 	BuildTemplate?: string;
 	FailureReason?: string;
+	Retained?: boolean;
+	Cleanable?: boolean;
 }
 
 export interface BuildJavaArtifactPayload {
@@ -242,6 +246,11 @@ export interface BuildStaticArtifactPayload {
   Mode: 'spa' | 'mpa';
   CachePolicy?: '' | 'no-cache' | 'immutable';
   NotFoundPage?: string;
+}
+
+export interface PushPlatformArtifactPayload {
+  EndpointId: number;
+  RegistryId: number;
 }
 
 export interface PlatformReleaseStep {

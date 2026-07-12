@@ -8,6 +8,7 @@ import {
 	UploadPlatformArtifactPayload,
 	BuildJavaArtifactPayload,
 	BuildStaticArtifactPayload,
+	PushPlatformArtifactPayload,
   CreatePlatformApplicationPayload,
   CreatePlatformConfigSetPayload,
   CreatePlatformEnvironmentPayload,
@@ -317,6 +318,15 @@ async function buildStaticArtifact({ artifactId, payload }: { artifactId: number
 	return response.data;
 }
 
+async function pushPlatformArtifact({ artifactId, payload }: { artifactId: number; payload: PushPlatformArtifactPayload }) {
+	const response = await axios.post<PlatformArtifact>(`/platform/artifacts/${artifactId}/push`, payload);
+	return response.data;
+}
+
+async function cleanupPlatformArtifactOriginal(artifactId: number) {
+	await axios.post(`/platform/artifacts/${artifactId}/cleanup-original`);
+}
+
 async function getReleases() {
   const response = await axios.get<PlatformRelease[]>('/platform/releases');
   return response.data;
@@ -517,6 +527,16 @@ export function useBuildJavaArtifactMutation() {
 export function useBuildStaticArtifactMutation() {
 	const queryClient = useQueryClient();
 	return useMutation({ mutationFn: buildStaticArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging static artifact') });
+}
+
+export function usePushPlatformArtifactMutation() {
+	const queryClient = useQueryClient();
+	return useMutation({ mutationFn: pushPlatformArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed pushing platform artifact') });
+}
+
+export function useCleanupPlatformArtifactOriginalMutation() {
+	const queryClient = useQueryClient();
+	return useMutation({ mutationFn: cleanupPlatformArtifactOriginal, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed cleaning platform artifact original') });
 }
 
 export function usePlatformConfigSets({
