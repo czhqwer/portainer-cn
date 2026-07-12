@@ -45,6 +45,7 @@ import { Alert } from '@@/Alert';
 import { Button, LoadingButton } from '@@/buttons';
 import { FormControl } from '@@/form-components/FormControl';
 
+import { confirmDatabaseCommand } from './ConfirmDatabaseCommandModal';
 import {
   DatabaseConnection,
   DatabaseConnectionPayload,
@@ -52,19 +53,22 @@ import {
   DatabaseQueryResult,
   DatabaseSchema,
   DatabaseTableDetails,
-  RedisKeyDetails,
   RedisKeySummary,
   useCreateDatabaseConnection,
   useDatabaseConnections,
   useDatabaseSchema,
   useDatabaseTableDetails,
   useDeleteDatabaseConnection,
-  useRedisKeyDetails,
   useRedisKeys,
   useRunDatabaseQuery,
   useTestDatabaseConnection,
   useUpdateDatabaseConnection,
 } from './database-queries';
+import {
+  normalizeEditorLineEndings,
+  selectedOrAllEditorQuery,
+} from './query-execution';
+import { appendAutomaticQueryTab, normalizeQueryTabNames } from './query-tabs';
 import styles from './DatabaseView.module.css';
 
 type ConnectionFormValues = DatabaseConnectionPayload;
@@ -100,6 +104,8 @@ type QueryHistoryItem = {
 type QueryTab = {
   id: string;
   name: string;
+  defaultNameNumber?: number;
+  isCustomName?: boolean;
   query: string;
   database: string;
   result?: DatabaseQueryResult;
@@ -182,7 +188,6 @@ export function DatabaseView() {
   const [selectedTable, setSelectedTable] = useState<SelectedTable>();
   const [redisPattern, setRedisPattern] = useState('*');
   const [selectedRedisKey, setSelectedRedisKey] = useState('');
-  const [pendingRedisPreviewKey, setPendingRedisPreviewKey] = useState('');
   const [expandedRedisFolders, setExpandedRedisFolders] = useState<
     Record<string, boolean>
   >({});
@@ -256,13 +261,6 @@ export function DatabaseView() {
     () => (redisKeysQuery.data?.Keys || []).slice(0, maxRedisTreeKeys),
     [redisKeysQuery.data?.Keys]
   );
-  const redisKeyDetailsQuery = useRedisKeyDetails(
-    environmentId,
-    activeConnection,
-    activeDatabase,
-    selectedRedisKey,
-    activeContainer?.NodeName
-  );
   const abortControllerRef = useRef<AbortController>();
 
   useEffect(() => {
@@ -305,43 +303,11 @@ export function DatabaseView() {
   useEffect(() => {
     setSelectedTable(undefined);
     setSelectedRedisKey('');
-    setPendingRedisPreviewKey('');
     setExpandedRedisFolders({});
   }, [
     activeConnection?.Id,
     activeConnection?.Type,
     activeConnection?.Database,
-  ]);
-
-  // 仅在用户主动点选 Key 时写入结果区；避免详情查询后台刷新覆盖命令执行结果。
-  useEffect(() => {
-    if (
-      activeConnection?.Type !== 'redis' ||
-      !pendingRedisPreviewKey ||
-      !redisKeyDetailsQuery.data ||
-      redisKeyDetailsQuery.data.Name !== pendingRedisPreviewKey ||
-      !activeTab
-    ) {
-      return;
-    }
-
-    setQueryTabs((tabs) =>
-      tabs.map((tab) =>
-        tab.id === activeTab.id
-          ? {
-              ...tab,
-              result: redisDetailsToQueryResult(redisKeyDetailsQuery.data!),
-              error: undefined,
-            }
-          : tab
-      )
-    );
-    setPendingRedisPreviewKey('');
-  }, [
-    activeConnection?.Type,
-    activeTab?.id,
-    pendingRedisPreviewKey,
-    redisKeyDetailsQuery.data,
   ]);
 
   function selectConnection(connection: DatabaseConnection) {
@@ -350,7 +316,6 @@ export function DatabaseView() {
     setQueryTabs([]);
     setActiveTabId('');
     setSelectedRedisKey('');
-    setPendingRedisPreviewKey('');
     setExpandedRedisFolders({});
   }
 
@@ -434,14 +399,14 @@ export function DatabaseView() {
       return;
     }
 
-    // 命令执行优先于 Key 预览，避免旧详情结果盖住新查询的值列。
-    setPendingRedisPreviewKey('');
-    setSelectedRedisKey('');
-
     const queryDatabase =
       activeConnection.Type === 'redis'
         ? normalizeRedisDatabase(activeDatabase)
         : activeDatabase;
+    const requiresConfirmation = requiresDatabaseCommandConfirmation(
+      activeConnection.Type,
+      statement
+    );
     const isWriteStatement = isUpdateOrDeleteStatement(statement);
     const unsafeWrite = isUnsafeWriteStatement(statement);
     const abortController = new AbortController();
@@ -449,7 +414,9 @@ export function DatabaseView() {
     updateActiveTab({ error: undefined });
 
     try {
-      if (isWriteStatement) {
+      // UPDATE/DELETE 可先在事务中预览影响行数；DDL、INSERT 和 Redis 写命令无法安全预执行，
+      // 因此统一改为执行前确认，避免用户误以为这些操作不受二次确认保护。
+      if (requiresConfirmation && isWriteStatement) {
         const preview = await runQuery.mutateAsync({
           connection: activeConnection,
           query: statement,
@@ -479,7 +446,26 @@ export function DatabaseView() {
               }
             );
 
-        const confirmed = window.confirm(confirmMessage);
+        const confirmed = await confirmDatabaseCommand({
+          message: confirmMessage,
+          command: statement,
+          rowsAffected: preview.RowsAffected || 0,
+        });
+
+        if (!confirmed) {
+          return;
+        }
+      } else if (requiresConfirmation) {
+        const confirmed = await confirmDatabaseCommand({
+          message: t(
+            'legacyText.This command may modify data or database structure. Execute it?',
+            {
+              defaultValue:
+                'This command may modify data or database structure. Execute it?',
+            }
+          ),
+          command: statement,
+        });
 
         if (!confirmed) {
           return;
@@ -490,6 +476,7 @@ export function DatabaseView() {
         connection: activeConnection,
         query: statement,
         database: queryDatabase,
+        confirmWrite: requiresConfirmation,
         confirmUnsafeWrite: unsafeWrite,
         nodeName: activeContainer?.NodeName,
         signal: abortController.signal,
@@ -549,7 +536,6 @@ export function DatabaseView() {
     updateActiveTab({ database: nextDatabase });
     if (activeConnection?.Type === 'redis') {
       setSelectedRedisKey('');
-      setPendingRedisPreviewKey('');
       setExpandedRedisFolders({});
     }
   }
@@ -559,15 +545,21 @@ export function DatabaseView() {
       return;
     }
 
-    const nextTab = createDefaultQueryTab(
-      activeConnection,
-      databaseOptions,
-      queryTabs.length + 1,
-      t
+    const tabId = createQueryTabId();
+    // 编号必须在函数式更新内计算，避免连续新增或关闭后立即新增时仍读取上次渲染的 tabs 快照。
+    setQueryTabs(
+      (tabs) =>
+        appendAutomaticQueryTab(tabs, (number) =>
+          createDefaultQueryTab(
+            activeConnection,
+            databaseOptions,
+            number,
+            t,
+            tabId
+          )
+        ).tabs
     );
-
-    setQueryTabs((tabs) => [...tabs, nextTab]);
-    setActiveTabId(nextTab.id);
+    setActiveTabId(tabId);
   }
 
   function closeQueryTab(tabId: string) {
@@ -585,15 +577,35 @@ export function DatabaseView() {
     });
   }
 
+  function renameQueryTab(tabId: string, name: string) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    setQueryTabs((tabs) =>
+      tabs.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              name: trimmedName,
+              isCustomName: true,
+            }
+          : tab
+      )
+    );
+  }
+
   function formatActiveTabQuery(selectionStart: number, selectionEnd: number) {
     if (!activeConnection || !activeTab || activeConnection.Type === 'redis') {
       return;
     }
 
+    const normalizedQuery = normalizeEditorLineEndings(activeTab.query);
     const targetSql =
       selectionStart !== selectionEnd
-        ? activeTab.query.slice(selectionStart, selectionEnd)
-        : activeTab.query;
+        ? normalizedQuery.slice(selectionStart, selectionEnd)
+        : normalizedQuery;
 
     try {
       const formatted = formatSql(targetSql, {
@@ -602,7 +614,7 @@ export function DatabaseView() {
 
       if (selectionStart !== selectionEnd) {
         updateActiveTabQuery(
-          `${activeTab.query.slice(0, selectionStart)}${formatted}${activeTab.query.slice(selectionEnd)}`
+          `${normalizedQuery.slice(0, selectionStart)}${formatted}${normalizedQuery.slice(selectionEnd)}`
         );
         return;
       }
@@ -693,7 +705,6 @@ export function DatabaseView() {
             onRedisRefresh={() => redisKeysQuery.refetch()}
             onSelectRedisKey={(key) => {
               setSelectedRedisKey(key);
-              setPendingRedisPreviewKey(key);
             }}
             onInsertRedisKeyCommand={insertRedisKeyCommand}
             onToggleRedisFolder={toggleRedisFolder}
@@ -712,6 +723,7 @@ export function DatabaseView() {
             onSelectTab={setActiveTabId}
             onAddTab={addQueryTab}
             onCloseTab={closeQueryTab}
+            onRenameTab={renameQueryTab}
             onSelectDatabase={updateActiveTabDatabase}
             onQueryChange={updateActiveTabQuery}
             onFormat={formatActiveTabQuery}
@@ -722,6 +734,9 @@ export function DatabaseView() {
               dispatchCacheRefreshEvent();
               connectionsQuery.refetch();
               schemaQuery.refetch();
+              if (selectedTable && activeConnection?.Type !== 'redis') {
+                tableDetailsQuery.refetch();
+              }
               if (activeConnection?.Type === 'redis') {
                 redisKeysQuery.refetch();
               }
@@ -1342,6 +1357,7 @@ function QueryWorkspace({
   onSelectTab,
   onAddTab,
   onCloseTab,
+  onRenameTab,
   onSelectDatabase,
   onQueryChange,
   onFormat,
@@ -1359,6 +1375,7 @@ function QueryWorkspace({
   onSelectTab: (tabId: string) => void;
   onAddTab: () => void;
   onCloseTab: (tabId: string) => void;
+  onRenameTab: (tabId: string, name: string) => void;
   onSelectDatabase: (database: string) => void;
   onQueryChange: (query: string) => void;
   onFormat: (selectionStart: number, selectionEnd: number) => void;
@@ -1371,10 +1388,14 @@ function QueryWorkspace({
   const editorPanelRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{ y: number; height: number }>();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const tabNameInputRef = useRef<HTMLInputElement>(null);
+  const skipRenameOnBlurRef = useRef(false);
   const [editorScrollTop, setEditorScrollTop] = useState(0);
   const [editorHeight, setEditorHeight] = useState(280);
   const [isResizingEditor, setIsResizingEditor] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [editingTabId, setEditingTabId] = useState<string>();
+  const [tabNameDraft, setTabNameDraft] = useState('');
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0];
   const query = activeTab?.query || '';
   const isRedisConnection = activeConnection?.Type === 'redis';
@@ -1421,6 +1442,42 @@ function QueryWorkspace({
     };
   }, [isResizingEditor]);
 
+  useEffect(() => {
+    if (!editingTabId) {
+      return;
+    }
+
+    tabNameInputRef.current?.focus();
+    tabNameInputRef.current?.select();
+  }, [editingTabId]);
+
+  function displayedTabName(tab: QueryTab) {
+    return !tab.isCustomName && tab.defaultNameNumber
+      ? queryTabName(tab.defaultNameNumber, t)
+      : tab.name;
+  }
+
+  function startTabRename(tab: QueryTab) {
+    setEditingTabId(tab.id);
+    setTabNameDraft(displayedTabName(tab));
+  }
+
+  function saveTabRename() {
+    if (!editingTabId) {
+      return;
+    }
+
+    onRenameTab(editingTabId, tabNameDraft);
+    setEditingTabId(undefined);
+    setTabNameDraft('');
+  }
+
+  function cancelTabRename() {
+    skipRenameOnBlurRef.current = true;
+    setEditingTabId(undefined);
+    setTabNameDraft('');
+  }
+
   // 拖动分隔条时只调整 SQL 编辑区高度，结果区保持 flex 占用剩余空间。
   function startEditorResize(event: {
     preventDefault(): void;
@@ -1451,11 +1508,13 @@ function QueryWorkspace({
       return query;
     }
 
-    const selected = query.slice(
+    // 选区坐标由 textarea.value 定义；草稿可能来自含 CRLF 的历史缓存，
+    // 必须用同一份编辑器文本截取，避免第二行命令发生错位或丢字符。
+    return selectedOrAllEditorQuery(
+      textarea.value,
       textarea.selectionStart,
       textarea.selectionEnd
     );
-    return selected.trim() ? selected : query;
   }
 
   return (
@@ -1466,38 +1525,67 @@ function QueryWorkspace({
       >
         <div className="mb-2 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-5 pb-2">
           {tabs.map((tab) => (
-            <button
+            <div
               key={tab.id}
-              type="button"
-              className={`flex max-w-[180px] shrink-0 items-center gap-2 rounded-t border border-b-0 px-3 py-1.5 text-sm ${
+              className={`group flex max-w-[180px] shrink-0 items-center gap-1 rounded-t border border-b-0 px-2 py-1.5 text-sm ${
                 tab.id === activeTab?.id
                   ? 'border-blue-8 bg-white text-blue-9 th-dark:bg-gray-iron-11 th-dark:text-white'
                   : 'border-gray-5 bg-gray-1 text-gray-8 hover:bg-gray-2 th-dark:bg-gray-iron-10 th-dark:text-gray-3 th-dark:hover:bg-gray-iron-9'
               }`}
-              onClick={() => onSelectTab(tab.id)}
             >
-              <span className="truncate">{tab.name}</span>
-              {tabs.length > 1 && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="rounded p-0.5 hover:bg-black/10 th-dark:hover:bg-white/10"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onCloseTab(tab.id);
+              {editingTabId === tab.id ? (
+                <input
+                  ref={tabNameInputRef}
+                  value={tabNameDraft}
+                  onChange={(event) => setTabNameDraft(event.target.value)}
+                  onBlur={() => {
+                    if (skipRenameOnBlurRef.current) {
+                      skipRenameOnBlurRef.current = false;
+                      return;
+                    }
+                    saveTabRename();
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
+                    if (event.key === 'Enter') {
                       event.preventDefault();
-                      event.stopPropagation();
-                      onCloseTab(tab.id);
+                      saveTabRename();
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      cancelTabRename();
                     }
                   }}
+                  className="h-6 min-w-0 flex-1 rounded border border-blue-7 bg-white px-1 text-sm text-gray-10 outline-none th-dark:bg-gray-iron-9 th-dark:text-white"
+                  aria-label={t('legacyText.Query tab name', {
+                    defaultValue: 'Query tab name',
+                  })}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-left"
+                  onClick={() => onSelectTab(tab.id)}
+                  onDoubleClick={() => startTabRename(tab)}
+                  title={t('legacyText.Double-click to rename query tab', {
+                    defaultValue: 'Double-click to rename query tab',
+                  })}
                 >
-                  <Icon icon={X} className="lucide" />
-                </span>
+                  <span className="block truncate">
+                    {displayedTabName(tab)}
+                  </span>
+                </button>
               )}
-            </button>
+              {tabs.length > 1 && (
+                <button
+                  type="button"
+                  className="opacity-35 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-0 bg-transparent p-0 text-current transition-opacity hover:bg-black/10 hover:opacity-90 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-7 th-dark:hover:bg-white/10"
+                  onClick={() => onCloseTab(tab.id)}
+                  aria-label={t('buttons.Close', { defaultValue: 'Close' })}
+                >
+                  <Icon icon={X} className="lucide h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           ))}
           <Button
             type="button"
@@ -2671,6 +2759,18 @@ function QueryResult({ result }: { result?: DatabaseQueryResult }) {
             {result.RedisType}
           </span>
         )}
+        {result.RedisScanCursor && (
+          <span className="shrink-0 text-xs text-muted">
+            {result.RedisScanCursor === '0'
+              ? t('Redis scan completed', {
+                  defaultValue: 'Scan completed',
+                })
+              : t('Redis scan next cursor: {{cursor}}', {
+                  cursor: result.RedisScanCursor,
+                  defaultValue: 'Next cursor: {{cursor}}',
+                })}
+          </span>
+        )}
         <span className="ml-auto rounded bg-gray-2 px-2 py-1 text-xs font-medium text-gray-8 th-dark:bg-gray-iron-10 th-dark:text-gray-3">
           {result.Duration.toFixed(3)}s
         </span>
@@ -3041,6 +3141,90 @@ function isUpdateOrDeleteStatement(query: string) {
   return type === 'update' || type === 'delete';
 }
 
+function requiresDatabaseCommandConfirmation(
+  connectionType: DatabaseConnectionType,
+  query: string
+) {
+  if (connectionType === 'redis') {
+    const command = query.trimStart().split(/\s+/, 1)[0]?.toUpperCase();
+    return !command || !readOnlyRedisCommands.has(command);
+  }
+
+  return !isReadOnlySqlStatement(query);
+}
+
+function isReadOnlySqlStatement(query: string) {
+  // WITH 语句可能包含 UPDATE/DELETE；为避免将写入 CTE 当成查询，统一要求确认。
+  if (
+    !['select', 'show', 'describe', 'desc', 'explain'].includes(
+      statementType(query)
+    )
+  ) {
+    return false;
+  }
+
+  const normalized = stripSqlLiteralsAndComments(query)
+    .trim()
+    .replace(/[;\s]+$/, '');
+  return !normalized.includes(';');
+}
+
+const readOnlyRedisCommands = new Set([
+  'PING',
+  'ECHO',
+  'GET',
+  'MGET',
+  'GETRANGE',
+  'STRLEN',
+  'GETBIT',
+  'BITCOUNT',
+  'BITPOS',
+  'EXISTS',
+  'TYPE',
+  'TTL',
+  'PTTL',
+  'KEYS',
+  'SCAN',
+  'RANDOMKEY',
+  'HGET',
+  'HMGET',
+  'HGETALL',
+  'HKEYS',
+  'HVALS',
+  'HLEN',
+  'HEXISTS',
+  'HRANDFIELD',
+  'LINDEX',
+  'LLEN',
+  'LRANGE',
+  'SCARD',
+  'SISMEMBER',
+  'SMISMEMBER',
+  'SMEMBERS',
+  'SRANDMEMBER',
+  'SSCAN',
+  'ZCARD',
+  'ZCOUNT',
+  'ZRANGE',
+  'ZRANGEBYSCORE',
+  'ZRANK',
+  'ZREVRANK',
+  'ZREVRANGE',
+  'ZREVRANGEBYSCORE',
+  'ZSCORE',
+  'ZSCAN',
+  'PFCOUNT',
+  'XLEN',
+  'XRANGE',
+  'XREVRANGE',
+  'XINFO',
+  'XPENDING',
+  'XREAD',
+  'DBSIZE',
+  'INFO',
+  'TIME',
+]);
+
 // 写操作缺少 WHERE 时先在前端提高确认等级，后端仍会做同样校验。
 function isUnsafeWriteStatement(query: string) {
   return (
@@ -3190,12 +3374,16 @@ function saveQueryTabs(
 ) {
   const payload: PersistedQueryTabs = {
     activeTabId,
-    tabs: tabs.map(({ id, name, query, database }) => ({
-      id,
-      name,
-      query,
-      database,
-    })),
+    tabs: tabs.map(
+      ({ id, name, defaultNameNumber, isCustomName, query, database }) => ({
+        id,
+        name,
+        defaultNameNumber,
+        isCustomName,
+        query,
+        database,
+      })
+    ),
   };
 
   window.localStorage.setItem(storageKey, JSON.stringify(payload));
@@ -3207,19 +3395,22 @@ function sanitizeQueryTabs(
   databases: string[],
   t: TranslateFn
 ) {
-  const validTabs = (tabs || [])
-    .filter((tab) => tab.id && tab.name)
-    .map((tab, index) => ({
-      id: tab.id,
-      name: tab.name || queryTabName(index + 1, t),
-      query: defaultQueryDraft(connection, tab.query),
-      database:
-        connection.Type === 'redis'
-          ? normalizeRedisDatabase(tab.database || connection.Database || '0')
-          : tab.database ||
-            connection.Database ||
-            preferredDatabaseOption(databases, connection.Type),
-    }));
+  const validTabs = normalizeQueryTabNames(
+    (tabs || []).filter((tab) => tab.id && tab.name),
+    (number) => queryTabName(number, t)
+  ).map((tab, index) => ({
+    id: tab.id,
+    name: tab.name || queryTabName(index + 1, t),
+    defaultNameNumber: tab.defaultNameNumber,
+    isCustomName: tab.isCustomName,
+    query: defaultQueryDraft(connection, tab.query),
+    database:
+      connection.Type === 'redis'
+        ? normalizeRedisDatabase(tab.database || connection.Database || '0')
+        : tab.database ||
+          connection.Database ||
+          preferredDatabaseOption(databases, connection.Type),
+  }));
 
   return validTabs.length
     ? validTabs
@@ -3231,11 +3422,14 @@ function createDefaultQueryTab(
   connection: DatabaseConnection,
   databases: string[],
   index: number,
-  t: TranslateFn
+  t: TranslateFn,
+  id = createQueryTabId()
 ): QueryTab {
   return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    id,
     name: queryTabName(index, t),
+    defaultNameNumber: index,
+    isCustomName: false,
     query: defaultQueryDraft(connection),
     database:
       connection.Type === 'redis'
@@ -3243,6 +3437,10 @@ function createDefaultQueryTab(
         : connection.Database ||
           preferredDatabaseOption(databases, connection.Type),
   };
+}
+
+function createQueryTabId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 // Redis 编辑区不应残留 SQL 行数提示；历史草稿若仍是该注释则清空。
@@ -3256,10 +3454,10 @@ function defaultQueryDraft(connection: DatabaseConnection, query?: string) {
     ) {
       return '';
     }
-    return query || '';
+    return normalizeEditorLineEndings(query || '');
   }
 
-  return query || defaultSqlTemplate;
+  return normalizeEditorLineEndings(query || defaultSqlTemplate);
 }
 
 // Redis DB 只能是数字 index；切库瞬间残留的 MySQL 库名直接回落为 0。
@@ -3313,98 +3511,14 @@ function resultColumnLabel(column: string, t: TranslateFn) {
   if (column === 'Field') {
     return t('tableHeaders.Field', { defaultValue: 'Field' });
   }
+  if (column === 'Member') {
+    return t('tableHeaders.Member', { defaultValue: 'Member' });
+  }
+  if (column === 'Score') {
+    return t('tableHeaders.Score', { defaultValue: 'Score' });
+  }
 
   return column;
-}
-
-// 把 Redis Key 详情转成结果：Key/Type 放表头元数据，list/set 行内用 Index。
-function redisDetailsToQueryResult(
-  details: RedisKeyDetails
-): DatabaseQueryResult {
-  const meta = {
-    RedisKey: details.Name,
-    RedisType: details.Type,
-  };
-
-  if (typeof details.Value === 'string') {
-    return {
-      Columns: ['Value', 'TTL'],
-      Rows: [
-        {
-          Value: details.Value,
-          TTL: details.TTL,
-        },
-      ],
-      Message: '1 row(s)',
-      Duration: 0,
-      ...meta,
-    };
-  }
-
-  if (details.Rows.length === 0) {
-    return {
-      Columns: ['Value', 'TTL'],
-      Rows: [
-        {
-          Value: '',
-          TTL: details.TTL,
-        },
-      ],
-      Message: '1 row(s)',
-      Duration: 0,
-      ...meta,
-    };
-  }
-
-  if (details.Type === 'hash') {
-    return {
-      Columns: ['Field', 'Value', 'TTL'],
-      Rows: details.Rows.map((row) => ({
-        Field: row.Field || '',
-        Value: row.Value ?? '',
-        TTL: details.TTL,
-      })),
-      Message: `${details.Rows.length} row(s)`,
-      Duration: 0,
-      ...meta,
-    };
-  }
-
-  if (
-    details.Type === 'list' ||
-    details.Type === 'set' ||
-    details.Type === 'zset'
-  ) {
-    return {
-      Columns: ['Index', 'Value', 'TTL'],
-      Rows: details.Rows.map((row, index) => ({
-        Index: row.Index ?? String(index),
-        Value: redisDetailRowValue(row),
-        TTL: details.TTL,
-      })),
-      Message: `${details.Rows.length} row(s)`,
-      Duration: 0,
-      ...meta,
-    };
-  }
-
-  return {
-    Columns: ['Value', 'TTL'],
-    Rows: details.Rows.map((row) => ({
-      Value: redisDetailRowValue(row),
-      TTL: details.TTL,
-    })),
-    Message: `${details.Rows.length} row(s)`,
-    Duration: 0,
-    ...meta,
-  };
-}
-
-function redisDetailRowValue(row: Record<string, string>) {
-  if (row.Score !== undefined) {
-    return `${row.Value ?? ''} (${row.Score})`;
-  }
-  return row.Value ?? '';
 }
 
 function redisKeyReadCommand(key: RedisKeySummary) {
@@ -3550,6 +3664,13 @@ function databaseErrorLabel(error: DatabaseViewError, t: TranslateFn) {
       {
         defaultValue:
           'This UPDATE/DELETE has no WHERE clause and requires confirmation.',
+      }
+    ),
+    write_requires_confirmation: t(
+      'legacyText.Database write requires confirmation',
+      {
+        defaultValue:
+          'This command may modify database data or structure and requires confirmation.',
       }
     ),
     connection_failed: t('legacyText.Connection failed', {

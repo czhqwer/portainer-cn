@@ -30,14 +30,6 @@ type databaseRedisKey struct {
 	TTL  string `json:"TTL"`
 }
 
-type databaseRedisKeyDetailsResponse struct {
-	Name  string              `json:"Name"`
-	Type  string              `json:"Type"`
-	TTL   string              `json:"TTL"`
-	Rows  []map[string]string `json:"Rows"`
-	Value string              `json:"Value,omitempty"`
-}
-
 func (handler *Handler) databaseConnectionRedisKeys(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
 	endpointID, httpErr := handler.databaseEndpointIDFromRequest(r)
 	if httpErr != nil {
@@ -67,38 +59,6 @@ func (handler *Handler) databaseConnectionRedisKeys(w http.ResponseWriter, r *ht
 	result, err := scanRedisKeys(r, *connection, dbIndex, cursor, pattern, count)
 	if err != nil {
 		return writeDatabaseError(w, "Unable to scan Redis keys", err)
-	}
-
-	return response.JSON(w, result)
-}
-
-func (handler *Handler) databaseConnectionRedisKeyDetails(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
-	endpointID, httpErr := handler.databaseEndpointIDFromRequest(r)
-	if httpErr != nil {
-		return httpErr
-	}
-
-	connection, httpErr := handler.databaseConnectionFromRequest(r, endpointID)
-	if httpErr != nil {
-		return httpErr
-	}
-	if connection.Type != "redis" {
-		return httperror.BadRequest("Redis key details are only supported for Redis connections", errors.New("unsupported database type"))
-	}
-
-	key := r.URL.Query().Get("key")
-	if key == "" {
-		return httperror.BadRequest("Invalid Redis key request", errors.New("key is required"))
-	}
-
-	dbIndex, err := redisDatabaseIndex(r.URL.Query().Get("database"), connection.Database)
-	if err != nil {
-		return httperror.BadRequest("Invalid Redis database", err)
-	}
-
-	result, err := redisKeyDetails(r, *connection, dbIndex, key)
-	if err != nil {
-		return writeDatabaseError(w, "Unable to retrieve Redis key details", err)
 	}
 
 	return response.JSON(w, result)
@@ -152,81 +112,6 @@ func scanRedisKeys(r *http.Request, connection portainer.DatabaseConnection, dbI
 
 	// 达到上限后即使 SCAN 未结束也返回 0，前端不再提供继续翻页入口。
 	result.Cursor = "0"
-	return result, nil
-}
-
-// Redis Key 浏览必须使用 SCAN/分页读取；详情预览也限制数量，避免自用场景误触发全量 keyspace 扫描。
-func redisKeyDetails(r *http.Request, connection portainer.DatabaseConnection, dbIndex int, key string) (*databaseRedisKeyDetailsResponse, error) {
-	client := newRedisClient(connection, dbIndex)
-	defer client.Close()
-
-	keyType, err := client.Type(r.Context(), key).Result()
-	if err != nil {
-		return nil, err
-	}
-	ttl, err := client.TTL(r.Context(), key).Result()
-	if err != nil {
-		return nil, err
-	}
-
-	result := &databaseRedisKeyDetailsResponse{
-		Name: key,
-		Type: keyType,
-		TTL:  redisTTLLabel(ttl),
-		Rows: []map[string]string{},
-	}
-
-	switch keyType {
-	case "string":
-		value, err := client.Get(r.Context(), key).Result()
-		if err != nil {
-			return nil, err
-		}
-		result.Value = value
-		result.Rows = append(result.Rows, map[string]string{"Field": "value", "Value": value})
-	case "list":
-		values, err := client.LRange(r.Context(), key, 0, maxRedisPreviewItems-1).Result()
-		if err != nil {
-			return nil, err
-		}
-		for index, value := range values {
-			result.Rows = append(result.Rows, map[string]string{"Index": strconv.Itoa(index), "Value": value})
-		}
-	case "hash":
-		values, err := client.HGetAll(r.Context(), key).Result()
-		if err != nil {
-			return nil, err
-		}
-		count := int64(0)
-		for field, value := range values {
-			if count >= maxRedisPreviewItems {
-				break
-			}
-			result.Rows = append(result.Rows, map[string]string{"Field": field, "Value": value})
-			count++
-		}
-	case "set":
-		values, _, err := client.SScan(r.Context(), key, 0, "*", maxRedisPreviewItems).Result()
-		if err != nil {
-			return nil, err
-		}
-		for index, value := range values {
-			result.Rows = append(result.Rows, map[string]string{"Index": strconv.Itoa(index), "Value": value})
-		}
-	case "zset":
-		values, err := client.ZRangeWithScores(r.Context(), key, 0, maxRedisPreviewItems-1).Result()
-		if err != nil {
-			return nil, err
-		}
-		for index, value := range values {
-			result.Rows = append(result.Rows, map[string]string{
-				"Index": strconv.Itoa(index),
-				"Score": databaseValueToString(value.Score),
-				"Value": databaseValueToString(value.Member),
-			})
-		}
-	}
-
 	return result, nil
 }
 

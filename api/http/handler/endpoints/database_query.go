@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ type databaseQueryPayload struct {
 	Query              string `json:"Query"`
 	Database           string `json:"Database"`
 	Preview            bool   `json:"Preview"`
+	ConfirmWrite       bool   `json:"ConfirmWrite"`
 	ConfirmUnsafeWrite bool   `json:"ConfirmUnsafeWrite"`
 }
 
@@ -51,8 +53,9 @@ type databaseQueryResult struct {
 	UnsafeWrite          bool                `json:"UnsafeWrite,omitempty"`
 	ErrorCode            string              `json:"ErrorCode,omitempty"`
 	// Redis 单次查询的 Key/Type 对所有行相同，提到表头展示，避免每行重复。
-	RedisKey  string `json:"RedisKey,omitempty"`
-	RedisType string `json:"RedisType,omitempty"`
+	RedisKey        string `json:"RedisKey,omitempty"`
+	RedisType       string `json:"RedisType,omitempty"`
+	RedisScanCursor string `json:"RedisScanCursor,omitempty"`
 }
 
 type databaseErrorResponse struct {
@@ -83,15 +86,26 @@ func (handler *Handler) databaseConnectionQuery(w http.ResponseWriter, r *http.R
 	}
 
 	statementType := databaseStatementType(payload.Query)
-	if !payload.Preview && isUnsafeWriteStatement(payload.Query) && !payload.ConfirmUnsafeWrite {
+	unsafeWrite := isUnsafeWriteStatement(payload.Query)
+	// 除只读查询外，所有命令都必须由前端显式确认；即使绕过页面直接调用接口，
+	// 也不能跳过 INSERT、DDL 或 Redis 写命令的二次确认保护。
+	if !payload.Preview && requiresDatabaseCommandConfirmation(string(connection.Type), payload.Query) &&
+		!payload.ConfirmWrite && !(unsafeWrite && payload.ConfirmUnsafeWrite) {
+		message := "This command may modify database data or structure and requires confirmation"
+		errorCode := "write_requires_confirmation"
+		if unsafeWrite {
+			message = "UPDATE/DELETE without WHERE requires confirmation"
+			errorCode = "unsafe_write_requires_confirmation"
+		}
+
 		return response.JSON(w, &databaseQueryResult{
 			Columns:              []string{},
 			Rows:                 []map[string]string{},
-			Message:              "UPDATE/DELETE without WHERE requires confirmation",
+			Message:              message,
 			StatementType:        statementType,
 			RequiresConfirmation: true,
-			UnsafeWrite:          true,
-			ErrorCode:            "unsafe_write_requires_confirmation",
+			UnsafeWrite:          unsafeWrite,
+			ErrorCode:            errorCode,
 		})
 	}
 
@@ -307,11 +321,12 @@ func executeRedisCommand(ctx context.Context, connection portainer.DatabaseConne
 
 	rows, columns := redisCommandResultRows(args, value, keyType, ttlLabel)
 	return &databaseQueryResult{
-		Columns:   columns,
-		Rows:      rows,
-		Message:   fmt.Sprintf("%d row(s)", len(rows)),
-		RedisKey:  key,
-		RedisType: keyType,
+		Columns:         columns,
+		Rows:            rows,
+		Message:         fmt.Sprintf("%d row(s)", len(rows)),
+		RedisKey:        key,
+		RedisType:       keyType,
+		RedisScanCursor: redisScanCursor(args, value),
 	}, nil
 }
 
@@ -323,10 +338,10 @@ func redisCommandKey(args []string) string {
 
 	switch strings.ToUpper(args[0]) {
 	case "GET", "GETDEL", "GETEX", "DUMP", "EXISTS", "TTL", "PTTL", "TYPE", "STRLEN",
-		"HGET", "HGETALL", "HKEYS", "HVALS", "HLEN",
+		"HGET", "HMGET", "HGETALL", "HKEYS", "HVALS", "HLEN", "HSCAN",
 		"LLEN", "LRANGE", "LINDEX",
 		"SMEMBERS", "SCARD", "SSCAN",
-		"ZCARD", "ZRANGE", "ZREVRANGE", "ZSCORE":
+		"ZCARD", "ZRANGE", "ZREVRANGE", "ZSCORE", "ZSCAN":
 		return args[1]
 	default:
 		return ""
@@ -334,7 +349,7 @@ func redisCommandKey(args []string) string {
 }
 
 // redisCommandResultRows 生成表格行；Key/Type 已上移到结果头，行内只保留值与 TTL。
-// list/set/zset 增加 Index（0,1,2...），hash 保留 Field。
+// 常规集合命令保留 Index，Hash 和扫描命令则使用更能表达数据语义的字段列。
 func redisCommandResultRows(args []string, value any, keyType string, ttl string) ([]map[string]string, []string) {
 	command := ""
 	if len(args) > 0 {
@@ -342,8 +357,22 @@ func redisCommandResultRows(args []string, value any, keyType string, ttl string
 	}
 
 	switch command {
+	case "SCAN":
+		return redisScanKeysToRows(value)
+	case "SSCAN":
+		return redisScanMembersToRows(value, ttl)
+	case "HSCAN":
+		return redisHashPairsToRows(redisScanItems(value), ttl)
+	case "ZSCAN":
+		return redisZSetPairsToRows(redisScanItems(value), ttl)
 	case "HGETALL":
 		return redisHashPairsToRows(value, ttl)
+	case "HGET", "HMGET":
+		return redisHashFieldsToRows(args[2:], value, ttl)
+	case "HKEYS":
+		return redisHashKeysToRows(value, ttl)
+	case "HVALS":
+		return redisIndexedValueRows(value, ttl)
 	case "ZRANGE", "ZREVRANGE":
 		if redisCommandHasWithScores(args) {
 			return redisZSetPairsToRows(value, ttl)
@@ -413,41 +442,199 @@ func redisIndexedValueRows(value any, ttl string) ([]map[string]string, []string
 	return rows, columns
 }
 
-func redisHashPairsToRows(value any, ttl string) ([]map[string]string, []string) {
-	columns := []string{"Field", "Value", "TTL"}
-	rows := []map[string]string{}
-	items, ok := value.([]any)
-	if !ok {
-		if value != nil {
-			rows = append(rows, map[string]string{
-				"Field": "",
-				"Value": databaseValueToString(value),
-				"TTL":   ttl,
-			})
-		}
-		return rows, columns
+// Redis 的 SCAN 系列命令固定返回 [cursor, items]。游标仅表示下一页位置，
+// 不能作为业务数据塞进结果表格，否则会出现游标和成员各占一行的误导性展示。
+func redisScanItems(value any) []any {
+	response := redisCommandValues(value)
+	if len(response) < 2 {
+		return []any{}
 	}
 
-	for i := 0; i+1 < len(items); i += 2 {
+	return redisCommandValues(response[1])
+}
+
+func redisScanCursor(args []string, value any) string {
+	if len(args) == 0 {
+		return ""
+	}
+
+	switch strings.ToUpper(args[0]) {
+	case "SCAN", "SSCAN", "HSCAN", "ZSCAN":
+		response := redisCommandValues(value)
+		if len(response) > 0 {
+			return databaseValueToString(response[0])
+		}
+	}
+
+	return ""
+}
+
+func redisScanKeysToRows(value any) ([]map[string]string, []string) {
+	columns := []string{"Key"}
+	items := redisScanItems(value)
+	rows := make([]map[string]string, 0, len(items))
+	for _, item := range items {
 		rows = append(rows, map[string]string{
-			"Field": databaseValueToString(items[i]),
-			"Value": databaseValueToString(items[i+1]),
-			"TTL":   ttl,
+			"Key": databaseValueToString(item),
 		})
 	}
+
 	return rows, columns
 }
 
-func redisZSetPairsToRows(value any, ttl string) ([]map[string]string, []string) {
-	columns := []string{"Index", "Value", "TTL"}
+func redisScanMembersToRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Member", "TTL"}
+	items := redisScanItems(value)
+	rows := make([]map[string]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, map[string]string{
+			"Member": databaseValueToString(item),
+			"TTL":    ttl,
+		})
+	}
+
+	return rows, columns
+}
+
+func redisHashPairsToRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Field", "Value", "TTL"}
 	rows := []map[string]string{}
-	items, ok := value.([]any)
-	if !ok {
+
+	appendPair := func(field any, fieldValue any) {
+		rows = append(rows, map[string]string{
+			"Field": databaseValueToString(field),
+			"Value": databaseValueToString(fieldValue),
+			"TTL":   ttl,
+		})
+	}
+
+	switch items := value.(type) {
+	case map[string]string:
+		for _, field := range sortedRedisHashFields(items) {
+			appendPair(field, items[field])
+		}
+	case map[string]any:
+		fields := make([]string, 0, len(items))
+		for field := range items {
+			fields = append(fields, field)
+		}
+		sort.Strings(fields)
+		for _, field := range fields {
+			appendPair(field, items[field])
+		}
+	case map[any]any:
+		// go-redis 在 RESP3 Map 回复中使用 map[any]any；转换并排序后，
+		// Hash 字段才能稳定地逐行返回给前端，而不是被 fmt.Sprint 压成一个字符串。
+		entries := make([]struct {
+			field string
+			value any
+		}, 0, len(items))
+		for field, fieldValue := range items {
+			entries = append(entries, struct {
+				field string
+				value any
+			}{
+				field: databaseValueToString(field),
+				value: fieldValue,
+			})
+		}
+		sort.Slice(entries, func(left, right int) bool {
+			return entries[left].field < entries[right].field
+		})
+		for _, entry := range entries {
+			appendPair(entry.field, entry.value)
+		}
+	case []any:
+		for i := 0; i+1 < len(items); i += 2 {
+			appendPair(items[i], items[i+1])
+		}
+	case []string:
+		for i := 0; i+1 < len(items); i += 2 {
+			appendPair(items[i], items[i+1])
+		}
+	default:
 		if value != nil {
+			appendPair("", value)
+		}
+	}
+
+	return rows, columns
+}
+
+// HMGET 的响应只包含值，字段名保留在请求参数里；按位置重新配对后，
+// 空字段也能明确显示，避免数组被压缩成一个无法辨识的单元格。
+func redisHashFieldsToRows(fields []string, value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Field", "Value", "TTL"}
+	rows := make([]map[string]string, 0, len(fields))
+	values := redisCommandValues(value)
+
+	for index, field := range fields {
+		var fieldValue any
+		if index < len(values) {
+			fieldValue = values[index]
+		}
+		rows = append(rows, map[string]string{
+			"Field": field,
+			"Value": databaseValueToString(fieldValue),
+			"TTL":   ttl,
+		})
+	}
+
+	return rows, columns
+}
+
+func redisHashKeysToRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Field", "Value", "TTL"}
+	values := redisCommandValues(value)
+	rows := make([]map[string]string, 0, len(values))
+
+	for _, field := range values {
+		rows = append(rows, map[string]string{
+			"Field": databaseValueToString(field),
+			"Value": "",
+			"TTL":   ttl,
+		})
+	}
+
+	return rows, columns
+}
+
+func redisCommandValues(value any) []any {
+	switch values := value.(type) {
+	case nil:
+		return []any{}
+	case []any:
+		return values
+	case []string:
+		result := make([]any, len(values))
+		for index := range values {
+			result[index] = values[index]
+		}
+		return result
+	default:
+		return []any{value}
+	}
+}
+
+func sortedRedisHashFields(values map[string]string) []string {
+	fields := make([]string, 0, len(values))
+	for field := range values {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	return fields
+}
+
+func redisZSetPairsToRows(value any, ttl string) ([]map[string]string, []string) {
+	columns := []string{"Member", "Score", "TTL"}
+	rows := []map[string]string{}
+	items := redisCommandValues(value)
+	if len(items) == 1 && value != nil {
+		if _, ok := value.([]any); !ok {
 			rows = append(rows, map[string]string{
-				"Index": "0",
-				"Value": databaseValueToString(value),
-				"TTL":   ttl,
+				"Member": databaseValueToString(value),
+				"Score":  "",
+				"TTL":    ttl,
 			})
 		}
 		return rows, columns
@@ -457,9 +644,9 @@ func redisZSetPairsToRows(value any, ttl string) ([]map[string]string, []string)
 		member := databaseValueToString(items[i])
 		score := databaseValueToString(items[i+1])
 		rows = append(rows, map[string]string{
-			"Index": strconv.Itoa(len(rows)),
-			"Value": member + " (" + score + ")",
-			"TTL":   ttl,
+			"Member": member,
+			"Score":  score,
+			"TTL":    ttl,
 		})
 	}
 	return rows, columns
@@ -583,6 +770,53 @@ func isUnsafeWriteStatement(query string) bool {
 	}
 
 	return !containsSQLKeywordOutsideLiterals(query, "where")
+}
+
+func requiresDatabaseCommandConfirmation(connectionType string, query string) bool {
+	if strings.EqualFold(connectionType, "redis") {
+		args, err := splitRedisCommand(query)
+		if err != nil || len(args) == 0 {
+			return true
+		}
+
+		return !isReadOnlyRedisCommand(args[0])
+	}
+
+	return !isReadOnlySQLStatement(query)
+}
+
+func isReadOnlySQLStatement(query string) bool {
+	// WITH 既可以包裹 SELECT，也可以包裹 UPDATE/DELETE；为了避免把写入 CTE 误判为查询，
+	// 这里宁可多确认一次，也不将它列入免确认的只读白名单。
+	switch databaseStatementType(query) {
+	case "select", "show", "describe", "desc", "explain":
+		return !hasMultipleSQLStatements(query)
+	default:
+		return false
+	}
+}
+
+func hasMultipleSQLStatements(query string) bool {
+	normalized := strings.TrimSpace(stripSQLLiteralsAndComments(query))
+	normalized = strings.TrimRight(normalized, "; \t\r\n")
+	return strings.Contains(normalized, ";")
+}
+
+func isReadOnlyRedisCommand(command string) bool {
+	_, isReadOnly := readOnlyRedisCommands[strings.ToUpper(command)]
+	return isReadOnly
+}
+
+var readOnlyRedisCommands = map[string]struct{}{
+	"PING": {}, "ECHO": {},
+	"GET": {}, "MGET": {}, "GETRANGE": {}, "STRLEN": {}, "GETBIT": {}, "BITCOUNT": {}, "BITPOS": {},
+	"EXISTS": {}, "TYPE": {}, "TTL": {}, "PTTL": {}, "KEYS": {}, "SCAN": {}, "RANDOMKEY": {},
+	"HGET": {}, "HMGET": {}, "HGETALL": {}, "HKEYS": {}, "HVALS": {}, "HLEN": {}, "HEXISTS": {}, "HRANDFIELD": {}, "HSCAN": {},
+	"LINDEX": {}, "LLEN": {}, "LRANGE": {},
+	"SCARD": {}, "SISMEMBER": {}, "SMISMEMBER": {}, "SMEMBERS": {}, "SRANDMEMBER": {}, "SSCAN": {},
+	"ZCARD": {}, "ZCOUNT": {}, "ZRANGE": {}, "ZRANGEBYSCORE": {}, "ZRANK": {}, "ZREVRANK": {}, "ZREVRANGE": {}, "ZREVRANGEBYSCORE": {}, "ZSCORE": {}, "ZSCAN": {},
+	"PFCOUNT": {}, "XLEN": {}, "XRANGE": {}, "XREVRANGE": {}, "XINFO": {}, "XPENDING": {}, "XREAD": {},
+	"DBSIZE": {}, "INFO": {}, "TIME": {},
 }
 
 // 写入保护只关心 WHERE 是否出现在真正的 SQL 结构里；

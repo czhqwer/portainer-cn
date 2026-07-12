@@ -53,6 +53,7 @@ export type DatabaseQueryResult = {
   ErrorCode?: string;
   RedisKey?: string;
   RedisType?: string;
+  RedisScanCursor?: string;
 };
 
 export type DatabaseSchema = {
@@ -100,14 +101,6 @@ export type RedisKeySummary = {
 export type RedisKeyScanResponse = {
   Cursor: string;
   Keys: RedisKeySummary[];
-};
-
-export type RedisKeyDetails = {
-  Name: string;
-  Type: string;
-  TTL: string;
-  Value?: string;
-  Rows: Array<Record<string, string>>;
 };
 
 export type DatabaseRequestError = Error & {
@@ -158,27 +151,19 @@ const databaseQueryKeys = {
       pattern,
       cursor,
     ] as const,
-  redisKeyDetails: (
-    environmentId: EnvironmentId,
-    connectionId?: number,
-    database?: string,
-    key?: string
-  ) =>
-    [
-      'environments',
-      environmentId,
-      'database-connections',
-      connectionId,
-      'redis-key-details',
-      database,
-      key,
-    ] as const,
+};
+
+// 数据库元数据读取可能触发远端库表扫描；窗口重新获得焦点不应隐式访问数据库，
+// 仅在用户明确刷新、切换连接或连接配置变更后更新数据。
+const databaseReadQueryOptions = {
+  refetchOnWindowFocus: false,
 };
 
 export function useDatabaseConnections(environmentId: EnvironmentId) {
   return useQuery({
     queryKey: databaseQueryKeys.list(environmentId),
     queryFn: () => getDatabaseConnections(environmentId),
+    ...databaseReadQueryOptions,
     ...withError('Unable to retrieve database connections'),
   });
 }
@@ -236,6 +221,7 @@ export function useRunDatabaseQuery(environmentId: EnvironmentId) {
       query,
       database,
       preview,
+      confirmWrite,
       confirmUnsafeWrite,
       nodeName,
       signal,
@@ -244,6 +230,7 @@ export function useRunDatabaseQuery(environmentId: EnvironmentId) {
       query: string;
       database?: string;
       preview?: boolean;
+      confirmWrite?: boolean;
       confirmUnsafeWrite?: boolean;
       nodeName?: string;
       signal?: AbortSignal;
@@ -254,6 +241,7 @@ export function useRunDatabaseQuery(environmentId: EnvironmentId) {
         query,
         database,
         preview,
+        confirmWrite,
         confirmUnsafeWrite,
         nodeName,
         signal
@@ -270,6 +258,7 @@ export function useDatabaseSchema(
     queryKey: databaseQueryKeys.schema(environmentId, connection?.Id),
     queryFn: () => getDatabaseSchema(environmentId, connection!, nodeName),
     enabled: !!connection,
+    ...databaseReadQueryOptions,
     ...withError('Unable to retrieve database schema'),
   });
 }
@@ -298,6 +287,7 @@ export function useDatabaseTableDetails(
       ),
     enabled:
       !!connection && !!database && !!table && connection.Type !== 'redis',
+    ...databaseReadQueryOptions,
     ...withError('Unable to retrieve table details'),
   });
 }
@@ -331,32 +321,8 @@ export function useRedisKeys(
       !!connection &&
       connection.Type === 'redis' &&
       /^\d+$/.test((database || '0').trim()),
+    ...databaseReadQueryOptions,
     ...withError('Unable to scan Redis keys'),
-  });
-}
-
-export function useRedisKeyDetails(
-  environmentId: EnvironmentId,
-  connection?: DatabaseConnection,
-  database?: string,
-  key?: string,
-  nodeName?: string
-) {
-  return useQuery({
-    queryKey: databaseQueryKeys.redisKeyDetails(
-      environmentId,
-      connection?.Id,
-      database,
-      key
-    ),
-    queryFn: () =>
-      getRedisKeyDetails(environmentId, connection!, database, key!, nodeName),
-    enabled:
-      !!connection &&
-      connection.Type === 'redis' &&
-      !!key &&
-      /^\d+$/.test((database || '0').trim()),
-    ...withError('Unable to retrieve Redis key details'),
   });
 }
 
@@ -435,6 +401,7 @@ async function runDatabaseQuery(
   query: string,
   database?: string,
   preview = false,
+  confirmWrite = false,
   confirmUnsafeWrite = false,
   nodeName?: string,
   signal?: AbortSignal
@@ -446,6 +413,7 @@ async function runDatabaseQuery(
         Query: query,
         Database: database,
         Preview: preview,
+        ConfirmWrite: confirmWrite,
         ConfirmUnsafeWrite: confirmUnsafeWrite,
       },
       { headers: { ...withAgentTargetHeader(nodeName) }, signal }
@@ -516,28 +484,6 @@ async function getRedisKeys(
     return data;
   } catch (e) {
     throw parseDatabaseError(e, 'Unable to scan Redis keys');
-  }
-}
-
-async function getRedisKeyDetails(
-  environmentId: EnvironmentId,
-  connection: DatabaseConnection,
-  database?: string,
-  key?: string,
-  nodeName?: string
-) {
-  try {
-    const { data } = await axios.get<RedisKeyDetails>(
-      `${databaseConnectionUrl(environmentId, connection)}/redis-key-details`,
-      {
-        params: { database, key },
-        headers: { ...withAgentTargetHeader(nodeName) },
-      }
-    );
-
-    return data;
-  } catch (e) {
-    throw parseDatabaseError(e, 'Unable to retrieve Redis key details');
   }
 }
 
