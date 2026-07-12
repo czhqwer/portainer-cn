@@ -149,3 +149,61 @@ func targetStatusFromRelease(release portainer.PlatformRelease) portainer.Platfo
 	}
 	return portainer.PlatformReleaseTargetStatusFailed
 }
+
+// RetryRecovery 按 Release 保存的目标结果逐台恢复上一版运行时；任一失败保留人工处置状态。
+func (executor *MultiTargetExecutor) RetryRecovery(ctx context.Context, request ReleaseExecutionRequest) (ReleaseExecutionResult, error) {
+	if request.Environment.TargetMode != portainer.PlatformTargetModeMulti {
+		return NewSingleTargetExecutor(executor.driver).RetryRecovery(ctx, request)
+	}
+	release := request.Release
+	now := executor.now().Unix()
+	if executor.driver == nil {
+		markRecoveryRetryFailed(&release, ReleaseFailureReasonExecutorUnavailable, safeReleaseFailureMessage(ReleaseFailureReasonExecutorUnavailable), now)
+		return ReleaseExecutionResult{Release: release}, nil
+	}
+	previous := targetResultByEndpoint(request.Deployment.CurrentTargetRuntimeRefs)
+	for i := range release.TargetResults {
+		result := &release.TargetResults[i]
+		if result.Status != portainer.PlatformReleaseTargetStatusSucceeded && result.Status != portainer.PlatformReleaseTargetStatusFailed {
+			continue
+		}
+		perTarget := request
+		if prior, found := previous[result.EndpointID]; found {
+			perTarget.Deployment.CurrentRuntimeRef = prior.RuntimeRef
+		}
+		target := portainer.PlatformDeploymentTarget{EndpointID: result.EndpointID, NodeName: result.NodeName, HostAddress: result.HostAddress, Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true}
+		if err := executor.driver.Recover(ctx, perTarget, target); err != nil {
+			result.Status, result.Reason = portainer.PlatformReleaseTargetStatusRecoveryFailed, ReleaseFailureReasonRecoveryFailed
+			markRecoveryRetryFailed(&release, ReleaseFailureReasonRecoveryFailed, safeReleaseFailureMessage(ReleaseFailureReasonRecoveryFailed), executor.now().Unix())
+			return ReleaseExecutionResult{Release: release}, nil
+		}
+		result.Status, result.Reason = portainer.PlatformReleaseTargetStatusRecovered, ""
+	}
+	release.Status, release.ManualActionRequired, release.FinishedAt, release.LeaseOwner, release.LeaseExpiresAt = portainer.PlatformReleaseStatusFailed, false, executor.now().Unix(), "", 0
+	deployment := request.Deployment
+	deployment.DriftStatus = portainer.PlatformDeploymentDriftNone
+	deployment.ResourceVersion++
+	deployment.UpdatedAt = executor.now().Unix()
+	return ReleaseExecutionResult{Release: release, Deployment: &deployment}, nil
+}
+
+func (executor *MultiTargetExecutor) CleanupRuntime(ctx context.Context, request ReleaseCleanupRequest) (ReleaseCleanupResult, error) {
+	if request.Release.TargetSnapshot.TargetMode != portainer.PlatformTargetModeMulti {
+		return NewSingleTargetExecutor(executor.driver).CleanupRuntime(ctx, request)
+	}
+	if executor.driver == nil {
+		return ReleaseCleanupResult{Release: request.Release}, nil
+	}
+	deleted, failed := make([]portainer.RuntimeRef, 0), make([]portainer.RuntimeRef, 0)
+	for _, result := range request.Release.TargetResults {
+		if result.RuntimeRef.ResourceID == "" {
+			continue
+		}
+		if err := executor.driver.DeleteRuntime(ctx, result.RuntimeRef); err != nil {
+			failed = append(failed, result.RuntimeRef)
+		} else {
+			deleted = append(deleted, result.RuntimeRef)
+		}
+	}
+	return ReleaseCleanupResult{Release: request.Release, DeletedRuntimeRefs: deleted, FailedRuntimeRefs: failed}, nil
+}
