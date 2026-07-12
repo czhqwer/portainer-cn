@@ -119,6 +119,38 @@ func TestSingleTargetExecutorSucceeds(t *testing.T) {
 	require.Equal(t, []string{"pull", "start-candidate", "validate-candidate", "delete-candidate", "switch", "validate-current"}, driver.calls)
 }
 
+func TestSingleTargetExecutorReportsStructuredProgress(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	executor := NewSingleTargetExecutor(driver)
+	request := sampleReleaseExecutionRequest()
+	progress := make([]ReleaseExecutionResult, 0, 8)
+	request.Progress = func(result ReleaseExecutionResult) {
+		progress = append(progress, result)
+	}
+
+	_, err := executor.Execute(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, []portainer.PlatformReleaseStatus{
+		portainer.PlatformReleaseStatusValidating,
+		portainer.PlatformReleaseStatusPulling,
+		portainer.PlatformReleaseStatusPreparing,
+		portainer.PlatformReleaseStatusCandidateStarting,
+		portainer.PlatformReleaseStatusCandidateChecking,
+		portainer.PlatformReleaseStatusCandidateChecking,
+		portainer.PlatformReleaseStatusSwitching,
+		portainer.PlatformReleaseStatusFinalChecking,
+	}, releaseStatuses(progress))
+	require.Equal(t, "switch-runtime", progress[len(progress)-1].Release.Steps[len(progress[len(progress)-1].Release.Steps)-1].Name)
+}
+
+func releaseStatuses(progress []ReleaseExecutionResult) []portainer.PlatformReleaseStatus {
+	statuses := make([]portainer.PlatformReleaseStatus, 0, len(progress))
+	for _, item := range progress {
+		statuses = append(statuses, item.Release.Status)
+	}
+	return statuses
+}
+
 func TestSingleTargetExecutorRecoversPreviousWhenSwitchFails(t *testing.T) {
 	driver := &fakeRuntimeDriver{switchErr: errors.New("port is already allocated")}
 	executor := NewSingleTargetExecutor(driver)
@@ -157,7 +189,7 @@ func TestSingleTargetExecutorDeletesFailedCurrentBeforeRecovering(t *testing.T) 
 	require.NoError(t, err)
 
 	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
-	require.Equal(t, "final health failed", result.Release.HealthCheckResult.ErrorMessage)
+	require.Equal(t, safeReleaseFailureMessage(ReleaseFailureReasonFinalHealthFailed), result.Release.HealthCheckResult.ErrorMessage)
 	require.Nil(t, result.Deployment)
 	require.Contains(t, driver.calls, "delete-current")
 	require.Contains(t, driver.calls, "recover")

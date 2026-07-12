@@ -4454,6 +4454,16 @@
       }
     },
     "releases": { "tableTitle": "发布记录" },
+    "release": {
+      "progress": {
+        "title": "发布进度 #{{id}}",
+        "safeEvents": "此处展示结构化发布事件，不展示 Docker 原始输出。",
+        "loading": "加载中",
+        "queued": "排队中",
+        "waiting": "发布已创建，正在等待控制面上报进度。",
+        "noSteps": "发布已排队；执行步骤完成后会显示在这里。"
+      }
+    },
     "home": {
       "title": "交付工作台",
       "description": "集中查看真实的制品、发布与清理状态，无需离开应用交付流程。",
@@ -4753,6 +4763,14 @@
         "title": "校验结果",
         "body": "点击校验发布会先保存部署配置，选择或登记制品，再执行控制面校验。",
         "empty": "尚未执行校验。"
+      },
+      "validation": {
+        "passed": "校验通过",
+        "failed": "校验失败",
+        "notExecutable": "执行器不可用",
+        "executable": "执行就绪状态",
+        "executableYes": "可以执行发布",
+        "executableNo": "执行器不可用"
       },
       "confirm": {
         "title": "确认发布",

@@ -172,10 +172,11 @@ func TestPlatformReleaseCreateIsIdempotentAndExecutes(t *testing.T) {
 	payload := createReleasePayloadFor(project, application, service, deployment, artifact)
 	first := postReleaseExpectAccepted(t, ctx, "same-key", payload)
 	require.NotZero(t, first.ReleaseID)
-	require.Equal(t, portainer.PlatformReleaseStatusSucceeded, first.Status)
+	require.Equal(t, portainer.PlatformReleaseStatusQueued, first.Status)
 
 	second := postReleaseExpectAccepted(t, ctx, "same-key", payload)
 	require.Equal(t, first.ReleaseID, second.ReleaseID)
+	waitForReleaseExecution(t, ctx, first.ReleaseID)
 
 	payload.Version = "1.0.1"
 	mismatch := postReleaseExpectError(t, ctx, "same-key", payload, http.StatusConflict)
@@ -558,6 +559,22 @@ func postReleaseExpectAccepted(t *testing.T, ctx platformTestContext, idempotenc
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &result))
 
 	return result
+}
+
+func waitForReleaseExecution(t *testing.T, ctx platformTestContext, releaseID portainer.PlatformReleaseID) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		release, err := ctx.handler.DataStore.PlatformRelease().Read(releaseID)
+		if err != nil {
+			return false
+		}
+		return release.Status == portainer.PlatformReleaseStatusSucceeded ||
+			release.Status == portainer.PlatformReleaseStatusFailed ||
+			release.Status == portainer.PlatformReleaseStatusRecoveryFailed ||
+			release.Status == portainer.PlatformReleaseStatusCanceled ||
+			release.Status == portainer.PlatformReleaseStatusInterrupted ||
+			release.Status == portainer.PlatformReleaseStatusResolved
+	}, 2*time.Second, 10*time.Millisecond, "release %d did not finish", releaseID)
 }
 
 func doRawJSONWithHeaders(t *testing.T, ctx platformTestContext, token string, method string, target string, payload any, headers map[string]string, expectedStatus int) *httptest.ResponseRecorder {

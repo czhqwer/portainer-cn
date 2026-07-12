@@ -485,13 +485,22 @@ export interface RollbackPlatformReleasePayload {
 }
 
 export interface PlatformReleaseValidateResponse {
-  Status?: string;
+  Valid?: boolean;
+  Executable?: boolean;
+  Code?: string;
   Reason?: string;
   Message?: string;
+  ServiceDeploymentId?: number;
+  ArtifactId?: number;
+  ExpectedSpecRevision?: number;
   Release?: PlatformRelease;
 }
 
 export interface PlatformReleaseCreateResponse {
+  ReleaseId?: number;
   Status?: string;
+  PollUrl?: string;
+  Blocked?: boolean;
+  Reason?: string;
   Release?: PlatformRelease;
 }

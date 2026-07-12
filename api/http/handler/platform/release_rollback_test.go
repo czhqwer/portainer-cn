@@ -173,6 +173,7 @@ func createRollbackReleaseHistory(t *testing.T, ctx platformTestContext, project
 		Name: "orders-api", Version: "1.0.0", ImageRef: "registry.example.com/orders-api:1.0.0",
 	})
 	sourceResponse := postReleaseExpectAccepted(t, ctx, "release-v1", createReleasePayloadFor(project, application, service, deployment, sourceArtifact))
+	waitForReleaseExecution(t, ctx, sourceResponse.ReleaseID)
 	source, err := ctx.handler.DataStore.PlatformRelease().Read(sourceResponse.ReleaseID)
 	require.NoError(t, err)
 
@@ -181,6 +182,7 @@ func createRollbackReleaseHistory(t *testing.T, ctx platformTestContext, project
 		Name: "orders-api", Version: "2.0.0", ImageRef: "registry.example.com/orders-api:2.0.0",
 	})
 	currentResponse := postReleaseExpectAccepted(t, ctx, "release-v2", createReleasePayloadFor(project, application, service, deployment, currentArtifact))
+	waitForReleaseExecution(t, ctx, currentResponse.ReleaseID)
 	current, err := ctx.handler.DataStore.PlatformRelease().Read(currentResponse.ReleaseID)
 	require.NoError(t, err)
 	return source, current

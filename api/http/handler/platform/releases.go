@@ -1,10 +1,12 @@
 package platform
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -318,7 +320,7 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 	}
 
 	if shouldExecute {
-		result, err := handler.ReleaseExecutor.Execute(r.Context(), platformservice.ReleaseExecutionRequest{
+		executionRequest := platformservice.ReleaseExecutionRequest{
 			Project:           *refs.project,
 			Environment:       *refs.environment,
 			Application:       *refs.application,
@@ -326,17 +328,45 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 			Deployment:        *refs.deployment,
 			Artifact:          *refs.artifact,
 			Release:           *release,
-		})
-		if err != nil {
-			return handler.convertError(err)
 		}
-		if err := handler.persistReleaseExecutionResult(r, result); err != nil {
-			return handler.convertError(err)
-		}
-		release = &result.Release
+
+		// 请求已经持久化为 queued Release 后立即返回 Release ID；Docker 操作在后台推进，
+		// 这样浏览器可以轮询详情并看到每一步状态，HTTP 事务也不会持有网络或 Docker 调用。
+		go handler.executeReleaseAsync(context.WithoutCancel(r.Context()), r, executionRequest)
 	}
 
 	return response.JSONWithStatus(w, releaseResponse(release), http.StatusAccepted)
+}
+
+func (handler *Handler) executeReleaseAsync(ctx context.Context, request *http.Request, executionRequest platformservice.ReleaseExecutionRequest) {
+	executionRequest.Progress = func(progress platformservice.ReleaseExecutionResult) {
+		if err := handler.persistReleaseExecutionResult(request, progress); err != nil {
+			// 只记录 Release ID 和持久化动作，避免把 Docker 原始错误写入服务器日志。
+			log.Printf("platform release progress persistence failed: release_id=%d", progress.Release.ID)
+		}
+	}
+
+	result, err := handler.ReleaseExecutor.Execute(ctx, executionRequest)
+	if err != nil {
+		// 执行器返回 Go 错误时请求已回应，不能把未经脱敏的错误反射给用户；
+		// 将 Release 留在需要人工处置的 interrupted 状态，避免误释放运行时锁。
+		result = interruptedReleaseExecutionResult(executionRequest.Release)
+	}
+	if err := handler.persistReleaseExecutionResult(request, result); err != nil {
+		log.Printf("platform release final persistence failed: release_id=%d", executionRequest.Release.ID)
+	}
+}
+
+func interruptedReleaseExecutionResult(release portainer.PlatformRelease) platformservice.ReleaseExecutionResult {
+	now := time.Now().Unix()
+	release.Status = portainer.PlatformReleaseStatusInterrupted
+	release.FailureReason = platformservice.ReleaseFailureReasonExecutorUnavailable
+	release.ManualActionRequired = true
+	release.FinishedAt = now
+	release.LeaseOwner = "platform-release-interrupted"
+	release.LeaseExpiresAt = now + 15*60
+
+	return platformservice.ReleaseExecutionResult{Release: release}
 }
 
 type releaseReferenceSet struct {

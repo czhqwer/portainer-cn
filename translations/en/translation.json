@@ -4395,6 +4395,16 @@
       }
     },
     "releases": { "tableTitle": "Release records" },
+    "release": {
+      "progress": {
+        "title": "Release progress #{{id}}",
+        "safeEvents": "Showing structured release events. Raw Docker output is not displayed here.",
+        "loading": "Loading",
+        "queued": "Queued",
+        "waiting": "Release was created. Waiting for the control plane to report progress.",
+        "noSteps": "The release is queued; execution steps will appear here as they complete."
+      }
+    },
     "home": {
       "title": "Delivery workspace",
       "description": "Track real artifact, release, and cleanup states without leaving the application-delivery workflow.",
@@ -4694,6 +4704,14 @@
         "title": "Validation result",
         "body": "Click Validate release to persist the deployment config, select or register the artifact, and run control-plane validation.",
         "empty": "No validation has been run yet."
+      },
+      "validation": {
+        "passed": "Validated",
+        "failed": "Validation failed",
+        "notExecutable": "Executor unavailable",
+        "executable": "Execution readiness",
+        "executableYes": "Ready to execute",
+        "executableNo": "Executor unavailable"
       },
       "confirm": {
         "title": "Confirm release",

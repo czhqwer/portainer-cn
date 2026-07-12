@@ -3,7 +3,6 @@ package platform
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	portainer "github.com/portainer/portainer/api"
@@ -24,6 +23,7 @@ const (
 	ReleaseFailureReasonRecoveryFailed             = "RECOVERY_FAILED"
 	ReleaseFailureReasonHealthcheckFailed          = "HEALTHCHECK_FAILED"
 	ReleaseFailureReasonHealthcheckHostUnreachable = "HEALTHCHECK_HOST_UNREACHABLE"
+	ReleaseFailureReasonRuntimeOperationFailed     = "RUNTIME_OPERATION_FAILED"
 )
 
 // ReleaseExecutor owns the runtime side of a platform release. The HTTP layer
@@ -46,7 +46,12 @@ type ReleaseExecutionRequest struct {
 	Deployment        portainer.PlatformServiceDeployment
 	Artifact          portainer.PlatformArtifact
 	Release           portainer.PlatformRelease
+	Progress          ReleaseProgressReporter
 }
+
+// ReleaseProgressReporter 让控制面在每个 Docker 操作间持久化结构化发布事实；
+// 回调只接收脱敏后的 Release 记录，避免把运行时凭据或原始驱动输出带到 HTTP 客户端。
+type ReleaseProgressReporter func(ReleaseExecutionResult)
 
 type ReleaseExecutionResult struct {
 	Release    portainer.PlatformRelease
@@ -92,6 +97,12 @@ type SingleTargetExecutor struct {
 	now    func() time.Time
 }
 
+func reportReleaseProgress(request ReleaseExecutionRequest, release portainer.PlatformRelease) {
+	if request.Progress != nil {
+		request.Progress(ReleaseExecutionResult{Release: release})
+	}
+}
+
 func NewSingleTargetExecutor(driver RuntimeDriver) *SingleTargetExecutor {
 	return &SingleTargetExecutor{
 		driver: driver,
@@ -116,7 +127,8 @@ func (executor *SingleTargetExecutor) Execute(ctx context.Context, request Relea
 	target, err := selectSingleWorkloadTarget(request.Environment)
 	if err != nil {
 		release.TargetSnapshot = targetSnapshotFromTarget(target, request.Deployment.DesiredSpec.Runtime.RuntimeDriver)
-		failRelease(&release, failureReasonForError(err), err.Error(), now)
+		reason := failureReasonForError(err)
+		failRelease(&release, reason, safeReleaseFailureMessage(reason), now)
 		return ReleaseExecutionResult{Release: release}, nil
 	}
 	release.TargetSnapshot = targetSnapshotFromTarget(target, request.Deployment.DesiredSpec.Runtime.RuntimeDriver)
@@ -126,54 +138,68 @@ func (executor *SingleTargetExecutor) Execute(ctx context.Context, request Relea
 		return ReleaseExecutionResult{Release: release}, nil
 	}
 
+	release.Status = portainer.PlatformReleaseStatusValidating
 	appendStep(&release, "validate", portainer.PlatformReleaseStepStatusSucceeded, "", "Release references and V0.1 target are valid.", now, executor.unixNow(), portainer.RuntimeRef{})
+	reportReleaseProgress(request, release)
 
 	release.Status = portainer.PlatformReleaseStatusPulling
+	reportReleaseProgress(request, release)
 	stepStart := executor.unixNow()
 	if err := executor.driver.PullImage(ctx, request, target); err != nil {
-		appendStep(&release, "pull-image", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonImagePullFailed, err.Error(), stepStart, executor.unixNow(), portainer.RuntimeRef{})
-		failRelease(&release, ReleaseFailureReasonImagePullFailed, err.Error(), executor.unixNow())
+		message := safeReleaseFailureMessage(ReleaseFailureReasonImagePullFailed)
+		appendStep(&release, "pull-image", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonImagePullFailed, message, stepStart, executor.unixNow(), portainer.RuntimeRef{})
+		failRelease(&release, ReleaseFailureReasonImagePullFailed, message, executor.unixNow())
 		return ReleaseExecutionResult{Release: release}, nil
 	}
 	appendStep(&release, "pull-image", portainer.PlatformReleaseStepStatusSucceeded, "", "Image pulled or already present.", stepStart, executor.unixNow(), portainer.RuntimeRef{})
 
 	release.Status = portainer.PlatformReleaseStatusPreparing
 	appendStep(&release, "prepare-runtime", portainer.PlatformReleaseStepStatusSucceeded, "", "Runtime configuration prepared.", executor.unixNow(), executor.unixNow(), portainer.RuntimeRef{})
+	reportReleaseProgress(request, release)
 
 	release.Status = portainer.PlatformReleaseStatusCandidateStarting
+	reportReleaseProgress(request, release)
 	stepStart = executor.unixNow()
 	candidateRef, candidatePorts, err := executor.driver.StartCandidate(ctx, request, target)
 	if err != nil {
-		appendStep(&release, "start-candidate", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonCandidateStartFailed, err.Error(), stepStart, executor.unixNow(), portainer.RuntimeRef{})
-		failRelease(&release, ReleaseFailureReasonCandidateStartFailed, err.Error(), executor.unixNow())
+		message := safeReleaseFailureMessage(ReleaseFailureReasonCandidateStartFailed)
+		appendStep(&release, "start-candidate", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonCandidateStartFailed, message, stepStart, executor.unixNow(), portainer.RuntimeRef{})
+		failRelease(&release, ReleaseFailureReasonCandidateStartFailed, message, executor.unixNow())
 		return ReleaseExecutionResult{Release: release}, nil
 	}
 	release.RuntimeSnapshot.CandidateRuntimeRef = candidateRef
 	appendStep(&release, "start-candidate", portainer.PlatformReleaseStepStatusSucceeded, "", "Candidate container started with random published ports.", stepStart, executor.unixNow(), candidateRef)
 
 	release.Status = portainer.PlatformReleaseStatusCandidateChecking
+	reportReleaseProgress(request, release)
 	stepStart = executor.unixNow()
 	health, err := executor.driver.ValidateRuntime(ctx, request, target, candidateRef, candidatePorts)
 	release.HealthCheckResult = health
+	// 运行时驱动的原始诊断可能包含内部地址；Release 只保存固定失败原因生成的安全消息。
+	release.HealthCheckResult.ErrorMessage = ""
 	if err != nil || health.Status == portainer.PlatformHealthCheckStatusFailed {
 		reason := ReleaseFailureReasonCandidateHealthFailed
-		message := health.ErrorMessage
 		if err != nil {
-			message = err.Error()
 			reason = failureReasonForError(err)
+			if reason == ReleaseFailureReasonRuntimeOperationFailed {
+				reason = ReleaseFailureReasonCandidateHealthFailed
+			}
 		}
+		message := safeReleaseFailureMessage(reason)
 		appendStep(&release, "check-candidate", portainer.PlatformReleaseStepStatusFailed, reason, message, stepStart, executor.unixNow(), candidateRef)
 		_ = executor.driver.DeleteRuntime(ctx, candidateRef)
 		failRelease(&release, reason, message, executor.unixNow())
 		return ReleaseExecutionResult{Release: release}, nil
 	}
 	appendStep(&release, "check-candidate", portainer.PlatformReleaseStepStatusSucceeded, "", "Candidate health check passed.", stepStart, executor.unixNow(), candidateRef)
+	reportReleaseProgress(request, release)
 
 	stepStart = executor.unixNow()
 	if err := executor.driver.DeleteRuntime(ctx, candidateRef); err != nil {
-		appendStep(&release, "cleanup-candidate", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonCandidateCleanupFailed, err.Error(), stepStart, executor.unixNow(), candidateRef)
+		message := safeReleaseFailureMessage(ReleaseFailureReasonCandidateCleanupFailed)
+		appendStep(&release, "cleanup-candidate", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonCandidateCleanupFailed, message, stepStart, executor.unixNow(), candidateRef)
 		release.ManualActionRequired = true
-		failRelease(&release, ReleaseFailureReasonCandidateCleanupFailed, err.Error(), executor.unixNow())
+		failRelease(&release, ReleaseFailureReasonCandidateCleanupFailed, message, executor.unixNow())
 		return ReleaseExecutionResult{Release: release}, nil
 	}
 	appendStep(&release, "cleanup-candidate", portainer.PlatformReleaseStepStatusSucceeded, "", "Candidate validation snapshot persisted; candidate container removed before switch.", stepStart, executor.unixNow(), candidateRef)
@@ -187,11 +213,13 @@ func (executor *SingleTargetExecutor) Execute(ctx context.Context, request Relea
 	}
 
 	release.Status = portainer.PlatformReleaseStatusSwitching
+	reportReleaseProgress(request, release)
 	stepStart = executor.unixNow()
 	switchResult, err := executor.driver.Switch(ctx, request, target, snapshot)
 	if err != nil {
-		appendStep(&release, "switch-runtime", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonSwitchFailed, err.Error(), stepStart, executor.unixNow(), portainer.RuntimeRef{})
-		return executor.recover(ctx, request, target, release, deployment, ReleaseFailureReasonSwitchFailed, err)
+		message := safeReleaseFailureMessage(ReleaseFailureReasonSwitchFailed)
+		appendStep(&release, "switch-runtime", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonSwitchFailed, message, stepStart, executor.unixNow(), portainer.RuntimeRef{})
+		return executor.recover(ctx, request, target, release, deployment, ReleaseFailureReasonSwitchFailed, errors.New(message))
 	}
 	release.RuntimeSnapshot.PreviousRuntimeRef = request.Deployment.CurrentRuntimeRef
 	release.RuntimeSnapshot.CurrentRuntimeRef = switchResult.CurrentRuntimeRef
@@ -200,16 +228,20 @@ func (executor *SingleTargetExecutor) Execute(ctx context.Context, request Relea
 	appendStep(&release, "switch-runtime", portainer.PlatformReleaseStepStatusSucceeded, "", "Formal container switched to desired published ports.", stepStart, executor.unixNow(), switchResult.CurrentRuntimeRef)
 
 	release.Status = portainer.PlatformReleaseStatusFinalChecking
+	reportReleaseProgress(request, release)
 	stepStart = executor.unixNow()
 	finalHealth, err := executor.driver.ValidateRuntime(ctx, request, target, switchResult.CurrentRuntimeRef, switchResult.PublishedPorts)
 	release.HealthCheckResult = finalHealth
+	release.HealthCheckResult.ErrorMessage = ""
 	if err != nil || finalHealth.Status == portainer.PlatformHealthCheckStatusFailed {
 		reason := ReleaseFailureReasonFinalHealthFailed
-		message := finalHealth.ErrorMessage
 		if err != nil {
-			message = err.Error()
 			reason = failureReasonForError(err)
+			if reason == ReleaseFailureReasonRuntimeOperationFailed {
+				reason = ReleaseFailureReasonFinalHealthFailed
+			}
 		}
+		message := safeReleaseFailureMessage(reason)
 		appendStep(&release, "check-current", portainer.PlatformReleaseStepStatusFailed, reason, message, stepStart, executor.unixNow(), switchResult.CurrentRuntimeRef)
 		_ = executor.driver.DeleteRuntime(ctx, switchResult.CurrentRuntimeRef)
 		return executor.recover(ctx, request, target, release, deployment, reason, errors.New(message))
@@ -240,9 +272,11 @@ func (executor *SingleTargetExecutor) Execute(ctx context.Context, request Relea
 
 func (executor *SingleTargetExecutor) recover(ctx context.Context, request ReleaseExecutionRequest, target portainer.PlatformDeploymentTarget, release portainer.PlatformRelease, deployment portainer.PlatformServiceDeployment, reason string, cause error) (ReleaseExecutionResult, error) {
 	release.Status = portainer.PlatformReleaseStatusRecovering
+	reportReleaseProgress(request, release)
 	stepStart := executor.unixNow()
 	if err := executor.driver.Recover(ctx, request, target); err != nil {
-		appendStep(&release, "recover-previous", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonRecoveryFailed, err.Error(), stepStart, executor.unixNow(), request.Deployment.CurrentRuntimeRef)
+		message := safeReleaseFailureMessage(ReleaseFailureReasonRecoveryFailed)
+		appendStep(&release, "recover-previous", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonRecoveryFailed, message, stepStart, executor.unixNow(), request.Deployment.CurrentRuntimeRef)
 		release.Status = portainer.PlatformReleaseStatusRecoveryFailed
 		release.FailureReason = ReleaseFailureReasonRecoveryFailed
 		release.ManualActionRequired = true
@@ -277,7 +311,8 @@ func (executor *SingleTargetExecutor) RetryRecovery(ctx context.Context, request
 	target, err := selectSingleWorkloadTarget(request.Environment)
 	if err != nil {
 		release.TargetSnapshot = targetSnapshotFromTarget(target, request.Deployment.DesiredSpec.Runtime.RuntimeDriver)
-		markRecoveryRetryFailed(&release, failureReasonForError(err), err.Error(), now)
+		reason := failureReasonForError(err)
+		markRecoveryRetryFailed(&release, reason, safeReleaseFailureMessage(reason), now)
 		return ReleaseExecutionResult{Release: release}, nil
 	}
 	release.TargetSnapshot = targetSnapshotFromTarget(target, request.Deployment.DesiredSpec.Runtime.RuntimeDriver)
@@ -286,7 +321,7 @@ func (executor *SingleTargetExecutor) RetryRecovery(ctx context.Context, request
 	// 这样锁会释放，但不会误把这次失败发布记录成一次成功上线。
 	stepStart := executor.unixNow()
 	if err := executor.driver.Recover(ctx, request, target); err != nil {
-		appendStep(&release, "retry-recovery", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonRecoveryFailed, err.Error(), stepStart, executor.unixNow(), request.Deployment.CurrentRuntimeRef)
+		appendStep(&release, "retry-recovery", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonRecoveryFailed, safeReleaseFailureMessage(ReleaseFailureReasonRecoveryFailed), stepStart, executor.unixNow(), request.Deployment.CurrentRuntimeRef)
 		release.Status = portainer.PlatformReleaseStatusRecoveryFailed
 		release.FailureReason = ReleaseFailureReasonRecoveryFailed
 		release.ManualActionRequired = true
@@ -439,6 +474,37 @@ func failRelease(release *portainer.PlatformRelease, reason string, message stri
 	release.LeaseExpiresAt = 0
 }
 
+// safeReleaseFailureMessage 只将固定的、可国际化替换的诊断文本写入 Release；
+// Docker、registry 与健康检查驱动的原始错误可能包含凭据、签名地址或宿主机路径，不能进入 BoltDB 或 API 响应。
+func safeReleaseFailureMessage(reason string) string {
+	switch reason {
+	case ReleaseFailureReasonExecutorUnavailable:
+		return "Release executor is unavailable."
+	case ReleaseFailureReasonTargetNotConfigured:
+		return "No eligible deployment target is configured."
+	case ReleaseFailureReasonTargetModeUnsupported:
+		return "The deployment target mode is not supported."
+	case ReleaseFailureReasonProductionRequiresVerify:
+		return "Production releases require verified health checks."
+	case ReleaseFailureReasonImagePullFailed:
+		return "The image could not be pulled on the target endpoint."
+	case ReleaseFailureReasonCandidateStartFailed:
+		return "The candidate runtime could not be started."
+	case ReleaseFailureReasonCandidateHealthFailed, ReleaseFailureReasonHealthcheckFailed, ReleaseFailureReasonHealthcheckHostUnreachable:
+		return "The candidate health check did not pass."
+	case ReleaseFailureReasonCandidateCleanupFailed, ReleaseFailureReasonRuntimeCleanupFailed:
+		return "A temporary runtime resource could not be cleaned up."
+	case ReleaseFailureReasonSwitchFailed:
+		return "The formal runtime switch did not complete."
+	case ReleaseFailureReasonFinalHealthFailed:
+		return "The formal runtime health check did not pass."
+	case ReleaseFailureReasonRecoveryFailed:
+		return "The previous runtime could not be recovered automatically."
+	default:
+		return "The runtime operation did not complete."
+	}
+}
+
 type codedRuntimeError struct {
 	reason  string
 	message string
@@ -458,5 +524,5 @@ func failureReasonForError(err error) string {
 		return coded.reason
 	}
 
-	return fmt.Sprintf("%s", err)
+	return ReleaseFailureReasonRuntimeOperationFailed
 }

@@ -69,6 +69,8 @@ export const platformQueryKeys = {
   effectiveConfig: (deploymentId?: number) =>
     [...platformQueryKeys.all, 'effective-config', deploymentId] as const,
   releases: () => [...platformQueryKeys.all, 'releases'] as const,
+  release: (releaseId?: number) =>
+    [...platformQueryKeys.all, 'releases', releaseId] as const,
   rollbackDiff: (releaseId?: number) =>
     [...platformQueryKeys.all, 'rollback-diff', releaseId] as const,
   auditLogs: (projectId?: number) =>
@@ -329,6 +331,13 @@ async function cleanupPlatformArtifactOriginal(artifactId: number) {
 
 async function getReleases() {
   const response = await axios.get<PlatformRelease[]>('/platform/releases');
+  return response.data;
+}
+
+async function getRelease(releaseId: number) {
+  const response = await axios.get<PlatformRelease>(
+    `/platform/releases/${releaseId}`
+  );
   return response.data;
 }
 
@@ -680,6 +689,21 @@ export function usePlatformReleases() {
     queryKey: platformQueryKeys.releases(),
     queryFn: getReleases,
     ...withError('Failed loading platform releases'),
+  });
+}
+
+/**
+ * 发布创建接口只负责落库并返回 Release ID；执行过程由控制面异步推进。
+ * 在发布尚未结束时轮询详情，页面才能展示真实状态和每个已完成的安全步骤。
+ */
+export function usePlatformRelease(releaseId?: number, poll = false) {
+  return useQuery({
+    queryKey: platformQueryKeys.release(releaseId),
+    queryFn: () => getRelease(releaseId as number),
+    enabled: !!releaseId,
+    refetchInterval: poll ? 1500 : false,
+    refetchIntervalInBackground: poll,
+    ...withError('Failed loading platform release'),
   });
 }
 

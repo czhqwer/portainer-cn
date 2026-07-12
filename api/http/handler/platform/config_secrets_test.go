@@ -66,6 +66,7 @@ func TestPlatformSensitiveConfigEncryptsRedactsAuditsAndInjectsReleaseSnapshot(t
 		ImageRef:            "registry.example.com/orders-api:1.0.0",
 	})
 	releaseResponse := postReleaseExpectAccepted(t, ctx, "secret-snapshot", createReleasePayloadFor(project, application, service, deployment, artifact))
+	waitForReleaseExecution(t, ctx, releaseResponse.ReleaseID)
 	release := doJSON[portainer.PlatformRelease](t, ctx, http.MethodGet, fmt.Sprintf("/platform/releases/%d", releaseResponse.ReleaseID), nil, http.StatusOK)
 	require.Len(t, release.ConfigSnapshot.SecretSnapshots, 1)
 	secretSnapshot := release.ConfigSnapshot.SecretSnapshots[0]

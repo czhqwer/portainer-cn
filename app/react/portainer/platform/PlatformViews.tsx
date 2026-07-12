@@ -39,6 +39,7 @@ import {
   usePlatformEffectiveConfig,
   usePlatformEnvironments,
   usePlatformProjects,
+  usePlatformRelease,
   usePlatformReleaseRollbackDiff,
   usePlatformReleases,
   usePlatformServiceDeploymentLogs,
@@ -1230,6 +1231,10 @@ export function PlatformDeployView() {
     useState<PlatformReleaseValidateResponse>();
   const [releaseResult, setReleaseResult] =
     useState<PlatformReleaseCreateResponse>();
+  const [shouldPollRelease, setShouldPollRelease] = useState(false);
+  const trackedReleaseId = releaseResult?.ReleaseId ?? releaseResult?.Release?.Id;
+  const releaseQuery = usePlatformRelease(trackedReleaseId, shouldPollRelease);
+  const trackedRelease = releaseQuery.data ?? releaseResult?.Release;
   const steps = useMemo(
     () => [
       t('platform.deploy.steps.basic', { defaultValue: 'Target service' }),
@@ -1290,6 +1295,23 @@ export function PlatformDeployView() {
 			setSelectedArtifactId(undefined);
 		}
 	}, [readyArtifacts, selectedArtifactId]);
+
+  useEffect(() => {
+    if (!trackedReleaseId) {
+      setShouldPollRelease(false);
+      return;
+    }
+    if (!trackedRelease) {
+      return;
+    }
+
+    // 发布进入终态后立即停止轮询，避免确认页持续占用接口；
+    // 非终态始终以控制面返回的状态为准，不由浏览器推断发布是否完成。
+    if (!isReleaseInProgress(trackedRelease.Status)) {
+      setShouldPollRelease(false);
+    }
+  }, [trackedRelease, trackedReleaseId]);
+
   const isBusy =
     createDeploymentMutation.isLoading ||
     updateDeploymentMutation.isLoading ||
@@ -1392,6 +1414,7 @@ export function PlatformDeployView() {
     });
     setReleaseResult(result);
     setValidationResult(undefined);
+    setShouldPollRelease(!!result.ReleaseId);
     setStep(5);
   }
 
@@ -1410,19 +1433,20 @@ export function PlatformDeployView() {
       )}
       <div className="mx-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
-          <ol className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          <ol className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {steps.map((label, index) => (
               <li key={label}>
                 <button
                   type="button"
-                  className={`w-full rounded border border-solid px-3 py-2 text-left text-sm ${
+                  className={`flex min-h-12 w-full items-center gap-2 rounded border border-solid px-3 py-2 text-left text-sm ${
                     index === step
                       ? 'border-blue-6 bg-blue-2 text-blue-9 th-dark:bg-blue-10 th-dark:text-white'
                       : 'border-gray-5 bg-gray-2 text-gray-8 th-dark:bg-gray-10 th-dark:text-white'
                   }`}
                   onClick={() => setStep(index)}
                 >
-                  <span className="font-semibold">{index + 1}.</span> {label}
+                  <span className="shrink-0 font-semibold">{index + 1}</span>
+                  <span>{label}</span>
                 </button>
               </li>
             ))}
@@ -1509,6 +1533,8 @@ export function PlatformDeployView() {
             currentDeployment={currentDeployment}
             validationResult={validationResult}
             releaseResult={releaseResult}
+            release={trackedRelease}
+            isReleaseLoading={!!trackedReleaseId && releaseQuery.isLoading}
           />
           <div className="mt-5 flex items-center justify-between gap-3">
             <Button
@@ -1520,38 +1546,47 @@ export function PlatformDeployView() {
               {t('platform.actions.previous', { defaultValue: 'Previous' })}
             </Button>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                color="light"
-                onClick={() =>
-                  setStep((value) => Math.min(steps.length - 1, value + 1))
-                }
-                disabled={step === steps.length - 1}
-                data-cy="platform-deploy-next"
-              >
-                {t('platform.actions.next', { defaultValue: 'Next' })}
-              </Button>
-              <Button
-                color="light"
-                icon={CheckCircle2}
-                disabled={!isReady || isBusy || !canDeployCurrentProject}
-                onClick={handleValidateRelease}
-                data-cy="platform-release-validate"
-              >
-                {t('platform.actions.validateRelease', {
-                  defaultValue: 'Validate release',
-                })}
-              </Button>
-              <Button
-                color="primary"
-                icon={Rocket}
-                disabled={!isReady || isBusy || !canDeployCurrentProject}
-                onClick={handleCreateRelease}
-                data-cy="platform-release-create"
-              >
-                {t('platform.actions.createRelease', {
-                  defaultValue: 'Create release',
-                })}
-              </Button>
+              {step < 4 && (
+                <Button
+                  color="light"
+                  onClick={() => setStep((value) => value + 1)}
+                  data-cy="platform-deploy-next"
+                >
+                  {t('platform.actions.next', { defaultValue: 'Next' })}
+                </Button>
+              )}
+              {step === 4 && (
+                <Button
+                  color="primary"
+                  icon={CheckCircle2}
+                  disabled={!isReady || isBusy || !canDeployCurrentProject}
+                  onClick={handleValidateRelease}
+                  data-cy="platform-release-validate"
+                >
+                  {t('platform.actions.validateRelease', {
+                    defaultValue: 'Validate release',
+                  })}
+                </Button>
+              )}
+              {step === 5 && (
+                <Button
+                  color="primary"
+                  icon={Rocket}
+                  disabled={
+                    !isReady ||
+                    isBusy ||
+                    !canDeployCurrentProject ||
+                    !validationResult?.Valid ||
+                    !validationResult.Executable
+                  }
+                  onClick={handleCreateRelease}
+                  data-cy="platform-release-create"
+                >
+                  {t('platform.actions.createRelease', {
+                    defaultValue: 'Create release',
+                  })}
+                </Button>
+              )}
             </div>
           </div>
         </section>
@@ -1608,8 +1643,22 @@ export function PlatformDeployView() {
                 t('platform.deploy.summary.validation', {
                   defaultValue: 'Validation',
                 }),
-                validationResult?.Status ||
-                  validationResult?.Reason ||
+                (validationResult
+                  ? validationResult.Valid
+                    ? validationResult.Executable
+                      ? t('platform.deploy.validation.passed', {
+                          defaultValue: 'Validated',
+                        })
+                      : validationResult.Reason ||
+                        t('platform.deploy.validation.notExecutable', {
+                          defaultValue: 'Executor unavailable',
+                        })
+                    : validationResult.Reason ||
+                      t('platform.deploy.validation.failed', {
+                        defaultValue: 'Validation failed',
+                      })
+                  : undefined) ||
+                  trackedRelease?.Status ||
                   releaseResult?.Status ||
                   t('platform.deploy.summary.notValidated', {
                     defaultValue: 'Not validated',
@@ -1629,26 +1678,22 @@ export function PlatformDeployView() {
           <div className="mt-4">
             <EffectiveConfigDetails
               response={effectiveConfigQuery.data}
-              isLoading={effectiveConfigQuery.isLoading}
+              isLoading={!!currentDeployment && effectiveConfigQuery.isLoading}
               emptyMessage={t('platform.config.effectiveDeployEmpty', {
                 defaultValue:
                   'Save a service deployment configuration to preview the merged project, environment, and deployment values.',
               })}
             />
           </div>
-          {releaseResult?.Release && (
-            <Alert
-              className="mt-4"
-              color="success"
-              title={t('platform.deploy.releaseCreated', {
-                defaultValue: 'Release created',
-              })}
-            >
-              {t('platform.deploy.releaseCreatedBody', {
-                defaultValue: 'Release #{{id}} was created.',
-                id: releaseResult.Release.Id,
-              })}
-            </Alert>
+          {trackedReleaseId && (
+            <div className="mt-4">
+              <ReleaseProgressPanel
+                release={trackedRelease}
+                releaseId={trackedReleaseId}
+                isLoading={releaseQuery.isLoading}
+                compact
+              />
+            </div>
           )}
         </aside>
       </div>
@@ -3782,7 +3827,8 @@ function ServiceRuntimePanel({
         defaultValue: 'Runtime status and logs',
       })}
       isLoading={
-        isDeploymentLoading || statusQuery.isLoading || logsQuery.isLoading
+        !!deployment &&
+        (isDeploymentLoading || statusQuery.isLoading || logsQuery.isLoading)
       }
       empty={!deployment}
       emptyMessage={t('platform.empty.runtime', {
@@ -3970,6 +4016,112 @@ function ReleaseExecutionSummary({ release }: { release: PlatformRelease }) {
       {!health?.Status && recentSteps.length === 0 && '-'}
     </div>
   );
+}
+
+function ReleaseProgressPanel({
+  release,
+  releaseId,
+  isLoading,
+  compact = false,
+}: {
+  release?: PlatformRelease;
+  releaseId: number;
+  isLoading: boolean;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const steps = compact ? release?.Steps?.slice(-3) ?? [] : release?.Steps ?? [];
+  const isFailed =
+    release?.Status === 'failed' ||
+    release?.Status === 'recovery-failed' ||
+    release?.Status === 'interrupted';
+
+  return (
+    <section className="rounded border border-solid border-gray-5 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">
+            {t('platform.release.progress.title', {
+              defaultValue: 'Release progress #{{id}}',
+              id: releaseId,
+            })}
+          </div>
+          <div className="text-muted mt-1 text-xs">
+            {t('platform.release.progress.safeEvents', {
+              defaultValue:
+                'Showing structured release events. Raw Docker output is not displayed here.',
+            })}
+          </div>
+        </div>
+        <StatusPill
+          value={
+            release?.Status ??
+            (isLoading
+              ? t('platform.release.progress.loading', {
+                  defaultValue: 'loading',
+                })
+              : t('platform.release.progress.queued', {
+                  defaultValue: 'queued',
+                }))
+          }
+        />
+      </div>
+      {!release && (
+        <div className="text-muted mt-3 text-sm">
+          {t('platform.release.progress.waiting', {
+            defaultValue: 'Release was created. Waiting for the control plane to report progress.',
+          })}
+        </div>
+      )}
+      {release?.FailureReason && (
+        <Alert
+          className="mt-3"
+          color={isFailed ? 'error' : 'warn'}
+          title={t('platform.columns.failureReason', {
+            defaultValue: 'Failure reason',
+          })}
+        >
+          {release.FailureReason}
+        </Alert>
+      )}
+      {release && steps.length === 0 && !release.FailureReason && (
+        <div className="text-muted mt-3 text-sm">
+          {t('platform.release.progress.noSteps', {
+            defaultValue: 'The release is queued; execution steps will appear here as they complete.',
+          })}
+        </div>
+      )}
+      {steps.length > 0 && (
+        <ol className="mt-3 space-y-2 border-l border-solid border-gray-5 pl-3">
+          {steps.map((step) => (
+            <li key={`${step.Name}-${step.StartedAt ?? 0}`} className="text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{step.Name}</span>
+                <StatusPill value={step.Status} />
+                {step.Reason && (
+                  <span className="text-muted text-xs">{step.Reason}</span>
+                )}
+              </div>
+              {step.Status === 'succeeded' && step.Message && (
+                <div className="text-muted mt-1 text-xs">{step.Message}</div>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function isReleaseInProgress(status?: PlatformRelease['Status']) {
+  return !!status && ![
+    'succeeded',
+    'failed',
+    'recovery-failed',
+    'canceled',
+    'resolved',
+    'interrupted',
+  ].includes(status);
 }
 
 function ReleaseActions({
@@ -4270,6 +4422,8 @@ function WizardStepContent({
   desiredSpec,
   validationResult,
   releaseResult,
+  release,
+  isReleaseLoading,
 }: {
   step: number;
   projects: PlatformProject[];
@@ -4317,6 +4471,8 @@ function WizardStepContent({
   desiredSpec: PlatformDeploymentDesiredSpec;
   validationResult?: PlatformReleaseValidateResponse;
   releaseResult?: PlatformReleaseCreateResponse;
+  release?: PlatformRelease;
+  isReleaseLoading: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -4654,7 +4810,25 @@ function WizardStepContent({
             rows={[
               [
                 t('platform.columns.status', { defaultValue: 'Status' }),
-                validationResult.Status ?? '',
+                validationResult.Valid
+                  ? t('platform.deploy.validation.passed', {
+                      defaultValue: 'Passed',
+                    })
+                  : t('platform.deploy.validation.failed', {
+                      defaultValue: 'Failed',
+                    }),
+              ],
+              [
+                t('platform.deploy.validation.executable', {
+                  defaultValue: 'Execution readiness',
+                }),
+                validationResult.Executable
+                  ? t('platform.deploy.validation.executableYes', {
+                      defaultValue: 'Ready to execute',
+                    })
+                  : t('platform.deploy.validation.executableNo', {
+                      defaultValue: 'Executor unavailable',
+                    }),
               ],
               [
                 t('platform.columns.failureReason', {
@@ -4702,22 +4876,11 @@ function WizardStepContent({
           })}
         </Alert>
       )}
-      {releaseResult?.Release ? (
-        <SummaryList
-          rows={[
-            [
-              t('platform.columns.releaseId', { defaultValue: 'Release ID' }),
-              String(releaseResult.Release.Id),
-            ],
-            [
-              t('platform.columns.status', { defaultValue: 'Status' }),
-              releaseResult.Release.Status,
-            ],
-            [
-              t('platform.columns.image', { defaultValue: 'Image' }),
-              releaseResult.Release.Image ?? imageRef,
-            ],
-          ]}
+      {releaseResult?.ReleaseId ? (
+        <ReleaseProgressPanel
+          release={release}
+          releaseId={releaseResult.ReleaseId}
+          isLoading={isReleaseLoading}
         />
       ) : (
         <div className="text-muted text-sm">

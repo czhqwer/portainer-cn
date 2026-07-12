@@ -98,7 +98,8 @@ func TestPlatformArtifactRegistryPushFailurePreservesCandidateAndCleanupBlocksRe
 	ready := createBuiltJavaArtifact(t, ctx, project, application, service, "3.0.0", "sha256:candidate-ready")
 	ready = doJSON[portainer.PlatformArtifact](t, ctx, http.MethodPost, fmt.Sprintf("/platform/artifacts/%d/push", ready.ID), pushArtifactPayload{EndpointID: 88, RegistryID: registry.ID}, http.StatusOK)
 	ctx.handler.ReleaseExecutor = fakeReleaseExecutor{}
-	postReleaseExpectAccepted(t, ctx, "release-uses-artifact", createReleasePayloadFor(project, application, service, deployment, ready))
+	releaseResponse := postReleaseExpectAccepted(t, ctx, "release-uses-artifact", createReleasePayloadFor(project, application, service, deployment, ready))
+	waitForReleaseExecution(t, ctx, releaseResponse.ReleaseID)
 
 	doRawJSON(t, ctx, ctx.adminJWT, http.MethodPost, fmt.Sprintf("/platform/artifacts/%d/cleanup-original", ready.ID), nil, http.StatusConflict)
 	blockedAudits, err := ctx.handler.DataStore.PlatformAuditLog().ReadAll(func(audit portainer.PlatformAuditLog) bool {
