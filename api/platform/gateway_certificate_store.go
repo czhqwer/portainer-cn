@@ -46,3 +46,13 @@ func (store *GatewayCertificateStore) Paths(certificateID portainer.PlatformGate
 	directory := filepath.Join(store.root, fmt.Sprintf("%d", certificateID))
 	return filepath.Join(directory, "cert.pem"), filepath.Join(directory, "key.pem"), nil
 }
+
+// Remove 只删除由证书 ID 推导出的受控目录，用于数据库提交失败或上传中断后的补偿清理。
+// 私钥不能遗留在可复用的数据目录中，否则后续同 ID 的记录可能错误复用旧材料。
+func (store *GatewayCertificateStore) Remove(certificateID portainer.PlatformGatewayCertificateID) error {
+	if store == nil || certificateID <= 0 {
+		return errors.New("certificate ID is invalid")
+	}
+
+	return os.RemoveAll(filepath.Join(store.root, fmt.Sprintf("%d", certificateID)))
+}

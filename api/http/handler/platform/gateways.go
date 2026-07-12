@@ -8,6 +8,7 @@ import (
 
 	portainer "github.com/portainer/portainer/api"
 	"github.com/portainer/portainer/api/dataservices"
+	platformservice "github.com/portainer/portainer/api/platform"
 	httperror "github.com/portainer/portainer/pkg/libhttp/error"
 	"github.com/portainer/portainer/pkg/libhttp/request"
 	"github.com/portainer/portainer/pkg/libhttp/response"
@@ -31,6 +32,20 @@ type createGatewayRoutePayload struct {
 	ProxyTimeoutSeconds int                                    `json:"ProxyTimeoutSeconds"`
 	MaxRequestBodyBytes int64                                  `json:"MaxRequestBodyBytes"`
 	CertificateID       portainer.PlatformGatewayCertificateID `json:"CertificateId"`
+}
+
+type createGatewayCertificatePayload struct {
+	Name           string `json:"Name"`
+	CertificatePEM string `json:"CertificatePem"`
+	PrivateKeyPEM  string `json:"PrivateKeyPem"`
+}
+
+func (payload *createGatewayCertificatePayload) Validate(r *http.Request) error {
+	payload.Name = strings.TrimSpace(payload.Name)
+	if payload.Name == "" || payload.CertificatePEM == "" || payload.PrivateKeyPEM == "" {
+		return errors.New("name, certificate and private key are required")
+	}
+	return nil
 }
 
 func (payload *createGatewayRoutePayload) Validate(r *http.Request) error {
@@ -166,6 +181,9 @@ func (handler *Handler) gatewayRouteCreate(w http.ResponseWriter, r *http.Reques
 	if !declaresPort(*deployment, payload.TargetPort) {
 		return validationFailedError("TargetPort must be declared by the service deployment")
 	}
+	if handlerErr := handler.requireGatewayRouteCertificate(payload, gateway); handlerErr != nil {
+		return handlerErr
+	}
 	route := portainer.NewPlatformGatewayRoute()
 	route.GatewayID, route.ProjectID, route.EnvironmentID, route.ServiceDeploymentID = gateway.ID, gateway.ProjectID, gateway.EnvironmentID, deployment.ID
 	route.Domain, route.Path, route.TargetPort = payload.Domain, payload.Path, payload.TargetPort
@@ -214,4 +232,109 @@ func declaresPort(deployment portainer.PlatformServiceDeployment, port int) bool
 		}
 	}
 	return false
+}
+
+// requireGatewayRouteCertificate 在保存路由前验证证书仍归属同一项目且已具备受控私钥材料。
+// 这能阻止失效、跨项目或仅有元数据的证书在 reload 时才暴露为不可恢复的 TLS 配置失败。
+func (handler *Handler) requireGatewayRouteCertificate(payload createGatewayRoutePayload, gateway *portainer.PlatformGateway) *httperror.HandlerError {
+	if !payload.EnableTLS {
+		return nil
+	}
+	certificate, err := handler.DataStore.PlatformGatewayCertificate().Read(payload.CertificateID)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	if certificate.ProjectID != gateway.ProjectID {
+		return platformAccessDenied()
+	}
+	if !isActive(certificate.PlatformLifecycle) || !certificate.HasPrivateKey || certificate.NotAfter <= time.Now().Unix() {
+		return validationFailedError("Certificate is unavailable")
+	}
+	routeDomain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(payload.Domain), "."))
+	for _, domain := range certificate.Domains {
+		if domain == routeDomain {
+			return nil
+		}
+	}
+	return validationFailedError("Certificate does not cover the route domain")
+}
+
+func (handler *Handler) gatewayCertificateList(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
+	projectID, handlerErr := handler.routeID(r, "projectId")
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr = handler.requireProjectPermission(r, portainer.PlatformProjectID(projectID), platformPermissionView); handlerErr != nil {
+		return handlerErr
+	}
+	items, err := handler.DataStore.PlatformGatewayCertificate().ReadAll(func(item portainer.PlatformGatewayCertificate) bool {
+		return item.ProjectID == portainer.PlatformProjectID(projectID) && (includeArchived(r) || isActive(item.PlatformLifecycle))
+	})
+	if err != nil {
+		return handler.convertError(err)
+	}
+	for i := range items {
+		items[i].MaterialRef = ""
+	}
+	return response.JSON(w, items)
+}
+
+// gatewayCertificateCreate 把私钥放入平台受控目录，而不是 BoltDB；数据库只在材料写入成功后记录不可透出的引用。
+// 文件系统与 BoltDB 不能形成同一事务，因此每个失败分支都补偿清理，防止留下孤儿私钥或可见的无材料元数据。
+func (handler *Handler) gatewayCertificateCreate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
+	projectID, handlerErr := handler.routeID(r, "projectId")
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr = handler.requireProjectPermission(r, portainer.PlatformProjectID(projectID), platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
+	var payload createGatewayCertificatePayload
+	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
+		return validationFailed(err)
+	}
+	certificate, err := platformservice.ParseGatewayCertificate(payload.Name, portainer.PlatformProjectID(projectID), []byte(payload.CertificatePEM), []byte(payload.PrivateKeyPEM))
+	if err != nil {
+		return validationFailed(err)
+	}
+	certificate.HasPrivateKey, certificate.MaterialRef, certificate.PlatformLifecycle = false, "", newLifecycle(time.Now().Unix())
+	if err := handler.DataStore.PlatformGatewayCertificate().Create(&certificate); err != nil {
+		return handler.convertError(err)
+	}
+	if handler.FileService == nil {
+		_ = handler.DataStore.PlatformGatewayCertificate().Delete(certificate.ID)
+		return handler.convertError(errors.New("platform file service is unavailable"))
+	}
+	store, err := platformservice.NewGatewayCertificateStore(handler.FileService.GetDatastorePath())
+	if err != nil {
+		_ = handler.DataStore.PlatformGatewayCertificate().Delete(certificate.ID)
+		return handler.convertError(err)
+	}
+	materialRef, err := store.Store(certificate.ID, []byte(payload.CertificatePEM), []byte(payload.PrivateKeyPEM))
+	if err != nil {
+		_ = handler.DataStore.PlatformGatewayCertificate().Delete(certificate.ID)
+		return handler.convertError(err)
+	}
+	certificate.MaterialRef, certificate.HasPrivateKey = materialRef, true
+	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		if err := tx.PlatformGatewayCertificate().Update(certificate.ID, &certificate); err != nil {
+			return err
+		}
+		return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{
+			Action:    portainer.PlatformAuditActionGatewayCertificateCreated,
+			Result:    portainer.PlatformAuditResultSuccess,
+			ProjectID: certificate.ProjectID,
+			AfterSummary: map[string]any{
+				"gatewayCertificateId": certificate.ID,
+				"notAfter":             certificate.NotAfter,
+			},
+		})
+	})
+	if err != nil {
+		_ = store.Remove(certificate.ID)
+		_ = handler.DataStore.PlatformGatewayCertificate().Delete(certificate.ID)
+		return handler.convertError(err)
+	}
+	certificate.MaterialRef = ""
+	return response.JSONWithStatus(w, certificate, http.StatusCreated)
 }

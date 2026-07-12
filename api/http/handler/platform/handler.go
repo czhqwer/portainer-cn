@@ -53,6 +53,10 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayList))).Methods(http.MethodGet)
 	h.Handle("/platform/projects/{projectId}/gateways",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/gateway-certificates",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/gateway-certificates",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateCreate))).Methods(http.MethodPost)
 	h.Handle("/platform/gateways/{gatewayId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/gateways/{gatewayId}/routes",

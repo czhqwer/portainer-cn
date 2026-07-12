@@ -39,7 +39,9 @@ func ParseGatewayCertificate(name string, projectID portainer.PlatformProjectID,
 	metadata.Serial = serialString(certificate.SerialNumber)
 	metadata.NotBefore, metadata.NotAfter = certificate.NotBefore.Unix(), certificate.NotAfter.Unix()
 	digest := sha256.Sum256(certificate.Raw)
-	metadata.SHA256, metadata.HasPrivateKey = hex.EncodeToString(digest[:]), true
+	// 解析阶段尚未把私钥写入受控目录，不能提前把元数据标记为“材料已就绪”；
+	// 否则既违反 BoltDB 只保存引用的约束，也会被模型一致性校验拒绝。
+	metadata.SHA256, metadata.HasPrivateKey = hex.EncodeToString(digest[:]), false
 	portainer.NormalizePlatformGatewayCertificate(&metadata)
 	if err := portainer.ValidatePlatformGatewayCertificate(metadata); err != nil {
 		return portainer.PlatformGatewayCertificate{}, fmt.Errorf("certificate metadata is invalid: %w", err)
