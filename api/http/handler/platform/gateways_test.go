@@ -108,6 +108,40 @@ func TestGatewayRouteCreateRequiresAvailableCertificate(t *testing.T) {
 	doRawJSON(t, ctx, ctx.adminJWT, http.MethodPost, fmt.Sprintf("/platform/gateways/%d/routes", gateway.ID), payload, http.StatusBadRequest)
 }
 
+func TestGatewayRouteUpdateAndArchive(t *testing.T) {
+	ctx := newPlatformTestContext(t)
+	project := createProject(t, ctx, createProjectPayload{Name: "Route update project", Slug: "route-update-project"})
+	environment := createEnvironment(t, ctx, project.ID, createEnvironmentPayload{Name: "Prod", Slug: "prod", Type: portainer.PlatformEnvironmentTypeProd})
+	endpoint := &portainer.Endpoint{ID: 34, Name: "gateway", Type: portainer.DockerEnvironment}
+	require.NoError(t, ctx.handler.DataStore.Endpoint().Create(endpoint))
+	gateway := doJSON[portainer.PlatformGateway](t, ctx, http.MethodPost, fmt.Sprintf("/platform/projects/%d/gateways", project.ID), createGatewayPayload{EnvironmentID: environment.ID, EndpointID: endpoint.ID, Name: "prod-gateway"}, http.StatusCreated)
+	application := createApplication(t, ctx, project.ID, createApplicationPayload{Name: "API", Slug: "api"})
+	service := createServiceDefinition(t, ctx, application.ID, createServiceDefinitionPayload{Name: "API", Slug: "api"})
+	spec := portainer.NewPlatformDeploymentDesiredSpec()
+	spec.Image.Image = "registry.example.com/api:1"
+	spec.Ports = []portainer.PlatformPortSpec{{Name: "http", ContainerPort: 8080, HostPort: 18080}}
+	deployment := createServiceDeployment(t, ctx, service.ID, createServiceDeploymentPayload{EnvironmentID: environment.ID, DesiredSpec: &spec})
+	route := doJSON[portainer.PlatformGatewayRoute](t, ctx, http.MethodPost, fmt.Sprintf("/platform/gateways/%d/routes", gateway.ID), createGatewayRoutePayload{ServiceDeploymentID: deployment.ID, Domain: "api.example.test", Path: "/", TargetPort: 8080}, http.StatusCreated)
+
+	updated := doJSON[portainer.PlatformGatewayRoute](t, ctx, http.MethodPut, fmt.Sprintf("/platform/gateway-routes/%d", route.ID), updateGatewayRoutePayload{ResourceVersion: route.ResourceVersion, createGatewayRoutePayload: createGatewayRoutePayload{ServiceDeploymentID: deployment.ID, Domain: "api.example.test", Path: "/v1", TargetPort: 8080}}, http.StatusOK)
+	require.Equal(t, "/v1", updated.Path)
+	doRawJSON(t, ctx, ctx.adminJWT, http.MethodDelete, fmt.Sprintf("/platform/gateway-routes/%d", route.ID), nil, http.StatusNoContent)
+
+	items := doJSON[[]portainer.PlatformGatewayRoute](t, ctx, http.MethodGet, fmt.Sprintf("/platform/gateways/%d/routes", gateway.ID), nil, http.StatusOK)
+	require.Empty(t, items)
+}
+
+func TestGatewayCertificateArchiveRequiresNoActiveRoute(t *testing.T) {
+	ctx := newPlatformTestContext(t)
+	project := createProject(t, ctx, createProjectPayload{Name: "Certificate archive project", Slug: "certificate-archive-project"})
+	certificatePEM, privateKeyPEM := handlerGatewayCertificatePEM(t, "api.example.test")
+	certificate := doJSON[portainer.PlatformGatewayCertificate](t, ctx, http.MethodPost, fmt.Sprintf("/platform/projects/%d/gateway-certificates", project.ID), createGatewayCertificatePayload{Name: "api-cert", CertificatePEM: string(certificatePEM), PrivateKeyPEM: string(privateKeyPEM)}, http.StatusCreated)
+
+	doRawJSON(t, ctx, ctx.adminJWT, http.MethodDelete, fmt.Sprintf("/platform/gateway-certificates/%d", certificate.ID), nil, http.StatusNoContent)
+	items := doJSON[[]portainer.PlatformGatewayCertificate](t, ctx, http.MethodGet, fmt.Sprintf("/platform/projects/%d/gateway-certificates", project.ID), nil, http.StatusOK)
+	require.Empty(t, items)
+}
+
 func handlerGatewayCertificatePEM(t *testing.T, domain string) ([]byte, []byte) {
 	t.Helper()
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

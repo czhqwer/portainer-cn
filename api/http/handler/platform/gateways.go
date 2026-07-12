@@ -35,6 +35,11 @@ type createGatewayRoutePayload struct {
 	CertificateID       portainer.PlatformGatewayCertificateID `json:"CertificateId"`
 }
 
+type updateGatewayRoutePayload struct {
+	ResourceVersion int `json:"ResourceVersion"`
+	createGatewayRoutePayload
+}
+
 type createGatewayCertificatePayload struct {
 	Name           string `json:"Name"`
 	CertificatePEM string `json:"CertificatePem"`
@@ -56,6 +61,13 @@ func (payload *createGatewayRoutePayload) Validate(r *http.Request) error {
 		return errors.New("service deployment, domain and target port are required")
 	}
 	return nil
+}
+
+func (payload *updateGatewayRoutePayload) Validate(r *http.Request) error {
+	if err := validateResourceVersion(payload.ResourceVersion); err != nil {
+		return err
+	}
+	return payload.createGatewayRoutePayload.Validate(r)
 }
 
 func (payload *createGatewayPayload) Validate(r *http.Request) error {
@@ -245,6 +257,125 @@ func (handler *Handler) gatewayRouteCreate(w http.ResponseWriter, r *http.Reques
 	return response.JSONWithStatus(w, route, http.StatusCreated)
 }
 
+func (handler *Handler) gatewayRouteUpdate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
+	id, handlerErr := handler.routeID(r, "routeId")
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr = handler.gatewayRouteFromID(r, portainer.PlatformGatewayRouteID(id), platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
+	var payload updateGatewayRoutePayload
+	if err := request.DecodeAndValidateJSONPayload(r, &payload); err != nil {
+		return validationFailed(err)
+	}
+	var updated *portainer.PlatformGatewayRoute
+	err := handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		route, err := tx.PlatformGatewayRoute().Read(portainer.PlatformGatewayRouteID(id))
+		if err != nil {
+			return err
+		}
+		if !isActive(route.PlatformLifecycle) {
+			return notFoundError("Gateway route is archived")
+		}
+		if err := requireResourceVersion(route.ResourceVersion, payload.ResourceVersion); err != nil {
+			return err
+		}
+		gateway, err := tx.PlatformGateway().Read(route.GatewayID)
+		if err != nil {
+			return err
+		}
+		deployment, err := tx.PlatformServiceDeployment().Read(payload.ServiceDeploymentID)
+		if err != nil {
+			return err
+		}
+		if deployment.ProjectID != gateway.ProjectID || deployment.EnvironmentID != gateway.EnvironmentID || !declaresPort(*deployment, payload.TargetPort) {
+			return validationFailedError("Gateway route service deployment is invalid")
+		}
+		if payload.EnableTLS {
+			certificate, err := tx.PlatformGatewayCertificate().Read(payload.CertificateID)
+			if err != nil {
+				return err
+			}
+			if certificate.ProjectID != gateway.ProjectID || !isActive(certificate.PlatformLifecycle) || !certificate.HasPrivateKey || certificate.NotAfter <= time.Now().Unix() || !certificateContainsDomain(*certificate, payload.Domain) {
+				return validationFailedError("Gateway route certificate is unavailable")
+			}
+		}
+		existing, err := tx.PlatformGatewayRoute().ReadAll(func(item portainer.PlatformGatewayRoute) bool {
+			return item.ID != route.ID && item.GatewayID == gateway.ID && isActive(item.PlatformLifecycle) && strings.EqualFold(item.Domain, strings.TrimSuffix(strings.TrimSpace(payload.Domain), ".")) && item.Path == payload.Path
+		})
+		if err != nil {
+			return err
+		}
+		if len(existing) > 0 {
+			return duplicateError("gateway domain and path already exist")
+		}
+		before := *route
+		route.ServiceDeploymentID, route.Domain, route.Path, route.TargetPort = deployment.ID, payload.Domain, payload.Path, payload.TargetPort
+		route.EnableTLS, route.ForceHTTPS, route.WebSocket, route.ProxyTimeoutSeconds, route.MaxRequestBodyBytes, route.CertificateID = payload.EnableTLS, payload.ForceHTTPS, payload.WebSocket, payload.ProxyTimeoutSeconds, payload.MaxRequestBodyBytes, payload.CertificateID
+		touchLifecycle(&route.PlatformLifecycle, time.Now().Unix())
+		if err := tx.PlatformGatewayRoute().Update(route.ID, route); err != nil {
+			return err
+		}
+		if err := handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{Action: portainer.PlatformAuditActionGatewayRouteUpdated, Result: portainer.PlatformAuditResultSuccess, ProjectID: route.ProjectID, EnvironmentID: route.EnvironmentID, ServiceDeploymentID: route.ServiceDeploymentID, BeforeSummary: map[string]any{"gatewayRouteId": before.ID, "domain": before.Domain, "path": before.Path}, AfterSummary: map[string]any{"gatewayRouteId": route.ID, "gatewayId": route.GatewayID, "domain": route.Domain, "path": route.Path}}); err != nil {
+			return err
+		}
+		updated = route
+		return nil
+	})
+	if err != nil {
+		return handler.convertError(err)
+	}
+	return response.JSON(w, updated)
+}
+
+func (handler *Handler) gatewayRouteArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
+	id, handlerErr := handler.routeID(r, "routeId")
+	if handlerErr != nil {
+		return handlerErr
+	}
+	if _, handlerErr = handler.gatewayRouteFromID(r, portainer.PlatformGatewayRouteID(id), platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
+	userID, err := currentUserID(r)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		route, err := tx.PlatformGatewayRoute().Read(portainer.PlatformGatewayRouteID(id))
+		if err != nil {
+			return err
+		}
+		if !isActive(route.PlatformLifecycle) {
+			return notFoundError("Gateway route is archived")
+		}
+		gateway, err := tx.PlatformGateway().Read(route.GatewayID)
+		if err != nil {
+			return err
+		}
+		archiveLifecycle(&route.PlatformLifecycle, time.Now().Unix(), userID)
+		if err := tx.PlatformGatewayRoute().Update(route.ID, route); err != nil {
+			return err
+		}
+		return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{Action: portainer.PlatformAuditActionGatewayRouteArchived, Result: portainer.PlatformAuditResultSuccess, ProjectID: route.ProjectID, EnvironmentID: route.EnvironmentID, ServiceDeploymentID: route.ServiceDeploymentID, AfterSummary: map[string]any{"gatewayRouteId": route.ID, "gatewayId": gateway.ID}})
+	})
+	if err != nil {
+		return handler.convertError(err)
+	}
+	return response.Empty(w)
+}
+
+func (handler *Handler) gatewayRouteFromID(r *http.Request, id portainer.PlatformGatewayRouteID, permission platformPermission) (*portainer.PlatformGatewayRoute, *httperror.HandlerError) {
+	route, err := handler.DataStore.PlatformGatewayRoute().Read(id)
+	if err != nil {
+		return nil, handler.convertError(err)
+	}
+	if _, handlerErr := handler.requireProjectPermission(r, route.ProjectID, permission); handlerErr != nil {
+		return nil, handlerErr
+	}
+	return route, nil
+}
+
 func (handler *Handler) gatewayFromRequest(r *http.Request, permission platformPermission) (*portainer.PlatformGateway, *httperror.HandlerError) {
 	id, handlerErr := handler.routeID(r, "gatewayId")
 	if handlerErr != nil {
@@ -286,12 +417,19 @@ func (handler *Handler) requireGatewayRouteCertificate(payload createGatewayRout
 		return validationFailedError("Certificate is unavailable")
 	}
 	routeDomain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(payload.Domain), "."))
-	for _, domain := range certificate.Domains {
-		if domain == routeDomain {
-			return nil
-		}
+	if certificateContainsDomain(*certificate, routeDomain) {
+		return nil
 	}
 	return validationFailedError("Certificate does not cover the route domain")
+}
+
+func certificateContainsDomain(certificate portainer.PlatformGatewayCertificate, domain string) bool {
+	for _, certificateDomain := range certificate.Domains {
+		if certificateDomain == domain {
+			return true
+		}
+	}
+	return false
 }
 
 func (handler *Handler) gatewayCertificateList(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
@@ -372,6 +510,53 @@ func (handler *Handler) gatewayCertificateCreate(w http.ResponseWriter, r *http.
 	}
 	certificate.MaterialRef = ""
 	return response.JSONWithStatus(w, certificate, http.StatusCreated)
+}
+
+// gatewayCertificateArchive 保留材料文件与元数据的历史证据，但阻止它继续被新的活动路由引用。
+// 已绑定证书不能直接归档，避免下一次配置发布或历史 Release 恢复时丢失私钥材料。
+func (handler *Handler) gatewayCertificateArchive(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {
+	id, handlerErr := handler.routeID(r, "certificateId")
+	if handlerErr != nil {
+		return handlerErr
+	}
+	certificate, err := handler.DataStore.PlatformGatewayCertificate().Read(portainer.PlatformGatewayCertificateID(id))
+	if err != nil {
+		return handler.convertError(err)
+	}
+	if _, handlerErr = handler.requireProjectPermission(r, certificate.ProjectID, platformPermissionManage); handlerErr != nil {
+		return handlerErr
+	}
+	userID, err := currentUserID(r)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		current, err := tx.PlatformGatewayCertificate().Read(certificate.ID)
+		if err != nil {
+			return err
+		}
+		if !isActive(current.PlatformLifecycle) {
+			return notFoundError("Gateway certificate is archived")
+		}
+		routes, err := tx.PlatformGatewayRoute().ReadAll(func(route portainer.PlatformGatewayRoute) bool {
+			return isActive(route.PlatformLifecycle) && route.CertificateID == current.ID
+		})
+		if err != nil {
+			return err
+		}
+		if len(routes) > 0 {
+			return conflictError("Gateway certificate is referenced by active routes")
+		}
+		archiveLifecycle(&current.PlatformLifecycle, time.Now().Unix(), userID)
+		if err := tx.PlatformGatewayCertificate().Update(current.ID, current); err != nil {
+			return err
+		}
+		return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{Action: portainer.PlatformAuditActionGatewayCertificateArchived, Result: portainer.PlatformAuditResultSuccess, ProjectID: current.ProjectID, AfterSummary: map[string]any{"gatewayCertificateId": current.ID}})
+	})
+	if err != nil {
+		return handler.convertError(err)
+	}
+	return response.Empty(w)
 }
 
 // gatewayConfigApply 从已成功发布的运行快照生成 upstream，再执行候选预检和原子切换。

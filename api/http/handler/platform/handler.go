@@ -58,12 +58,18 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateList))).Methods(http.MethodGet)
 	h.Handle("/platform/projects/{projectId}/gateway-certificates",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/gateway-certificates/{certificateId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateArchive))).Methods(http.MethodDelete)
 	h.Handle("/platform/gateways/{gatewayId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/gateways/{gatewayId}/routes",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteList))).Methods(http.MethodGet)
 	h.Handle("/platform/gateways/{gatewayId}/routes",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/gateway-routes/{routeId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/gateway-routes/{routeId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteArchive))).Methods(http.MethodDelete)
 	h.Handle("/platform/gateways/{gatewayId}/config/apply",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayConfigApply))).Methods(http.MethodPost)
 	h.Handle("/platform/environments/{environmentId}",
