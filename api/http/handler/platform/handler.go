@@ -68,6 +68,10 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceList))).Methods(http.MethodGet)
 	h.Handle("/platform/projects/{projectId}/database-resources",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/capacity-summary",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectCapacitySummary))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/failure-diagnostics",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectFailureDiagnostics))).Methods(http.MethodGet)
 	h.Handle("/platform/host-groups/{hostGroupId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/host-groups/{hostGroupId}",
