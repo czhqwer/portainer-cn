@@ -92,6 +92,18 @@ func TestPlatformDataServicesCRUDAndArchive(t *testing.T) {
 	storage.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
 	require.NoError(t, store.PlatformArtifactStorage().Update(storage.ID, storage))
 
+	hostGroup := portainer.NewPlatformHostGroup()
+	hostGroup.ProjectID = project.ID
+	hostGroup.EnvironmentID = environment.ID
+	hostGroup.Name = "production-a"
+	hostGroup.Targets = []portainer.PlatformDeploymentTarget{{EndpointID: 1, NodeName: "node-a", HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true}}
+	require.NoError(t, store.PlatformHostGroup().Create(&hostGroup))
+	gotHostGroup, err := store.PlatformHostGroup().Read(hostGroup.ID)
+	require.NoError(t, err)
+	require.Equal(t, hostGroup.Name, gotHostGroup.Name)
+	hostGroup.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
+	require.NoError(t, store.PlatformHostGroup().Update(hostGroup.ID, &hostGroup))
+
 	gateway := portainer.NewPlatformGateway()
 	gateway.ProjectID = project.ID
 	gateway.EnvironmentID = environment.ID

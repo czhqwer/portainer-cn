@@ -18,6 +18,7 @@ type (
 	PlatformConfigSetID            int
 	PlatformArtifactID             int
 	PlatformArtifactStorageID      int
+	PlatformHostGroupID            int
 	PlatformGatewayID              int
 	PlatformGatewayRouteID         int
 	PlatformGatewayCertificateID   int
@@ -221,11 +222,13 @@ const (
 	PlatformReleaseResolutionMarkHandled     PlatformReleaseResolution = "mark-handled"
 	PlatformReleaseResolutionReleaseLockOnly PlatformReleaseResolution = "release-lock-only"
 
-	PlatformReleaseTargetStatusPending   PlatformReleaseTargetStatus = "pending"
-	PlatformReleaseTargetStatusRunning   PlatformReleaseTargetStatus = "running"
-	PlatformReleaseTargetStatusSucceeded PlatformReleaseTargetStatus = "succeeded"
-	PlatformReleaseTargetStatusFailed    PlatformReleaseTargetStatus = "failed"
-	PlatformReleaseTargetStatusSkipped   PlatformReleaseTargetStatus = "skipped"
+	PlatformReleaseTargetStatusPending        PlatformReleaseTargetStatus = "pending"
+	PlatformReleaseTargetStatusRunning        PlatformReleaseTargetStatus = "running"
+	PlatformReleaseTargetStatusSucceeded      PlatformReleaseTargetStatus = "succeeded"
+	PlatformReleaseTargetStatusFailed         PlatformReleaseTargetStatus = "failed"
+	PlatformReleaseTargetStatusSkipped        PlatformReleaseTargetStatus = "skipped"
+	PlatformReleaseTargetStatusRecovered      PlatformReleaseTargetStatus = "recovered"
+	PlatformReleaseTargetStatusRecoveryFailed PlatformReleaseTargetStatus = "recovery-failed"
 
 	PlatformExecutorModeSingle PlatformExecutorMode = "single"
 	PlatformExecutorModeMulti  PlatformExecutorMode = "multi"
@@ -325,6 +328,8 @@ type PlatformEnvironment struct {
 	DefaultRegistryID RegistryID                 `json:"DefaultRegistryId" example:"1"`
 	HealthCheckHost   string                     `json:"HealthCheckHost,omitempty" example:"127.0.0.1"`
 	ReleasePolicy     PlatformReleasePolicy      `json:"ReleasePolicy"`
+	HostGroupID       PlatformHostGroupID        `json:"HostGroupId,omitempty"`
+	BatchPolicy       PlatformBatchPolicy        `json:"BatchPolicy"`
 	PlatformLifecycle
 }
 
@@ -334,6 +339,25 @@ type PlatformDeploymentTarget struct {
 	Role        PlatformDeploymentTargetRole `json:"Role" example:"workload"`
 	HostAddress string                       `json:"HostAddress,omitempty" example:"127.0.0.1"`
 	Enabled     bool                         `json:"Enabled" example:"true"`
+}
+
+// PlatformHostGroup 保存多主机发布的可变配置；Release 只保存创建时的不可变快照。
+// 这避免后来调整组成员或排序时重写历史发布及其恢复语义。
+type PlatformHostGroup struct {
+	ID            PlatformHostGroupID        `json:"Id" example:"1"`
+	ProjectID     PlatformProjectID          `json:"ProjectId" example:"1"`
+	EnvironmentID PlatformEnvironmentID      `json:"EnvironmentId" example:"1"`
+	Name          string                     `json:"Name" example:"production-a"`
+	Targets       []PlatformDeploymentTarget `json:"Targets"`
+	PlatformLifecycle
+}
+
+// PlatformBatchPolicy 仅定义顺序发布与失败补偿，不引入权重灰度或自动扩缩容。
+type PlatformBatchPolicy struct {
+	BatchSize                int  `json:"BatchSize" example:"1"`
+	IntervalSeconds          int  `json:"IntervalSeconds" example:"30"`
+	PauseOnFailure           bool `json:"PauseOnFailure" example:"true"`
+	RollbackSucceededTargets bool `json:"RollbackSucceededTargets" example:"true"`
 }
 
 type PlatformReleasePolicy struct {
@@ -636,47 +660,50 @@ type PlatformGatewayConfigVersion struct {
 }
 
 type PlatformRelease struct {
-	ID                      PlatformReleaseID             `json:"Id" example:"1"`
-	ProjectID               PlatformProjectID             `json:"ProjectId" example:"1"`
-	EnvironmentID           PlatformEnvironmentID         `json:"EnvironmentId" example:"1"`
-	ApplicationID           PlatformApplicationID         `json:"ApplicationId" example:"1"`
-	ServiceDefinitionID     PlatformServiceDefinitionID   `json:"ServiceDefinitionId" example:"1"`
-	ServiceDeploymentID     PlatformServiceDeploymentID   `json:"ServiceDeploymentId" example:"1"`
-	ArtifactID              PlatformArtifactID            `json:"ArtifactId" example:"1"`
-	Version                 string                        `json:"Version" example:"20260711-001"`
-	TriggerType             PlatformReleaseTriggerType    `json:"TriggerType" example:"deploy"`
-	Strategy                PlatformReleaseStrategy       `json:"Strategy"`
-	Status                  PlatformReleaseStatus         `json:"Status" example:"queued"`
-	OperatorUserID          UserID                        `json:"OperatorUserId" example:"1"`
-	IdempotencyKeyHash      string                        `json:"IdempotencyKeyHash,omitempty"`
-	PayloadHash             string                        `json:"PayloadHash,omitempty"`
-	ExpectedSpecRevision    int                           `json:"ExpectedSpecRevision" example:"1"`
-	Image                   string                        `json:"Image,omitempty"`
-	ImageDigest             string                        `json:"ImageDigest,omitempty"`
-	Traceability            PlatformTraceability          `json:"Traceability" example:"weak"`
-	ArtifactSnapshot        PlatformArtifactSnapshot      `json:"ArtifactSnapshot"`
-	ConfigSnapshot          PlatformServiceConfigSnapshot `json:"ConfigSnapshot"`
-	TargetSnapshot          PlatformTargetSnapshot        `json:"TargetSnapshot"`
-	RuntimeSnapshot         PlatformRuntimeSnapshot       `json:"RuntimeSnapshot"`
-	GatewaySnapshot         PlatformGatewaySnapshot       `json:"GatewaySnapshot"`
-	HealthCheckResult       PlatformHealthCheckResult     `json:"HealthCheckResult"`
-	Steps                   []PlatformReleaseStep         `json:"Steps,omitempty"`
-	TargetResults           []PlatformReleaseTargetResult `json:"TargetResults,omitempty"`
-	PreviousReleaseID       PlatformReleaseID             `json:"PreviousReleaseId" example:"0"`
-	RollbackSourceReleaseID PlatformReleaseID             `json:"RollbackSourceReleaseId" example:"0"`
-	CanRollback             bool                          `json:"CanRollback" example:"false"`
-	FailureReason           string                        `json:"FailureReason,omitempty"`
-	ManualActionRequired    bool                          `json:"ManualActionRequired" example:"false"`
-	ResolutionAction        PlatformReleaseResolution     `json:"ResolutionAction" example:"none"`
-	ResolvedByUserID        UserID                        `json:"ResolvedByUserId" example:"0"`
-	ResolvedAt              int64                         `json:"ResolvedAt" example:"0"`
-	ResolutionComment       string                        `json:"ResolutionComment,omitempty"`
-	LeaseOwner              string                        `json:"LeaseOwner,omitempty"`
-	LeaseExpiresAt          int64                         `json:"LeaseExpiresAt" example:"0"`
-	StartedAt               int64                         `json:"StartedAt" example:"0"`
-	FinishedAt              int64                         `json:"FinishedAt" example:"0"`
-	CreatedAt               int64                         `json:"CreatedAt" example:"1783740000"`
-	QueueExpiresAt          int64                         `json:"QueueExpiresAt" example:"1783740600"`
+	ID                      PlatformReleaseID              `json:"Id" example:"1"`
+	ProjectID               PlatformProjectID              `json:"ProjectId" example:"1"`
+	EnvironmentID           PlatformEnvironmentID          `json:"EnvironmentId" example:"1"`
+	ApplicationID           PlatformApplicationID          `json:"ApplicationId" example:"1"`
+	ServiceDefinitionID     PlatformServiceDefinitionID    `json:"ServiceDefinitionId" example:"1"`
+	ServiceDeploymentID     PlatformServiceDeploymentID    `json:"ServiceDeploymentId" example:"1"`
+	ArtifactID              PlatformArtifactID             `json:"ArtifactId" example:"1"`
+	Version                 string                         `json:"Version" example:"20260711-001"`
+	TriggerType             PlatformReleaseTriggerType     `json:"TriggerType" example:"deploy"`
+	Strategy                PlatformReleaseStrategy        `json:"Strategy"`
+	Status                  PlatformReleaseStatus          `json:"Status" example:"queued"`
+	OperatorUserID          UserID                         `json:"OperatorUserId" example:"1"`
+	IdempotencyKeyHash      string                         `json:"IdempotencyKeyHash,omitempty"`
+	PayloadHash             string                         `json:"PayloadHash,omitempty"`
+	ExpectedSpecRevision    int                            `json:"ExpectedSpecRevision" example:"1"`
+	Image                   string                         `json:"Image,omitempty"`
+	ImageDigest             string                         `json:"ImageDigest,omitempty"`
+	Traceability            PlatformTraceability           `json:"Traceability" example:"weak"`
+	ArtifactSnapshot        PlatformArtifactSnapshot       `json:"ArtifactSnapshot"`
+	ConfigSnapshot          PlatformServiceConfigSnapshot  `json:"ConfigSnapshot"`
+	TargetSnapshot          PlatformTargetSnapshot         `json:"TargetSnapshot"`
+	TargetSnapshots         []PlatformTargetSnapshot       `json:"TargetSnapshots,omitempty"`
+	BatchPolicySnapshot     PlatformBatchPolicy            `json:"BatchPolicySnapshot"`
+	BatchSnapshots          []PlatformReleaseBatchSnapshot `json:"BatchSnapshots,omitempty"`
+	RuntimeSnapshot         PlatformRuntimeSnapshot        `json:"RuntimeSnapshot"`
+	GatewaySnapshot         PlatformGatewaySnapshot        `json:"GatewaySnapshot"`
+	HealthCheckResult       PlatformHealthCheckResult      `json:"HealthCheckResult"`
+	Steps                   []PlatformReleaseStep          `json:"Steps,omitempty"`
+	TargetResults           []PlatformReleaseTargetResult  `json:"TargetResults,omitempty"`
+	PreviousReleaseID       PlatformReleaseID              `json:"PreviousReleaseId" example:"0"`
+	RollbackSourceReleaseID PlatformReleaseID              `json:"RollbackSourceReleaseId" example:"0"`
+	CanRollback             bool                           `json:"CanRollback" example:"false"`
+	FailureReason           string                         `json:"FailureReason,omitempty"`
+	ManualActionRequired    bool                           `json:"ManualActionRequired" example:"false"`
+	ResolutionAction        PlatformReleaseResolution      `json:"ResolutionAction" example:"none"`
+	ResolvedByUserID        UserID                         `json:"ResolvedByUserId" example:"0"`
+	ResolvedAt              int64                          `json:"ResolvedAt" example:"0"`
+	ResolutionComment       string                         `json:"ResolutionComment,omitempty"`
+	LeaseOwner              string                         `json:"LeaseOwner,omitempty"`
+	LeaseExpiresAt          int64                          `json:"LeaseExpiresAt" example:"0"`
+	StartedAt               int64                          `json:"StartedAt" example:"0"`
+	FinishedAt              int64                          `json:"FinishedAt" example:"0"`
+	CreatedAt               int64                          `json:"CreatedAt" example:"1783740000"`
+	QueueExpiresAt          int64                          `json:"QueueExpiresAt" example:"1783740600"`
 }
 
 type PlatformReleaseStrategy struct {
@@ -766,10 +793,18 @@ type PlatformReleaseStep struct {
 type PlatformReleaseTargetResult struct {
 	EndpointID     EndpointID                  `json:"EndpointId" example:"1"`
 	NodeName       string                      `json:"NodeName,omitempty"`
+	HostAddress    string                      `json:"HostAddress,omitempty"`
+	BatchIndex     int                         `json:"BatchIndex" example:"0"`
 	RuntimeRef     RuntimeRef                  `json:"RuntimeRef"`
 	PublishedPorts []PlatformPublishedPort     `json:"PublishedPorts,omitempty"`
 	Status         PlatformReleaseTargetStatus `json:"Status" example:"pending"`
 	Reason         string                      `json:"Reason,omitempty"`
+}
+
+// PlatformReleaseBatchSnapshot 记录每批精确 target 身份，恢复时不得读取当前 HostGroup。
+type PlatformReleaseBatchSnapshot struct {
+	Index         int   `json:"Index" example:"0"`
+	TargetIndices []int `json:"TargetIndices"`
 }
 
 type PlatformPublishedPort struct {
@@ -849,6 +884,81 @@ func NewPlatformGatewayRoute() PlatformGatewayRoute {
 
 func NewPlatformGatewayCertificate() PlatformGatewayCertificate {
 	return PlatformGatewayCertificate{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformHostGroup() PlatformHostGroup {
+	return PlatformHostGroup{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+// NormalizePlatformBatchPolicy 固定安全默认值，避免缺省 multi 发布被意外并发放大。
+func NormalizePlatformBatchPolicy(policy *PlatformBatchPolicy) {
+	if policy == nil {
+		return
+	}
+	if policy.BatchSize == 0 {
+		policy.BatchSize = 1
+	}
+	if !policy.PauseOnFailure {
+		// false 是显式业务选择时才允许写入；缺省值由调用方的 NewPlatformBatchPolicy 提供。
+		policy.PauseOnFailure = true
+	}
+	if !policy.RollbackSucceededTargets {
+		policy.RollbackSucceededTargets = true
+	}
+}
+
+func NewPlatformBatchPolicy() PlatformBatchPolicy {
+	return PlatformBatchPolicy{BatchSize: 1, PauseOnFailure: true, RollbackSucceededTargets: true}
+}
+
+func ValidatePlatformBatchPolicy(policy PlatformBatchPolicy) error {
+	if policy.BatchSize < 1 || policy.BatchSize > 100 {
+		return fmt.Errorf("batch size is invalid")
+	}
+	if policy.IntervalSeconds < 0 || policy.IntervalSeconds > 3600 {
+		return fmt.Errorf("batch interval is invalid")
+	}
+	if !policy.PauseOnFailure || !policy.RollbackSucceededTargets {
+		return fmt.Errorf("multi target policy must pause and rollback on failure")
+	}
+	return nil
+}
+
+func NormalizePlatformHostGroup(group *PlatformHostGroup) {
+	if group == nil {
+		return
+	}
+	group.Name = strings.TrimSpace(group.Name)
+	group.Targets = append([]PlatformDeploymentTarget(nil), group.Targets...)
+	for i := range group.Targets {
+		group.Targets[i].NodeName = strings.TrimSpace(group.Targets[i].NodeName)
+		group.Targets[i].HostAddress = strings.TrimSpace(group.Targets[i].HostAddress)
+	}
+	sort.Slice(group.Targets, func(i, j int) bool {
+		if group.Targets[i].EndpointID != group.Targets[j].EndpointID {
+			return group.Targets[i].EndpointID < group.Targets[j].EndpointID
+		}
+		if group.Targets[i].NodeName != group.Targets[j].NodeName {
+			return group.Targets[i].NodeName < group.Targets[j].NodeName
+		}
+		return group.Targets[i].HostAddress < group.Targets[j].HostAddress
+	})
+}
+
+func ValidatePlatformHostGroup(group PlatformHostGroup) error {
+	NormalizePlatformHostGroup(&group)
+	if group.ProjectID <= 0 || group.EnvironmentID <= 0 || group.Name == "" || len(group.Targets) == 0 {
+		return fmt.Errorf("host group ownership and targets are required")
+	}
+	for i, target := range group.Targets {
+		if target.EndpointID <= 0 || !target.Enabled || target.Role != PlatformDeploymentTargetRoleWorkload || target.HostAddress == "" || strings.ContainsAny(target.HostAddress, "\r\n\x00/\\@") {
+			return fmt.Errorf("host group target is invalid")
+		}
+		if i > 0 && group.Targets[i-1].EndpointID == target.EndpointID && group.Targets[i-1].NodeName == target.NodeName && group.Targets[i-1].HostAddress == target.HostAddress {
+			return fmt.Errorf("host group targets are duplicated")
+		}
+	}
+	return nil
 }
 
 // NormalizePlatformGateway 统一控制面定位字段，避免后续 Docker adapter 根据未规范化名称

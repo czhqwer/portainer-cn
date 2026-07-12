@@ -32,6 +32,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/platformgatewaycertificate"
 	"github.com/portainer/portainer/api/dataservices/platformgatewayconfigversion"
 	"github.com/portainer/portainer/api/dataservices/platformgatewayroute"
+	"github.com/portainer/portainer/api/dataservices/platformhostgroup"
 	"github.com/portainer/portainer/api/dataservices/platformproject"
 	"github.com/portainer/portainer/api/dataservices/platformrelease"
 	"github.com/portainer/portainer/api/dataservices/platformreleaselock"
@@ -80,6 +81,7 @@ type Store struct {
 	PlatformConfigSetService            *platformconfigset.Service
 	PlatformArtifactService             *platformartifact.Service
 	PlatformArtifactStorageService      *platformartifactstorage.Service
+	PlatformHostGroupService            *platformhostgroup.Service
 	PlatformGatewayService              *platformgateway.Service
 	PlatformGatewayRouteService         *platformgatewayroute.Service
 	PlatformGatewayCertificateService   *platformgatewaycertificate.Service
@@ -192,6 +194,12 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.PlatformArtifactStorageService = platformArtifactStorageService
+
+	platformHostGroupService, err := platformhostgroup.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformHostGroupService = platformHostGroupService
 
 	platformGatewayService, err := platformgateway.NewService(store.connection)
 	if err != nil {
@@ -481,6 +489,11 @@ func (store *Store) PlatformArtifactStorage() dataservices.PlatformArtifactStora
 	return store.PlatformArtifactStorageService
 }
 
+// PlatformHostGroup gives access to platform-owned multi-host membership metadata.
+func (store *Store) PlatformHostGroup() dataservices.PlatformHostGroupService {
+	return store.PlatformHostGroupService
+}
+
 // PlatformGateway gives access to environment-scoped gateway control-plane metadata.
 func (store *Store) PlatformGateway() dataservices.PlatformGatewayService {
 	return store.PlatformGatewayService
@@ -682,6 +695,7 @@ type storeExport struct {
 	PlatformConfigSet            []portainer.PlatformConfigSet            `json:"platform_config_sets,omitempty"`
 	PlatformArtifact             []portainer.PlatformArtifact             `json:"platform_artifacts,omitempty"`
 	PlatformArtifactStorage      []portainer.PlatformArtifactStorage      `json:"platform_artifact_storages,omitempty"`
+	PlatformHostGroup            []portainer.PlatformHostGroup            `json:"platform_host_groups,omitempty"`
 	PlatformGateway              []portainer.PlatformGateway              `json:"platform_gateways,omitempty"`
 	PlatformGatewayRoute         []portainer.PlatformGatewayRoute         `json:"platform_gateway_routes,omitempty"`
 	PlatformGatewayCertificate   []portainer.PlatformGatewayCertificate   `json:"platform_gateway_certificates,omitempty"`
@@ -967,6 +981,14 @@ func (store *Store) Export(filename string) (err error) {
 		backup.PlatformArtifactStorage = s
 	}
 
+	if groups, err := store.PlatformHostGroup().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Host Groups")
+		}
+	} else {
+		backup.PlatformHostGroup = groups
+	}
+
 	if g, err := store.PlatformGateway().ReadAll(); err != nil {
 		if !store.IsErrObjectNotFound(err) {
 			log.Error().Err(err).Msg("exporting Platform Gateways")
@@ -1243,6 +1265,12 @@ func (store *Store) Import(filename string) (err error) {
 	for _, v := range backup.PlatformArtifactStorage {
 		if err := store.PlatformArtifactStorage().Update(v.ID, &v); err != nil {
 			log.Warn().Err(err).Msg("failed to update the platform artifact storage in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformHostGroup {
+		if err := store.PlatformHostGroup().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform host group in the database")
 		}
 	}
 

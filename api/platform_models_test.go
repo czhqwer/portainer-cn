@@ -260,3 +260,26 @@ func TestPlatformGatewayCertificateAndConfigVersionValidation(t *testing.T) {
 	version.RouteIDs = []PlatformGatewayRouteID{1, 1}
 	require.Error(t, ValidatePlatformGatewayConfigVersion(version))
 }
+
+func TestPlatformHostGroupAndBatchPolicyValidation(t *testing.T) {
+	group := NewPlatformHostGroup()
+	group.ProjectID = 1
+	group.EnvironmentID = 2
+	group.Name = "  production-a "
+	group.Targets = []PlatformDeploymentTarget{
+		{EndpointID: 2, NodeName: "node-b", HostAddress: "10.0.0.12", Role: PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 1, NodeName: "node-a", HostAddress: "10.0.0.11", Role: PlatformDeploymentTargetRoleWorkload, Enabled: true},
+	}
+	require.NoError(t, ValidatePlatformHostGroup(group))
+	NormalizePlatformHostGroup(&group)
+	require.Equal(t, "production-a", group.Name)
+	require.Equal(t, EndpointID(1), group.Targets[0].EndpointID)
+
+	group.Targets[1] = group.Targets[0]
+	require.Error(t, ValidatePlatformHostGroup(group))
+
+	policy := NewPlatformBatchPolicy()
+	require.NoError(t, ValidatePlatformBatchPolicy(policy))
+	policy.BatchSize = 0
+	require.Error(t, ValidatePlatformBatchPolicy(policy))
+}

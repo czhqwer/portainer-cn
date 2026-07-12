@@ -24,6 +24,7 @@ type testDatastore struct {
 	platformConfigSet            dataservices.PlatformConfigSetService
 	platformArtifact             dataservices.PlatformArtifactService
 	platformArtifactStorage      dataservices.PlatformArtifactStorageService
+	platformHostGroup            dataservices.PlatformHostGroupService
 	platformGateway              dataservices.PlatformGatewayService
 	platformGatewayRoute         dataservices.PlatformGatewayRouteService
 	platformGatewayCertificate   dataservices.PlatformGatewayCertificateService
@@ -100,6 +101,9 @@ func (d *testDatastore) PlatformArtifact() dataservices.PlatformArtifactService 
 }
 func (d *testDatastore) PlatformArtifactStorage() dataservices.PlatformArtifactStorageService {
 	return d.platformArtifactStorage
+}
+func (d *testDatastore) PlatformHostGroup() dataservices.PlatformHostGroupService {
+	return d.platformHostGroup
 }
 func (d *testDatastore) PlatformGateway() dataservices.PlatformGatewayService {
 	return d.platformGateway

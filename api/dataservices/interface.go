@@ -19,6 +19,7 @@ type (
 		PlatformConfigSet() PlatformConfigSetService
 		PlatformArtifact() PlatformArtifactService
 		PlatformArtifactStorage() PlatformArtifactStorageService
+		PlatformHostGroup() PlatformHostGroupService
 		PlatformGateway() PlatformGatewayService
 		PlatformGatewayRoute() PlatformGatewayRouteService
 		PlatformGatewayCertificate() PlatformGatewayCertificateService
@@ -141,6 +142,12 @@ type (
 	// Callers must encrypt credentials before persistence; the service never returns or transforms plaintext credentials.
 	PlatformArtifactStorageService interface {
 		BaseCRUD[portainer.PlatformArtifactStorage, portainer.PlatformArtifactStorageID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformHostGroupService stores project-scoped workload membership for future multi-target releases.
+	PlatformHostGroupService interface {
+		BaseCRUD[portainer.PlatformHostGroup, portainer.PlatformHostGroupID]
 		GetNextIdentifier() int
 	}
 
