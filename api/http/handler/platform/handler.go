@@ -16,6 +16,7 @@ type Handler struct {
 	*mux.Router
 	DataStore               dataservices.DataStore
 	FileService             portainer.FileService
+	ArtifactStorageAdapter  platformservice.ArtifactStorageAdapter
 	ReleaseExecutor         platformservice.ReleaseExecutor
 	ReleaseRecoveryExecutor platformservice.ReleaseRecoveryExecutor
 	RuntimeInspector        platformservice.RuntimeInspector
@@ -25,7 +26,8 @@ type Handler struct {
 // 资源级项目角色与 Endpoint 权限交集由各 handler 按实际对象强制校验。
 func NewHandler(bouncer security.BouncerService) *Handler {
 	h := &Handler{
-		Router: mux.NewRouter(),
+		Router:                 mux.NewRouter(),
+		ArtifactStorageAdapter: platformservice.NewS3CompatibleArtifactStorageAdapter(),
 	}
 
 	h.Handle("/platform/projects",
@@ -91,6 +93,18 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 
 	h.Handle("/platform/artifacts",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactList))).Methods(http.MethodGet)
+	h.Handle("/platform/artifact-storages",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactStorageList))).Methods(http.MethodGet)
+	h.Handle("/platform/artifact-storages",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactStorageCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/artifact-storages/{storageId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactStorageUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/artifact-storages/{storageId}/test",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactStorageTest))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/artifact-storages",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectArtifactStorageList))).Methods(http.MethodGet)
+	h.Handle("/platform/artifact-storages/{storageId}/objects",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactStorageObjectList))).Methods(http.MethodGet)
 
 	h.Handle("/platform/config-sets",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.configSetList))).Methods(http.MethodGet)
@@ -110,6 +124,11 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactImageReferenceCreate))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/upload",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactUpload))).Methods(http.MethodPost)
+	h.Handle("/platform/artifacts/object-storage",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactObjectStorageFetch))).Methods(http.MethodPost)
+	// 保留语义化别名，确保阶段 3 冻结的 from-storage 契约与现有页面调用同时可用。
+	h.Handle("/platform/artifacts/from-storage",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactObjectStorageFetch))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/{artifactId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/artifacts/{artifactId}/validate",

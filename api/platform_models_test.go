@@ -141,6 +141,7 @@ func TestPlatformArtifactStorageDefaultsAndValidation(t *testing.T) {
 	storage.Endpoint = "https://minio.example.com"
 	storage.Bucket = "artifacts"
 	storage.PathPrefix = "releases/v05"
+	storage.AuthorizedProjectIDs = []PlatformProjectID{2, 1}
 	storage.AccessKeyCipherText = "encrypted-access-key"
 	storage.SecretKeyCipherText = "encrypted-secret-key"
 	storage.CredentialEncryptionVersion = PlatformArtifactStorageCredentialEncryptionVersion
@@ -149,6 +150,7 @@ func TestPlatformArtifactStorageDefaultsAndValidation(t *testing.T) {
 	require.Equal(t, PlatformArtifactStorageProviderS3Compatible, storage.Provider)
 	require.True(t, storage.UseTLS)
 	require.NoError(t, ValidatePlatformArtifactStorage(storage))
+	require.Equal(t, []PlatformProjectID{1, 2}, storage.AuthorizedProjectIDs)
 
 	storage.PathPrefix = "../escape"
 	require.Error(t, ValidatePlatformArtifactStorage(storage))
@@ -180,6 +182,7 @@ func TestPlatformArtifactNormalizationAndValidation(t *testing.T) {
 		SourceType:  PlatformArtifactSourceObjectStorage,
 		StorageID:   1,
 		StoragePath: "releases/orders.oci.tar",
+		SourcePath:  "releases/orders.oci.tar",
 		SHA256:      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		Retained:    true,
 	}

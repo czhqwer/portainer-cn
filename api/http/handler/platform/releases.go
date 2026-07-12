@@ -546,6 +546,7 @@ func artifactSnapshotFromArtifact(artifact *portainer.PlatformArtifact) portaine
 		StorageID:       artifact.StorageID,
 		StorageProvider: artifact.StorageProvider,
 		StoragePath:     artifact.StoragePath,
+		SourcePath:      artifact.SourcePath,
 		Retained:        artifact.Retained,
 		ImageTag:        artifact.ImageTag,
 		BuildTemplate:   artifact.BuildTemplate,

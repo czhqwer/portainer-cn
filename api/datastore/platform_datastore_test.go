@@ -358,6 +358,7 @@ func samplePlatformArtifactStorage() *portainer.PlatformArtifactStorage {
 	storage.Region = "us-east-1"
 	storage.Bucket = "artifacts"
 	storage.PathPrefix = "releases"
+	storage.AuthorizedProjectIDs = []portainer.PlatformProjectID{1}
 	storage.AccessKeyCipherText = "encrypted-access-key"
 	storage.SecretKeyCipherText = "encrypted-secret-key"
 	storage.CredentialEncryptionVersion = portainer.PlatformArtifactStorageCredentialEncryptionVersion

@@ -81,6 +81,7 @@ func (handler *Handler) artifactInspect(w http.ResponseWriter, r *http.Request) 
 // 后续读取原始文件只能由受控服务基于 Artifact ID 完成，避免前端或日志把存储布局当作公开接口。
 func artifactResponse(artifact portainer.PlatformArtifact) portainer.PlatformArtifact {
 	artifact.StoragePath = ""
+	artifact.SourcePath = ""
 	return artifact
 }
 

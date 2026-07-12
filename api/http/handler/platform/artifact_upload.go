@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -36,6 +37,16 @@ type artifactUploadMetadata struct {
 	version             string
 	artifactType        portainer.PlatformArtifactType
 	expectedSHA256      string
+}
+
+// artifactInputOrigin 把上传和对象存储拉取收敛到同一条落盘管线；来源不同只影响追溯元数据和审计动作。
+type artifactInputOrigin struct {
+	sourceType         portainer.PlatformArtifactSourceType
+	storageID          portainer.PlatformArtifactStorageID
+	sourcePath         string
+	expectedSize       int64
+	successAuditAction portainer.PlatformAuditAction
+	failureAuditAction portainer.PlatformAuditAction
 }
 
 // artifactUpload 通过流式 multipart 保存原始制品。文件不会进入请求内存，也不会在
@@ -139,16 +150,27 @@ func readArtifactUploadField(part io.Reader) (string, error) {
 }
 
 func (handler *Handler) persistUploadedArtifact(w http.ResponseWriter, r *http.Request, part *multipart.Part, metadata artifactUploadMetadata) *httperror.HandlerError {
+	return handler.persistArtifactStream(w, r, part, part.FileName(), metadata, artifactInputOrigin{
+		sourceType:         portainer.PlatformArtifactSourceUpload,
+		expectedSize:       -1,
+		successAuditAction: portainer.PlatformAuditActionArtifactUploaded,
+		failureAuditAction: portainer.PlatformAuditActionArtifactUploadFailed,
+	})
+}
+
+// persistArtifactStream 以有限流和原子移动保存已授权输入。无论来源是 HTTP 上传还是 S3 拉取，
+// 都先写临时文件并完成类型/hash 校验，事务失败时删除最终文件，避免留下可被后续批次误用的半成品。
+func (handler *Handler) persistArtifactStream(w http.ResponseWriter, r *http.Request, source io.Reader, originalName string, metadata artifactUploadMetadata, origin artifactInputOrigin) *httperror.HandlerError {
 	if metadata.projectID <= 0 || metadata.name == "" || metadata.version == "" || metadata.artifactType == "" {
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusBadRequest, "ARTIFACT_UPLOAD_METADATA_INVALID")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, "ARTIFACT_UPLOAD_METADATA_INVALID")
 	}
 	if err := validateExpectedArtifactSHA256(metadata.expectedSHA256); err != nil {
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusBadRequest, "ARTIFACT_UPLOAD_METADATA_INVALID")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, "ARTIFACT_UPLOAD_METADATA_INVALID")
 	}
 
-	fileName, limit, err := artifactUploadFileSpec(part.FileName(), metadata.artifactType)
+	fileName, limit, err := artifactUploadFileSpec(originalName, metadata.artifactType)
 	if err != nil {
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusBadRequest, "ARTIFACT_TYPE_INVALID")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, "ARTIFACT_TYPE_INVALID")
 	}
 
 	storageKey := filepath.ToSlash(filepath.Join("uploads", uuid.NewString()))
@@ -156,45 +178,48 @@ func (handler *Handler) persistUploadedArtifact(w http.ResponseWriter, r *http.R
 	temporaryDirectory := filepath.Join(root, ".tmp", uuid.NewString())
 	finalPath := filepath.Join(root, filepath.FromSlash(storageKey))
 	if err := os.MkdirAll(temporaryDirectory, 0o700); err != nil {
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
 	}
 	defer os.RemoveAll(temporaryDirectory)
 
 	temporaryPath := filepath.Join(temporaryDirectory, "artifact")
 	file, err := os.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
 	}
 
 	hash := sha256.New()
-	size, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(part, limit+1))
+	size, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(source, limit+1))
 	closeErr := file.Close()
-	if copyErr != nil || closeErr != nil || size > limit {
+	if copyErr != nil || closeErr != nil || size > limit || (origin.expectedSize >= 0 && size != origin.expectedSize) {
 		_ = os.Remove(temporaryPath)
 		if size > limit {
-			return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusRequestEntityTooLarge, "ARTIFACT_SIZE_EXCEEDED")
+			return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusRequestEntityTooLarge, "ARTIFACT_SIZE_EXCEEDED")
 		}
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusBadRequest, "ARTIFACT_UPLOAD_FAILED")
+		if origin.expectedSize >= 0 && size != origin.expectedSize {
+			return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, "ARTIFACT_SIZE_MISMATCH")
+		}
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, artifactStreamFailureReason(r, origin))
 	}
 
 	if err := validateUploadedFile(temporaryPath, metadata.artifactType); err != nil {
 		_ = os.Remove(temporaryPath)
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusBadRequest, "ARTIFACT_TYPE_INVALID")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, "ARTIFACT_TYPE_INVALID")
 	}
 
 	digest := hex.EncodeToString(hash.Sum(nil))
 	if metadata.expectedSHA256 != "" && metadata.expectedSHA256 != digest {
 		_ = os.Remove(temporaryPath)
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusBadRequest, "SHA256_MISMATCH")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, "SHA256_MISMATCH")
 	}
 
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0o700); err != nil {
 		_ = os.Remove(temporaryPath)
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
 	}
 	if err := os.Rename(temporaryPath, finalPath); err != nil {
 		_ = os.Remove(temporaryPath)
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusInternalServerError, "ARTIFACT_UPLOAD_FAILED")
 	}
 	removeFinalFile := true
 	defer func() {
@@ -211,16 +236,18 @@ func (handler *Handler) persistUploadedArtifact(w http.ResponseWriter, r *http.R
 		Name:                metadata.name,
 		Version:             metadata.version,
 		Type:                metadata.artifactType,
-		SourceType:          portainer.PlatformArtifactSourceUpload,
+		SourceType:          origin.sourceType,
 		FileName:            fileName,
 		Size:                size,
 		SHA256:              digest,
 		StorageProvider:     portainer.PlatformStorageProviderLocal,
 		StoragePath:         storageKey,
+		StorageID:           origin.storageID,
+		SourcePath:          origin.sourcePath,
 		Retained:            true,
 		Cleanable:           false,
 		Traceability:        portainer.PlatformTraceabilityStrong,
-		Status:              portainer.PlatformArtifactStatusUploaded,
+		Status:              artifactStatusForInputOrigin(origin),
 		PlatformLifecycle:   newLifecycle(now),
 	}
 
@@ -235,10 +262,10 @@ func (handler *Handler) persistUploadedArtifact(w http.ResponseWriter, r *http.R
 			return err
 		}
 
-		return handler.createArtifactUploadAuditLog(tx, r, *artifact)
+		return handler.createArtifactInputAuditLog(tx, r, *artifact, origin)
 	})
 	if err != nil {
-		return handler.recordArtifactUploadFailure(w, r, metadata, http.StatusBadRequest, "ARTIFACT_UPLOAD_FAILED")
+		return handler.recordArtifactInputFailure(w, r, metadata, origin, http.StatusBadRequest, "ARTIFACT_UPLOAD_FAILED")
 	}
 
 	removeFinalFile = false
@@ -332,9 +359,26 @@ func validateUploadedFile(filePath string, artifactType portainer.PlatformArtifa
 	return nil
 }
 
-func (handler *Handler) createArtifactUploadAuditLog(tx dataservices.DataStoreTx, r *http.Request, artifact portainer.PlatformArtifact) error {
+func artifactStatusForInputOrigin(origin artifactInputOrigin) portainer.PlatformArtifactStatus {
+	if origin.sourceType == portainer.PlatformArtifactSourceObjectStorage {
+		return portainer.PlatformArtifactStatusFetched
+	}
+	return portainer.PlatformArtifactStatusUploaded
+}
+
+func artifactStreamFailureReason(r *http.Request, origin artifactInputOrigin) string {
+	if origin.sourceType != portainer.PlatformArtifactSourceObjectStorage {
+		return "ARTIFACT_UPLOAD_FAILED"
+	}
+	if r != nil && errors.Is(r.Context().Err(), context.DeadlineExceeded) {
+		return "ARTIFACT_STORAGE_TIMEOUT"
+	}
+	return "ARTIFACT_STORAGE_DOWNLOAD_FAILED"
+}
+
+func (handler *Handler) createArtifactInputAuditLog(tx dataservices.DataStoreTx, r *http.Request, artifact portainer.PlatformArtifact, origin artifactInputOrigin) error {
 	return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{
-		Action:              portainer.PlatformAuditActionArtifactUploaded,
+		Action:              origin.successAuditAction,
 		Result:              portainer.PlatformAuditResultSuccess,
 		ProjectID:           artifact.ProjectID,
 		ApplicationID:       artifact.ApplicationID,
@@ -355,10 +399,17 @@ func (handler *Handler) createArtifactUploadAuditLog(tx dataservices.DataStoreTx
 // recordArtifactUploadFailure 以 best-effort 写入失败事实。上传失败本身不能因为审计存储短暂异常
 // 改变响应或遗留文件；摘要只保留用户提供的业务标识与 reason，不包含临时路径、内容或 hash 期望值。
 func (handler *Handler) recordArtifactUploadFailure(w http.ResponseWriter, r *http.Request, metadata artifactUploadMetadata, status int, reason string) *httperror.HandlerError {
+	return handler.recordArtifactInputFailure(w, r, metadata, artifactInputOrigin{
+		sourceType:         portainer.PlatformArtifactSourceUpload,
+		failureAuditAction: portainer.PlatformAuditActionArtifactUploadFailed,
+	}, status, reason)
+}
+
+func (handler *Handler) recordArtifactInputFailure(w http.ResponseWriter, r *http.Request, metadata artifactUploadMetadata, origin artifactInputOrigin, status int, reason string) *httperror.HandlerError {
 	if handler != nil && handler.DataStore != nil && metadata.projectID > 0 {
 		_ = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 			return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{
-				Action:              portainer.PlatformAuditActionArtifactUploadFailed,
+				Action:              origin.failureAuditAction,
 				Result:              portainer.PlatformAuditResultFailed,
 				ProjectID:           metadata.projectID,
 				ApplicationID:       metadata.applicationID,
@@ -368,7 +419,7 @@ func (handler *Handler) recordArtifactUploadFailure(w http.ResponseWriter, r *ht
 					"name":    metadata.name,
 					"version": metadata.version,
 					"type":    metadata.artifactType,
-					"source":  portainer.PlatformArtifactSourceUpload,
+					"source":  origin.sourceType,
 					"reason":  reason,
 				},
 			})

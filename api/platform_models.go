@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -250,6 +251,11 @@ const (
 	PlatformAuditActionProjectPermissionsUpdated PlatformAuditAction = "project.permissions_updated"
 	PlatformAuditActionArtifactUploaded          PlatformAuditAction = "artifact.uploaded"
 	PlatformAuditActionArtifactUploadFailed      PlatformAuditAction = "artifact.upload_failed"
+	PlatformAuditActionArtifactFetched           PlatformAuditAction = "artifact.fetched"
+	PlatformAuditActionArtifactFetchFailed       PlatformAuditAction = "artifact.fetch_failed"
+	PlatformAuditActionArtifactStorageCreated    PlatformAuditAction = "artifact_storage.created"
+	PlatformAuditActionArtifactStorageUpdated    PlatformAuditAction = "artifact_storage.updated"
+	PlatformAuditActionArtifactStorageTested     PlatformAuditAction = "artifact_storage.tested"
 	PlatformAuditActionAccessDenied              PlatformAuditAction = "platform.access_denied"
 	PlatformAuditActionRollbackCreated           PlatformAuditAction = "rollback.created"
 	PlatformAuditActionRollbackSucceeded         PlatformAuditAction = "rollback.succeeded"
@@ -493,6 +499,7 @@ type PlatformArtifact struct {
 	StorageID           PlatformArtifactStorageID   `json:"StorageId,omitempty" example:"1"`
 	StorageProvider     PlatformStorageProvider     `json:"StorageProvider,omitempty"`
 	StoragePath         string                      `json:"StoragePath,omitempty"`
+	SourcePath          string                      `json:"SourcePath,omitempty"`
 	Retained            bool                        `json:"Retained" example:"false"`
 	Cleanable           bool                        `json:"Cleanable" example:"false"`
 	Status              PlatformArtifactStatus      `json:"Status" example:"ready"`
@@ -518,8 +525,9 @@ type PlatformArtifactStorage struct {
 	PathPrefix                  string                          `json:"PathPrefix,omitempty" example:"releases"`
 	UseTLS                      bool                            `json:"UseTLS" example:"true"`
 	SkipTLSVerify               bool                            `json:"SkipTLSVerify" example:"false"`
-	AccessKeyCipherText         string                          `json:"-" swaggerignore:"true"`
-	SecretKeyCipherText         string                          `json:"-" swaggerignore:"true"`
+	AuthorizedProjectIDs        []PlatformProjectID             `json:"AuthorizedProjectIds,omitempty"`
+	AccessKeyCipherText         string                          `json:"AccessKeyCipherText,omitempty" swaggerignore:"true"`
+	SecretKeyCipherText         string                          `json:"SecretKeyCipherText,omitempty" swaggerignore:"true"`
 	CredentialEncryptionVersion string                          `json:"CredentialEncryptionVersion,omitempty"`
 	CredentialHash              string                          `json:"CredentialHash,omitempty"`
 	PlatformLifecycle
@@ -588,6 +596,7 @@ type PlatformArtifactSnapshot struct {
 	StorageID       PlatformArtifactStorageID  `json:"StorageId,omitempty"`
 	StorageProvider PlatformStorageProvider    `json:"StorageProvider,omitempty"`
 	StoragePath     string                     `json:"StoragePath,omitempty"`
+	SourcePath      string                     `json:"SourcePath,omitempty"`
 	Retained        bool                       `json:"Retained" example:"false"`
 	ImageTag        string                     `json:"ImageTag,omitempty"`
 	BuildTemplate   string                     `json:"BuildTemplate,omitempty"`
@@ -758,6 +767,10 @@ func NormalizePlatformArtifactStorage(storage *PlatformArtifactStorage) {
 	storage.PathPrefix = strings.Trim(strings.TrimSpace(storage.PathPrefix), "/")
 	storage.CredentialEncryptionVersion = strings.TrimSpace(storage.CredentialEncryptionVersion)
 	storage.CredentialHash = strings.TrimSpace(storage.CredentialHash)
+	storage.AuthorizedProjectIDs = append([]PlatformProjectID(nil), storage.AuthorizedProjectIDs...)
+	sort.Slice(storage.AuthorizedProjectIDs, func(i, j int) bool {
+		return storage.AuthorizedProjectIDs[i] < storage.AuthorizedProjectIDs[j]
+	})
 }
 
 // ValidatePlatformArtifactStorage 在 adapter 尚未接入前固定存储模型的安全边界。
@@ -781,6 +794,17 @@ func ValidatePlatformArtifactStorage(storage PlatformArtifactStorage) error {
 	if storage.PathPrefix != "" && (strings.HasPrefix(storage.PathPrefix, ".") || path.Clean(storage.PathPrefix) != storage.PathPrefix) {
 		return fmt.Errorf("artifact storage path prefix is unsafe")
 	}
+	if storage.UseTLS != (endpoint.Scheme == "https") {
+		return fmt.Errorf("artifact storage TLS setting does not match endpoint")
+	}
+	if len(storage.AuthorizedProjectIDs) == 0 {
+		return fmt.Errorf("artifact storage must authorize at least one project")
+	}
+	for i, projectID := range storage.AuthorizedProjectIDs {
+		if projectID <= 0 || (i > 0 && storage.AuthorizedProjectIDs[i-1] == projectID) {
+			return fmt.Errorf("artifact storage authorized projects are invalid")
+		}
+	}
 
 	hasAccessKey := storage.AccessKeyCipherText != ""
 	hasSecretKey := storage.SecretKeyCipherText != ""
@@ -793,7 +817,6 @@ func ValidatePlatformArtifactStorage(storage PlatformArtifactStorage) error {
 	if !hasAccessKey && (storage.CredentialEncryptionVersion != "" || storage.CredentialHash != "") {
 		return fmt.Errorf("artifact storage credential metadata requires encrypted credentials")
 	}
-
 	return nil
 }
 
@@ -811,6 +834,7 @@ func NormalizePlatformArtifact(artifact *PlatformArtifact) {
 	artifact.ImageDigest = strings.TrimSpace(artifact.ImageDigest)
 	artifact.ImageTag = strings.TrimSpace(artifact.ImageTag)
 	artifact.StoragePath = strings.Trim(strings.TrimSpace(artifact.StoragePath), "/")
+	artifact.SourcePath = strings.Trim(strings.TrimSpace(artifact.SourcePath), "/")
 	artifact.SHA256 = strings.TrimSpace(artifact.SHA256)
 	artifact.CandidateImageRef = strings.TrimSpace(artifact.CandidateImageRef)
 	artifact.CandidateImageID = strings.TrimSpace(artifact.CandidateImageID)
@@ -865,8 +889,14 @@ func ValidatePlatformArtifact(artifact PlatformArtifact) error {
 	if artifact.StoragePath != "" && (strings.HasPrefix(artifact.StoragePath, ".") || path.Clean(artifact.StoragePath) != artifact.StoragePath) {
 		return fmt.Errorf("artifact storage path is unsafe")
 	}
+	if artifact.SourcePath != "" && (strings.HasPrefix(artifact.SourcePath, ".") || path.Clean(artifact.SourcePath) != artifact.SourcePath) {
+		return fmt.Errorf("artifact source path is unsafe")
+	}
 	if artifact.SourceType == PlatformArtifactSourceObjectStorage && artifact.StorageID <= 0 {
 		return fmt.Errorf("object storage artifact requires a storage ID")
+	}
+	if artifact.SourceType == PlatformArtifactSourceObjectStorage && artifact.SourcePath == "" {
+		return fmt.Errorf("object storage artifact requires a source path")
 	}
 	if artifact.Cleanable && !artifact.Retained {
 		return fmt.Errorf("removed artifact cannot remain cleanable")

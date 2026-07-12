@@ -165,5 +165,8 @@ func redactRelease(release portainer.PlatformRelease) portainer.PlatformRelease 
 	for i := range result.ConfigSnapshot.SecretSnapshots {
 		result.ConfigSnapshot.SecretSnapshots[i].CipherText = ""
 	}
+	// 原始制品的位置只供受控构建、清理与审计链路使用；Release 普通读取不得把本地布局或对象 key 变成前端契约。
+	result.ArtifactSnapshot.StoragePath = ""
+	result.ArtifactSnapshot.SourcePath = ""
 	return result
 }
