@@ -62,11 +62,21 @@ func TestPlatformDatabaseResourceBindingKeepsCredentialPrivate(t *testing.T) {
 	workbench := doJSON[databaseWorkbenchContext](t, ctx, http.MethodGet, fmt.Sprintf("/platform/service-deployments/%d/database-workbench-context", deployment.ID), nil, http.StatusOK)
 	require.Equal(t, resource.ID, workbench.DatabaseResourceID)
 	require.Equal(t, "orders-db.internal", workbench.Host)
+	ctx.handler.ReleaseExecutor = fakeReleaseExecutor{}
+	artifact := createImageReferenceArtifact(t, ctx, createImageReferenceArtifactPayload{ProjectID: project.ID, ApplicationID: application.ID, ServiceDefinitionID: service.ID, Name: "database-api", Version: "1.0.0", ImageRef: "registry.example.com/database-api:1.0.0"})
+	releaseResponse := postReleaseExpectAccepted(t, ctx, "database-binding-release", createReleasePayloadFor(project, application, service, deployment, artifact))
+	release, err := ctx.handler.DataStore.PlatformRelease().Read(releaseResponse.ReleaseID)
+	require.NoError(t, err)
+	require.Len(t, release.ConfigSnapshot.DatabaseBindings, 1)
+	require.Equal(t, resource.ID, release.ConfigSnapshot.DatabaseBindings[0].DatabaseResourceID)
+	require.NotContains(t, fmt.Sprintf("%+v", release.ConfigSnapshot.DatabaseBindings), password)
+	require.NotContains(t, fmt.Sprintf("%+v", release.ConfigSnapshot.DatabaseBindings), "postgres://")
 
 	// 活跃服务绑定必须阻止资源归档，防止下一次发布在运行期才发现凭据被移除。
 	doRawJSON(t, ctx, ctx.adminJWT, http.MethodDelete, fmt.Sprintf("/platform/database-resources/%d", resource.ID), nil, http.StatusConflict)
 	doRawJSON(t, ctx, ctx.adminJWT, http.MethodDelete, fmt.Sprintf("/platform/database-bindings/%d", binding.ID), nil, http.StatusNoContent)
-	doRawJSON(t, ctx, ctx.adminJWT, http.MethodDelete, fmt.Sprintf("/platform/database-resources/%d", resource.ID), nil, http.StatusNoContent)
+	// 即使解除当前绑定，已有 Release 快照仍需要受控资源用于回滚校验，故不能归档。
+	doRawJSON(t, ctx, ctx.adminJWT, http.MethodDelete, fmt.Sprintf("/platform/database-resources/%d", resource.ID), nil, http.StatusConflict)
 }
 
 func TestPlatformDatabaseResourceTestUsesStableFailureReason(t *testing.T) {

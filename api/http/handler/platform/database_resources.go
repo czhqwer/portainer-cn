@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -256,6 +257,9 @@ func (handler *Handler) databaseResourceArchive(w http.ResponseWriter, r *http.R
 		}
 		if len(bindings) > 0 {
 			return conflictError("Database resource is referenced by an active service binding")
+		}
+		if err := ensureDatabaseResourceHasNoReleaseSnapshot(tx, current.ID); err != nil {
+			return err
 		}
 		archiveLifecycle(&current.PlatformLifecycle, time.Now().Unix(), userID)
 		if err := tx.PlatformDatabaseResource().Update(current.ID, current); err != nil {
@@ -659,4 +663,116 @@ func mapDatabaseProbeAuditResult(status string) portainer.PlatformAuditResult {
 		return portainer.PlatformAuditResultSuccess
 	}
 	return portainer.PlatformAuditResultFailed
+}
+
+func ensureDatabaseResourceHasNoReleaseSnapshot(tx dataservices.DataStoreTx, resourceID portainer.PlatformDatabaseResourceID) error {
+	releases, err := tx.PlatformRelease().ReadAll(func(release portainer.PlatformRelease) bool {
+		for _, snapshot := range release.ConfigSnapshot.DatabaseBindings {
+			if snapshot.DatabaseResourceID == resourceID {
+				return true
+			}
+		}
+		return false
+	})
+	if err != nil {
+		return err
+	}
+	if len(releases) > 0 {
+		return conflictError("Database resource is referenced by a historical release snapshot")
+	}
+	return nil
+}
+
+func validateDatabaseBindingSnapshots(tx dataservices.DataStoreTx, snapshots []portainer.PlatformDatabaseBindingSnapshot) error {
+	for _, snapshot := range snapshots {
+		resource, err := readActivePlatformDatabaseResource(tx, snapshot.DatabaseResourceID)
+		if err != nil || resource.Revision != snapshot.ResourceRevision || resource.Type != snapshot.Type || !resource.HasPassword || snapshot.VariableHash != platformservice.DatabaseBindingVariableHash(*resource) {
+			return validationFailedError("Historical release database binding snapshot is unavailable")
+		}
+	}
+	return nil
+}
+
+// databaseBindingSnapshotsForDeployment 把数据库绑定冻结为无密文的 Release 事实。资源
+// 版本和变量哈希会在 Docker 注入前再次比对，防止资源更新后把新连接静默带入已排队发布。
+func databaseBindingSnapshotsForDeployment(tx dataservices.DataStoreTx, deployment portainer.PlatformServiceDeployment, effectiveConfig portainer.PlatformEffectiveConfigSnapshot) ([]portainer.PlatformDatabaseBindingSnapshot, error) {
+	bindings, err := tx.PlatformServiceDatabaseBinding().ReadAll(func(binding portainer.PlatformServiceDatabaseBinding) bool {
+		return binding.ServiceDeploymentID == deployment.ID && isActive(binding.PlatformLifecycle)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(bindings) == 0 {
+		return nil, nil
+	}
+	if err := validateDatabaseConfigConflicts(effectiveConfig); err != nil {
+		return nil, err
+	}
+	sort.Slice(bindings, func(i, j int) bool { return bindings[i].ID < bindings[j].ID })
+	snapshots := make([]portainer.PlatformDatabaseBindingSnapshot, 0, len(bindings))
+	for _, binding := range bindings {
+		resource, err := readActivePlatformDatabaseResource(tx, binding.DatabaseResourceID)
+		if err != nil {
+			return nil, err
+		}
+		if !databaseResourceMatchesDeployment(*resource, deployment) || !resource.HasPassword {
+			return nil, validationFailedError("Database binding is unavailable for this deployment")
+		}
+		snapshots = append(snapshots, portainer.PlatformDatabaseBindingSnapshot{BindingID: binding.ID, BindingRevision: binding.Revision, DatabaseResourceID: resource.ID, ResourceRevision: resource.Revision, Type: resource.Type, VariableHash: platformservice.DatabaseBindingVariableHash(*resource)})
+	}
+	return snapshots, nil
+}
+
+func validateDatabaseConfigConflicts(effectiveConfig portainer.PlatformEffectiveConfigSnapshot) error {
+	if len(effectiveConfig.Entries) == 0 {
+		return nil
+	}
+	reserved := map[string]struct{}{
+		"DATABASE_HOST": {}, "DATABASE_PORT": {}, "DATABASE_USER": {}, "DATABASE_PASSWORD": {}, "DATABASE_NAME": {}, "DATABASE_URL": {},
+	}
+	for _, entry := range effectiveConfig.Entries {
+		if _, found := reserved[entry.Key]; found {
+			return validationFailedError("Database binding variables cannot be overridden by ConfigSet or EnvOverrides")
+		}
+	}
+	return nil
+}
+
+// preflightServiceDatabaseBindings 在 Release 持久化前完成短时数据库认证探测。它不持有
+// BoltDB 事务；之后事务中的版本快照和运行期二次比对共同处理并发修改，避免网络等待阻塞控制面。
+func (handler *Handler) preflightServiceDatabaseBindings(ctx context.Context, deploymentID portainer.PlatformServiceDeploymentID) string {
+	bindings, err := handler.DataStore.PlatformServiceDatabaseBinding().ReadAll(func(binding portainer.PlatformServiceDatabaseBinding) bool {
+		return binding.ServiceDeploymentID == deploymentID && isActive(binding.PlatformLifecycle)
+	})
+	if err != nil {
+		return "DATABASE_BINDING_UNAVAILABLE"
+	}
+	if len(bindings) == 0 {
+		return ""
+	}
+	if handler.DatabaseResourceProbe == nil {
+		return "DATABASE_PROBE_UNAVAILABLE"
+	}
+	for _, binding := range bindings {
+		resource, err := handler.DataStore.PlatformDatabaseResource().Read(binding.DatabaseResourceID)
+		if err != nil || !isActive(resource.PlatformLifecycle) || !resource.HasPassword {
+			return "DATABASE_BINDING_UNAVAILABLE"
+		}
+		password, err := handler.decryptDatabaseResourcePassword(*resource)
+		if err != nil {
+			return "DATABASE_CREDENTIAL_UNAVAILABLE"
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, time.Duration(resource.ConnectionTimeoutSeconds)*time.Second)
+		err = handler.DatabaseResourceProbe.Probe(probeCtx, *resource, password)
+		password = ""
+		timedOut := probeCtx.Err() != nil
+		cancel()
+		if err != nil {
+			if timedOut {
+				return "DATABASE_TIMEOUT"
+			}
+			return "DATABASE_UNREACHABLE"
+		}
+	}
+	return ""
 }
