@@ -69,6 +69,7 @@ func (h *Handler) artifactJavaBuild(w http.ResponseWriter, r *http.Request) *htt
 		artifact.TaskLeaseExpiresAt = now + 600
 		artifact.BuildTemplate = platformservice.Java8BuildTemplate
 		artifact.FailureReason = ""
+		resetArtifactTaskEvents(artifact, "prepare", now)
 		touchLifecycle(&artifact.PlatformLifecycle, now)
 		return tx.PlatformArtifact().Update(artifact.ID, artifact)
 	})
@@ -77,29 +78,36 @@ func (h *Handler) artifactJavaBuild(w http.ResponseWriter, r *http.Request) *htt
 	}
 	path, err := h.artifactLocalFilePath(*artifact)
 	if err != nil {
-		return h.finishJavaBuild(r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
+		return h.finishJavaBuild(w, r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return h.finishJavaBuild(r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
+		return h.finishJavaBuild(w, r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
 	}
+	h.recordArtifactTaskEvent(artifact.ID, lease, "prepare", artifactTaskEventSucceeded, "")
+	h.recordArtifactTaskEvent(artifact.ID, lease, "verify-artifact", artifactTaskEventRunning, "")
 	if err := platformservice.ValidateJavaJar(path); err != nil {
 		_ = file.Close()
-		return h.finishJavaBuild(r, *artifact, lease, p.EndpointID, "ARTIFACT_TYPE_INVALID")
+		return h.finishJavaBuild(w, r, *artifact, lease, p.EndpointID, "ARTIFACT_TYPE_INVALID")
 	}
+	h.recordArtifactTaskEvent(artifact.ID, lease, "verify-artifact", artifactTaskEventSucceeded, "")
+	h.recordArtifactTaskEvent(artifact.ID, lease, "prepare-build-context", artifactTaskEventRunning, "")
 	contextTar, err := platformservice.NewJava8BuildContext(file, platformservice.JavaBuildOptions{JVMArgs: p.JVMArgs, AppArgs: p.AppArgs, Port: p.Port})
 	_ = file.Close()
 	if err != nil {
-		return h.finishJavaBuild(r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
+		return h.finishJavaBuild(w, r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
 	}
+	h.recordArtifactTaskEvent(artifact.ID, lease, "prepare-build-context", artifactTaskEventSucceeded, "")
 	candidate := fmt.Sprintf("portainer-platform-java/%d:%s", artifact.ID, lease[:12])
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
+	h.recordArtifactTaskEvent(artifact.ID, lease, "build-image", artifactTaskEventRunning, "")
 	result, err := h.JavaImageBuilder.Build(ctx, platformservice.JavaImageBuildRequest{EndpointID: int(p.EndpointID), Context: bytes.NewReader(contextTar), CandidateRef: candidate})
 	if err != nil {
 		_ = h.JavaImageBuilder.Cleanup(context.Background(), int(p.EndpointID), candidate)
-		return h.finishJavaBuild(r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
+		return h.finishJavaBuild(w, r, *artifact, lease, p.EndpointID, platformservice.ControlledBuildFailureReason(err))
 	}
+	h.recordArtifactTaskEvent(artifact.ID, lease, "build-image", artifactTaskEventSucceeded, "")
 	err = h.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformArtifact().Read(artifact.ID)
 		if err != nil || current.TaskID != lease {
@@ -108,28 +116,32 @@ func (h *Handler) artifactJavaBuild(w http.ResponseWriter, r *http.Request) *htt
 		current.Status = portainer.PlatformArtifactStatusBuilt
 		current.CandidateImageRef = result.CandidateRef
 		current.CandidateImageID = result.ImageID
+		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventSucceeded, "", time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		return tx.PlatformArtifact().Update(current.ID, current)
 	})
 	if err != nil {
 		_ = h.JavaImageBuilder.Cleanup(context.Background(), int(p.EndpointID), result.CandidateRef)
-		return h.finishJavaBuild(r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
+		return h.finishJavaBuild(w, r, *artifact, lease, p.EndpointID, "CONTROLLED_BUILD_FAILED")
 	}
 	updated, _ := h.DataStore.PlatformArtifact().Read(artifact.ID)
 	return response.JSON(w, artifactResponse(*updated))
 }
-func (h *Handler) finishJavaBuild(r *http.Request, a portainer.PlatformArtifact, lease string, endpoint portainer.EndpointID, reason string) *httperror.HandlerError {
+func (h *Handler) finishJavaBuild(w http.ResponseWriter, r *http.Request, a portainer.PlatformArtifact, lease string, endpoint portainer.EndpointID, reason string) *httperror.HandlerError {
 	_ = h.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformArtifact().Read(a.ID)
 		if err != nil || current.TaskID != lease {
 			return err
 		}
 		current.Status = portainer.PlatformArtifactStatusFailed
+		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
 		current.FailureReason = reason
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventFailed, reason, time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		return tx.PlatformArtifact().Update(current.ID, current)
 	})
-	return validationFailedError("Java build failed")
+	return writePlatformError(w, http.StatusBadRequest, errPlatformValidationFailed, "Java build failed", reason, nil)
 }

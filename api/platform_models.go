@@ -489,6 +489,15 @@ type PlatformSecretSnapshot struct {
 	HasValue          bool   `json:"HasValue,omitempty"`
 }
 
+// PlatformArtifactTaskEvent 只记录平台定义的阶段、结果和原因码，用于让用户追踪耗时制品操作。
+// Docker、registry 与对象存储的原始输出可能包含凭据或服务器细节，不能写入 BoltDB 或返回浏览器。
+type PlatformArtifactTaskEvent struct {
+	Stage      string `json:"Stage"`
+	Status     string `json:"Status"`
+	Reason     string `json:"Reason,omitempty"`
+	OccurredAt int64  `json:"OccurredAt"`
+}
+
 type PlatformArtifact struct {
 	ID                  PlatformArtifactID          `json:"Id" example:"1"`
 	ProjectID           PlatformProjectID           `json:"ProjectId" example:"1"`
@@ -518,6 +527,7 @@ type PlatformArtifact struct {
 	BuildTemplate       string                      `json:"BuildTemplate,omitempty"`
 	TaskID              string                      `json:"TaskId,omitempty"`
 	TaskLeaseExpiresAt  int64                       `json:"TaskLeaseExpiresAt,omitempty"`
+	TaskEvents          []PlatformArtifactTaskEvent `json:"TaskEvents,omitempty"`
 	FailureReason       string                      `json:"FailureReason,omitempty"`
 	PlatformLifecycle
 }

@@ -4438,6 +4438,51 @@
         "cleanable": "Retained / cleanable",
         "protected": "Retained / protected",
         "cleaned": "Original cleaned"
+      },
+      "uploading": "Uploading artifact… {{percent}}%",
+      "taskRunning": "Operation in progress…",
+      "taskProgressTitle": "Artifact operation progress",
+      "taskPolling": "The control plane is running this operation. Progress refreshes automatically every 1.5 seconds.",
+      "taskFinished": "This operation has finished.",
+      "taskFailureTitle": "Operation failed",
+      "taskWaiting": "Waiting for the control plane to accept the operation.",
+      "taskNoEvents": "No safe execution events are available for this artifact.",
+      "taskSecurityNotice": "Only platform-defined stages and reason codes are shown. Raw Docker, registry, and artifact output is intentionally excluded to protect credentials and server details.",
+      "taskStatuses": {
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed"
+      },
+      "taskStages": {
+        "prepare": "Prepare operation",
+        "verify-artifact": "Validate Jar artifact",
+        "prepare-build-context": "Prepare controlled build context",
+        "validate-artifact": "Validate static artifact",
+        "build-image": "Build controlled image",
+        "validate-archive": "Validate image archive",
+        "import-image": "Import candidate image",
+        "push-image": "Push candidate image",
+        "remove-original": "Remove retained original",
+        "complete": "Finish operation"
+      },
+      "failureReasons": {
+        "ARTIFACT_TYPE_INVALID": "The Jar format or manifest validation failed.",
+        "DIST_ENTRY_MISSING": "The required static-site entry file is missing from the dist artifact.",
+        "BASE_IMAGE_UNAVAILABLE": "The controlled base image cannot be pulled or found on the target Docker environment.",
+        "BUILD_TIMEOUT": "The controlled image build timed out.",
+        "CONTROLLED_BUILD_FAILED": "The controlled image build failed.",
+        "ARCHIVE_SOURCE_UNAVAILABLE": "The retained archive source is unavailable.",
+        "ARCHIVE_ARCHITECTURE_UNSUPPORTED": "The archive architecture is not supported.",
+        "ARCHIVE_MANIFEST_INVALID": "The archive manifest is invalid.",
+        "ARCHIVE_UNSAFE": "The archive failed the platform security checks.",
+        "IMAGE_IMPORT_FAILED": "The candidate image import failed.",
+        "REGISTRY_TAG_CONFLICT": "The generated registry tag is already owned by another artifact.",
+        "REGISTRY_DIGEST_UNAVAILABLE": "The registry did not return a final image digest.",
+        "REGISTRY_AUTH_FAILED": "The configured registry credentials are not accepted for this operation.",
+        "REGISTRY_TLS_FAILED": "The target Docker environment cannot establish a trusted TLS connection to the registry.",
+        "REGISTRY_PUSH_FAILED": "The candidate image push failed.",
+        "ARTIFACT_CLEANUP_BLOCKED": "The original artifact is still required by an active task or release history.",
+        "ARTIFACT_CLEANUP_FAILED": "The retained original artifact could not be cleaned."
       }
     },
     "releases": { "tableTitle": "Release records" },
@@ -4520,6 +4565,7 @@
       "logsTitle": "Runtime logs"
     },
     "rollback": {
+      "creating": "Creating rollback…",
       "previewTitle": "Rollback to release #{{id}}",
       "imageSummary": "{{current}} -> {{source}}",
       "changedSummary": "Changes: {{changes}}",
@@ -4569,6 +4615,8 @@
       "message": "Message",
       "runtime": "Runtime",
       "execution": "Execution",
+      "time": "Time",
+      "stage": "Stage",
       "actions": "Actions"
     },
     "empty": {
@@ -4601,6 +4649,7 @@
       "backToProjects": "All projects",
       "backToProject": "Project",
       "backToApplication": "Back to application",
+      "dismiss": "Dismiss",
       "edit": "Edit",
       "archive": "Archive",
       "reveal": "Reveal",

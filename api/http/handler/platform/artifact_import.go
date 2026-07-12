@@ -74,6 +74,7 @@ func (handler *Handler) artifactArchiveImport(w http.ResponseWriter, r *http.Req
 		importArtifact.TaskID = leaseID
 		importArtifact.TaskLeaseExpiresAt = now + int64(artifactImportTimeout/time.Second)
 		importArtifact.FailureReason = ""
+		resetArtifactTaskEvents(importArtifact, "prepare", now)
 		touchLifecycle(&importArtifact.PlatformLifecycle, now)
 		return tx.PlatformArtifact().Update(importArtifact.ID, importArtifact)
 	})
@@ -83,37 +84,42 @@ func (handler *Handler) artifactArchiveImport(w http.ResponseWriter, r *http.Req
 
 	filePath, err := handler.artifactLocalFilePath(*importArtifact)
 	if err != nil {
-		return handler.finishArtifactImportFailure(r, *importArtifact, leaseID, payload.EndpointID, "ARCHIVE_SOURCE_UNAVAILABLE")
+		return handler.finishArtifactImportFailure(w, r, *importArtifact, leaseID, payload.EndpointID, "ARCHIVE_SOURCE_UNAVAILABLE")
 	}
 	file, err := os.Open(filePath)
 	if err != nil {
-		return handler.finishArtifactImportFailure(r, *importArtifact, leaseID, payload.EndpointID, "ARCHIVE_SOURCE_UNAVAILABLE")
+		return handler.finishArtifactImportFailure(w, r, *importArtifact, leaseID, payload.EndpointID, "ARCHIVE_SOURCE_UNAVAILABLE")
 	}
 	format := platformservice.ArchiveFormatDocker
 	if importArtifact.Type == portainer.PlatformArtifactTypeOCIArchive {
 		format = platformservice.ArchiveFormatOCI
 	}
+	handler.recordArtifactTaskEvent(importArtifact.ID, leaseID, "prepare", artifactTaskEventSucceeded, "")
+	handler.recordArtifactTaskEvent(importArtifact.ID, leaseID, "validate-archive", artifactTaskEventRunning, "")
 	metadata, validationErr := platformservice.ValidateImageArchive(file, format)
 	_ = file.Close()
 	if validationErr != nil {
-		return handler.finishArtifactImportFailure(r, *importArtifact, leaseID, payload.EndpointID, archiveValidationReason(validationErr))
+		return handler.finishArtifactImportFailure(w, r, *importArtifact, leaseID, payload.EndpointID, archiveValidationReason(validationErr))
 	}
+	handler.recordArtifactTaskEvent(importArtifact.ID, leaseID, "validate-archive", artifactTaskEventSucceeded, "")
 	file, err = os.Open(filePath)
 	if err != nil {
-		return handler.finishArtifactImportFailure(r, *importArtifact, leaseID, payload.EndpointID, "ARCHIVE_SOURCE_UNAVAILABLE")
+		return handler.finishArtifactImportFailure(w, r, *importArtifact, leaseID, payload.EndpointID, "ARCHIVE_SOURCE_UNAVAILABLE")
 	}
 	defer file.Close()
 	candidateRef := fmt.Sprintf("portainer-platform-import/%d:%s", importArtifact.ID, leaseID[:12])
 	ctx, cancel := context.WithTimeout(r.Context(), artifactImportTimeout)
 	defer cancel()
+	handler.recordArtifactTaskEvent(importArtifact.ID, leaseID, "import-image", artifactTaskEventRunning, "")
 	result, err := handler.ArchiveImageImporter.Import(ctx, platformservice.ArchiveImportRequest{EndpointID: int(payload.EndpointID), Archive: file, SourceRef: metadata.SourceRef, CandidateRef: candidateRef, Architecture: metadata.Architecture})
 	if err != nil {
 		_ = handler.ArchiveImageImporter.Cleanup(context.Background(), int(payload.EndpointID), candidateRef)
-		return handler.finishArtifactImportFailure(r, *importArtifact, leaseID, payload.EndpointID, "IMAGE_IMPORT_FAILED")
+		return handler.finishArtifactImportFailure(w, r, *importArtifact, leaseID, payload.EndpointID, "IMAGE_IMPORT_FAILED")
 	}
+	handler.recordArtifactTaskEvent(importArtifact.ID, leaseID, "import-image", artifactTaskEventSucceeded, "")
 	if result.CandidateRef == "" || result.ImageID == "" {
 		_ = handler.ArchiveImageImporter.Cleanup(context.Background(), int(payload.EndpointID), candidateRef)
-		return handler.finishArtifactImportFailure(r, *importArtifact, leaseID, payload.EndpointID, "IMAGE_IMPORT_FAILED")
+		return handler.finishArtifactImportFailure(w, r, *importArtifact, leaseID, payload.EndpointID, "IMAGE_IMPORT_FAILED")
 	}
 	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformArtifact().Read(importArtifact.ID)
@@ -123,8 +129,10 @@ func (handler *Handler) artifactArchiveImport(w http.ResponseWriter, r *http.Req
 		current.Status = portainer.PlatformArtifactStatusBuilt
 		current.CandidateImageRef = result.CandidateRef
 		current.CandidateImageID = result.ImageID
+		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
 		current.FailureReason = ""
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventSucceeded, "", time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		if err := tx.PlatformArtifact().Update(current.ID, current); err != nil {
 			return err
@@ -133,7 +141,7 @@ func (handler *Handler) artifactArchiveImport(w http.ResponseWriter, r *http.Req
 	})
 	if err != nil {
 		_ = handler.ArchiveImageImporter.Cleanup(context.Background(), int(payload.EndpointID), result.CandidateRef)
-		return handler.finishArtifactImportFailure(r, *importArtifact, leaseID, payload.EndpointID, "IMAGE_IMPORT_FAILED")
+		return handler.finishArtifactImportFailure(w, r, *importArtifact, leaseID, payload.EndpointID, "IMAGE_IMPORT_FAILED")
 	}
 	updated, _ := handler.DataStore.PlatformArtifact().Read(importArtifact.ID)
 	return response.JSON(w, artifactResponse(*updated))
@@ -163,22 +171,24 @@ func archiveValidationReason(err error) string {
 	}
 	return "ARCHIVE_UNSAFE"
 }
-func (handler *Handler) finishArtifactImportFailure(r *http.Request, artifact portainer.PlatformArtifact, leaseID string, endpointID portainer.EndpointID, reason string) *httperror.HandlerError {
+func (handler *Handler) finishArtifactImportFailure(w http.ResponseWriter, r *http.Request, artifact portainer.PlatformArtifact, leaseID string, endpointID portainer.EndpointID, reason string) *httperror.HandlerError {
 	_ = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformArtifact().Read(artifact.ID)
 		if err != nil || current.TaskID != leaseID {
 			return err
 		}
 		current.Status = portainer.PlatformArtifactStatusFailed
+		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
 		current.FailureReason = reason
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventFailed, reason, time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		if err := tx.PlatformArtifact().Update(current.ID, current); err != nil {
 			return err
 		}
 		return handler.createArtifactImportAudit(tx, r, *current, endpointID, portainer.PlatformAuditResultFailed, reason)
 	})
-	return validationFailedError("Archive import failed")
+	return writePlatformError(w, http.StatusBadRequest, errPlatformValidationFailed, "Archive import failed", reason, nil)
 }
 func (handler *Handler) createArtifactImportAudit(tx dataservices.DataStoreTx, r *http.Request, artifact portainer.PlatformArtifact, endpointID portainer.EndpointID, result portainer.PlatformAuditResult, reason string) error {
 	action := portainer.PlatformAuditActionArtifactImported

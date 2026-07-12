@@ -62,6 +62,18 @@ describe('defaultErrorParser', () => {
       expect(result.error.message).toBe('Unauthorized');
       expect(result.details).toBe('Unauthorized');
     });
+
+    it('should extract a safe reason code from platform error details', () => {
+      const axiosError = createMockAxiosError({
+        message: 'Java build failed',
+        details: { reason: 'BASE_IMAGE_UNAVAILABLE' },
+      });
+
+      const result = defaultErrorParser(axiosError);
+
+      expect(result.error.message).toBe('Java build failed');
+      expect(result.details).toBe('BASE_IMAGE_UNAVAILABLE');
+    });
   });
 
   describe('common error property names', () => {

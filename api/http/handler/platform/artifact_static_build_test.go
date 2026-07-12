@@ -29,6 +29,8 @@ func TestPlatformStaticBuildUsesControlledTemplateAndCleansFailures(t *testing.T
 	require.Equal(t, portainer.PlatformArtifactStatusBuilt, result.Status)
 	require.Equal(t, "static-nginx-v1:spa:immutable:no404", result.BuildTemplate)
 	require.Equal(t, "sha256:static", result.CandidateImageID)
+	require.Equal(t, "complete", result.TaskEvents[len(result.TaskEvents)-1].Stage)
+	require.Equal(t, artifactTaskEventSucceeded, result.TaskEvents[len(result.TaskEvents)-1].Status)
 
 	audits, err := ctx.handler.DataStore.PlatformAuditLog().ReadAll(func(audit portainer.PlatformAuditLog) bool {
 		return audit.ArtifactID == artifact.ID
@@ -45,6 +47,7 @@ func TestPlatformStaticBuildUsesControlledTemplateAndCleansFailures(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, portainer.PlatformArtifactStatusFailed, persisted.Status)
 	require.Equal(t, "CONTROLLED_BUILD_FAILED", persisted.FailureReason)
+	require.Equal(t, artifactTaskEventFailed, persisted.TaskEvents[len(persisted.TaskEvents)-1].Status)
 	require.NotEmpty(t, builder.cleanup)
 
 	missingEntry := uploadDistArtifact(t, ctx, project, app, service, "3.0.0", distZipFixture(t, map[string]string{"about.html": "about"}))

@@ -104,6 +104,7 @@ func (handler *Handler) artifactRegistryPush(w http.ResponseWriter, r *http.Requ
 		pushArtifact.TaskID = leaseID
 		pushArtifact.TaskLeaseExpiresAt = now + int64(artifactRegistryPushTimeout/time.Second)
 		pushArtifact.FailureReason = ""
+		resetArtifactTaskEvents(pushArtifact, "prepare", now)
 		touchLifecycle(&pushArtifact.PlatformLifecycle, now)
 		return tx.PlatformArtifact().Update(pushArtifact.ID, pushArtifact)
 	})
@@ -117,6 +118,8 @@ func (handler *Handler) artifactRegistryPush(w http.ResponseWriter, r *http.Requ
 
 	ctx, cancel := context.WithTimeout(r.Context(), artifactRegistryPushTimeout)
 	defer cancel()
+	handler.recordArtifactTaskEvent(pushArtifact.ID, leaseID, "prepare", artifactTaskEventSucceeded, "")
+	handler.recordArtifactTaskEvent(pushArtifact.ID, leaseID, "push-image", artifactTaskEventRunning, "")
 	result, err := handler.RegistryImagePusher.Push(ctx, platformservice.RegistryImagePushRequest{
 		EndpointID:   int(payload.EndpointID),
 		RegistryID:   payload.RegistryID,
@@ -131,6 +134,7 @@ func (handler *Handler) artifactRegistryPush(w http.ResponseWriter, r *http.Requ
 		handler.finishArtifactRegistryPush(r, *pushArtifact, leaseID, payload, targetRef, reason)
 		return writePlatformError(w, http.StatusBadRequest, errPlatformValidationFailed, "Registry push failed", reason, nil)
 	}
+	handler.recordArtifactTaskEvent(pushArtifact.ID, leaseID, "push-image", artifactTaskEventSucceeded, "")
 
 	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformArtifact().Read(pushArtifact.ID)
@@ -148,6 +152,7 @@ func (handler *Handler) artifactRegistryPush(w http.ResponseWriter, r *http.Requ
 		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
 		current.FailureReason = ""
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventSucceeded, "", time.Now().Unix())
 		current.Cleanable = artifactOriginalCanBeCleaned(tx, *current)
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		if err := tx.PlatformArtifact().Update(current.ID, current); err != nil {
@@ -173,6 +178,7 @@ func (handler *Handler) finishArtifactRegistryPush(r *http.Request, artifact por
 		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
 		current.FailureReason = reason
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventFailed, reason, time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		if err := tx.PlatformArtifact().Update(current.ID, current); err != nil {
 			return err

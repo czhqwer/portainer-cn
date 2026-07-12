@@ -63,6 +63,7 @@ import {
   PlatformApplication,
   PlatformAuditLog,
   PlatformArtifact,
+  PlatformArtifactTaskEvent,
   PlatformConfigEntry,
   PlatformConfigScopeType,
   PlatformConfigSet,
@@ -977,7 +978,11 @@ function ApplicationWorkspace({
 
 export function PlatformArtifactsView() {
   const { t } = useTranslation();
-  const artifactsQuery = usePlatformArtifacts();
+  const [trackedArtifactId, setTrackedArtifactId] = useState<number>();
+  const [shouldPollArtifacts, setShouldPollArtifacts] = useState(false);
+  const [isArtifactOperationRequested, setIsArtifactOperationRequested] =
+    useState(false);
+  const artifactsQuery = usePlatformArtifacts(shouldPollArtifacts);
   const artifacts = artifactsQuery.data ?? [];
   const projectsQuery = usePlatformProjects();
   const projects = projectsQuery.data ?? [];
@@ -989,6 +994,41 @@ export function PlatformArtifactsView() {
   const [isStaticBuildFormOpen, setIsStaticBuildFormOpen] = useState(false);
 	const [isArtifactPushFormOpen, setIsArtifactPushFormOpen] = useState(false);
 	const [isArtifactCleanupFormOpen, setIsArtifactCleanupFormOpen] = useState(false);
+	const trackedArtifact =
+		artifacts.find((artifact) => artifact.Id === trackedArtifactId) ??
+		artifacts.find(isArtifactTaskInProgress);
+
+	useEffect(() => {
+		const activeArtifact = artifacts.find(isArtifactTaskInProgress);
+		if (activeArtifact && !trackedArtifactId) {
+			setTrackedArtifactId(activeArtifact.Id);
+			setShouldPollArtifacts(true);
+			return;
+		}
+		if (
+			trackedArtifactId &&
+			trackedArtifact &&
+			!isArtifactOperationRequested &&
+			!isArtifactTaskInProgress(trackedArtifact)
+		) {
+			setShouldPollArtifacts(false);
+		}
+	}, [
+		artifacts,
+		isArtifactOperationRequested,
+		trackedArtifact,
+		trackedArtifactId,
+	]);
+
+	function trackArtifactOperation(artifactId: number) {
+		setTrackedArtifactId(artifactId);
+		setShouldPollArtifacts(true);
+		setIsArtifactOperationRequested(true);
+	}
+
+	function finishArtifactOperationRequest() {
+		setIsArtifactOperationRequested(false);
+	}
 	const buildableStaticArtifacts = artifacts.filter(
 		(artifact) =>
 			artifact.Type === 'frontend-dist' &&
@@ -1119,28 +1159,51 @@ export function PlatformArtifactsView() {
 				})}
 			</p>
 		</div>
+		{trackedArtifact && (
+			<ArtifactTaskProgress
+				artifact={trackedArtifact}
+				isPolling={shouldPollArtifacts}
+				onDismiss={() => {
+					setTrackedArtifactId(undefined);
+					setShouldPollArtifacts(false);
+				}}
+			/>
+		)}
       {isArtifactFormOpen && (
         <CreateArtifactPanel
           projects={artifactProjects}
           onDone={() => setIsArtifactFormOpen(false)}
         />
       )}
-		{isJavaBuildFormOpen && <JavaBuildPanel artifacts={artifacts} onDone={() => setIsJavaBuildFormOpen(false)} />}
+		{isJavaBuildFormOpen && (
+			<JavaBuildPanel
+				artifacts={artifacts}
+				onOperationStart={trackArtifactOperation}
+				onOperationFinished={finishArtifactOperationRequest}
+				onDone={() => setIsJavaBuildFormOpen(false)}
+			/>
+		)}
 		{isStaticBuildFormOpen && (
 			<StaticBuildPanel
 				artifacts={buildableStaticArtifacts}
+				onOperationStart={trackArtifactOperation}
+				onOperationFinished={finishArtifactOperationRequest}
 				onDone={() => setIsStaticBuildFormOpen(false)}
 			/>
 		)}
 		{isArtifactPushFormOpen && (
 			<ArtifactPushPanel
 				artifacts={pushableArtifacts}
+				onOperationStart={trackArtifactOperation}
+				onOperationFinished={finishArtifactOperationRequest}
 				onDone={() => setIsArtifactPushFormOpen(false)}
 			/>
 		)}
 		{isArtifactCleanupFormOpen && (
 			<ArtifactCleanupPanel
 				artifacts={cleanupableArtifacts}
+				onOperationStart={trackArtifactOperation}
+				onOperationFinished={finishArtifactOperationRequest}
 				onDone={() => setIsArtifactCleanupFormOpen(false)}
 			/>
 		)}
@@ -2616,6 +2679,7 @@ function CreateArtifactPanel({
 	>('java-jar');
 	const [uploadFile, setUploadFile] = useState<File>();
 	const [expectedSHA256, setExpectedSHA256] = useState('');
+	const [uploadProgress, setUploadProgress] = useState<number>();
 
   async function handleSubmit(event: FormEvent) {
 	 event.preventDefault();
@@ -2626,6 +2690,7 @@ function CreateArtifactPanel({
 		if (!uploadFile) {
 			return;
 		}
+		setUploadProgress(0);
 		await uploadMutation.mutateAsync({
 			ProjectId: selectedProjectId,
 			ApplicationId: currentApplication?.Id,
@@ -2635,9 +2700,11 @@ function CreateArtifactPanel({
 			Type: uploadType,
 			ExpectedSHA256: expectedSHA256.trim() || undefined,
 			File: uploadFile,
+			onProgress: setUploadProgress,
 		});
 		setUploadFile(undefined);
 		setExpectedSHA256('');
+		setUploadProgress(undefined);
 		onDone();
 		return;
 	 }
@@ -2825,11 +2892,37 @@ function CreateArtifactPanel({
 			/>
 		  </>
 		)}
+		{source === 'upload' && uploadMutation.isLoading && (
+			<div className="rounded border border-solid border-blue-6 bg-blue-1 p-3 text-sm th-dark:bg-blue-11">
+				<div className="flex items-center justify-between gap-2">
+					<span>
+						{t('platform.artifacts.uploading', {
+							defaultValue: 'Uploading artifact… {{percent}}%',
+							percent: uploadProgress ?? 0,
+						})}
+					</span>
+					<span className="font-semibold">{uploadProgress ?? 0}%</span>
+				</div>
+				<div className="mt-2 h-2 overflow-hidden rounded bg-gray-3 th-dark:bg-gray-9">
+					<div
+						className="h-full bg-blue-7"
+						style={{ width: `${uploadProgress ?? 0}%` }}
+					/>
+				</div>
+			</div>
+		)}
 		<FormActions
 		  isSubmitting={mutation.isLoading || uploadMutation.isLoading}
-          submitLabel={t('platform.actions.createArtifact', {
-            defaultValue: 'Register image artifact',
-          })}
+          submitLabel={
+				source === 'upload' && uploadMutation.isLoading
+					? t('platform.artifacts.uploading', {
+							defaultValue: 'Uploading artifact… {{percent}}%',
+							percent: uploadProgress ?? 0,
+						})
+					: t('platform.actions.createArtifact', {
+							defaultValue: 'Register image artifact',
+						})
+			}
           submitDisabled={
             !selectedProjectId ||
             !name.trim() ||
@@ -3347,7 +3440,17 @@ function AuditLogsTable({ logs }: { logs: PlatformAuditLog[] }) {
   );
 }
 
-function JavaBuildPanel({ artifacts, onDone }: { artifacts: PlatformArtifact[]; onDone: () => void }) {
+function JavaBuildPanel({
+  artifacts,
+  onOperationStart,
+  onOperationFinished,
+  onDone,
+}: {
+  artifacts: PlatformArtifact[];
+  onOperationStart: (artifactId: number) => void;
+  onOperationFinished: () => void;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
   const mutation = useBuildJavaArtifactMutation();
   const javaArtifacts = artifacts.filter((artifact) => artifact.Type === 'java-jar' && artifact.Status !== 'building');
@@ -3357,7 +3460,7 @@ function JavaBuildPanel({ artifacts, onDone }: { artifacts: PlatformArtifact[]; 
   const [jvmArgs, setJvmArgs] = useState('');
   const [appArgs, setAppArgs] = useState('');
   const tokens = (value: string) => value.split(/\s+/).map((item) => item.trim()).filter(Boolean);
-  async function submit(event: FormEvent) { event.preventDefault(); if (!artifactId || !Number(endpointId) || !Number(port)) return; await mutation.mutateAsync({ artifactId, payload: { EndpointId: Number(endpointId), Port: Number(port), JvmArgs: tokens(jvmArgs), AppArgs: tokens(appArgs) } }); onDone(); }
+  async function submit(event: FormEvent) { event.preventDefault(); if (!artifactId || !Number(endpointId) || !Number(port)) return; onOperationStart(artifactId); try { await mutation.mutateAsync({ artifactId, payload: { EndpointId: Number(endpointId), Port: Number(port), JvmArgs: tokens(jvmArgs), AppArgs: tokens(appArgs) } }); onDone(); } finally { onOperationFinished(); } }
   return <ActionPanel title={t('platform.formTitles.javaBuild', { defaultValue: 'Package Java 8 artifact' })}><form className="grid gap-3 md:grid-cols-3" onSubmit={submit}>
     <label className="form-control-label">{t('platform.forms.javaArtifact', { defaultValue: 'Java artifact' })}<select className="form-control mt-1" value={artifactId} onChange={(event) => setArtifactId(Number(event.target.value))}>{javaArtifacts.map((artifact) => <option key={artifact.Id} value={artifact.Id}>{artifact.Name} · {artifact.Version}</option>)}</select></label>
     <TextInputField label={t('platform.forms.endpointId', { defaultValue: 'Docker endpoint ID' })} value={endpointId} required onChange={setEndpointId} />
@@ -3365,7 +3468,7 @@ function JavaBuildPanel({ artifacts, onDone }: { artifacts: PlatformArtifact[]; 
     <TextInputField label={t('platform.forms.jvmArgs', { defaultValue: 'JVM arguments (space-separated tokens)' })} value={jvmArgs} onChange={setJvmArgs} />
     <TextInputField label={t('platform.forms.appArgs', { defaultValue: 'Application arguments (space-separated tokens)' })} value={appArgs} onChange={setAppArgs} />
     <div className="text-muted self-end text-sm">{t('platform.javaBuild.restriction', { defaultValue: 'Uses the platform Java 8 template. Dockerfile, shell commands, and custom base images are not accepted.' })}</div>
-    <FormActions isSubmitting={mutation.isLoading} submitLabel={t('platform.actions.packageJava', { defaultValue: 'Package Java 8 artifact' })} submitDisabled={!artifactId || !endpointId || !port} onCancel={onDone} />
+    <FormActions isSubmitting={mutation.isLoading} submitLabel={mutation.isLoading ? t('platform.artifacts.taskRunning', { defaultValue: 'Packaging in progress…' }) : t('platform.actions.packageJava', { defaultValue: 'Package Java 8 artifact' })} submitDisabled={!artifactId || !endpointId || !port} onCancel={onDone} />
   </form></ActionPanel>;
 }
 
@@ -3415,9 +3518,13 @@ function WorkspaceQueueItem({
 
 function StaticBuildPanel({
   artifacts,
+  onOperationStart,
+  onOperationFinished,
   onDone,
 }: {
   artifacts: PlatformArtifact[];
+  onOperationStart: (artifactId: number) => void;
+  onOperationFinished: () => void;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
@@ -3437,16 +3544,21 @@ function StaticBuildPanel({
     if (!artifactId || !Number(endpointId)) {
       return;
     }
-    await mutation.mutateAsync({
-      artifactId,
-      payload: {
-        EndpointId: Number(endpointId),
-        Mode: mode,
-        CachePolicy: cachePolicy,
-        NotFoundPage: notFoundPage.trim() || undefined,
-      },
-    });
-    onDone();
+    onOperationStart(artifactId);
+    try {
+      await mutation.mutateAsync({
+        artifactId,
+        payload: {
+          EndpointId: Number(endpointId),
+          Mode: mode,
+          CachePolicy: cachePolicy,
+          NotFoundPage: notFoundPage.trim() || undefined,
+        },
+      });
+      onDone();
+    } finally {
+      onOperationFinished();
+    }
   }
 
   return (
@@ -3542,9 +3654,15 @@ function StaticBuildPanel({
         </div>
         <FormActions
           isSubmitting={mutation.isLoading}
-          submitLabel={t('platform.actions.packageStatic', {
-            defaultValue: 'Package frontend dist',
-          })}
+          submitLabel={
+            mutation.isLoading
+              ? t('platform.artifacts.taskRunning', {
+                  defaultValue: 'Packaging in progress…',
+                })
+              : t('platform.actions.packageStatic', {
+                  defaultValue: 'Package frontend dist',
+                })
+          }
           submitDisabled={!artifactId || !endpointId}
           onCancel={onDone}
         />
@@ -3555,9 +3673,13 @@ function StaticBuildPanel({
 
 function ArtifactPushPanel({
   artifacts,
+  onOperationStart,
+  onOperationFinished,
   onDone,
 }: {
   artifacts: PlatformArtifact[];
+  onOperationStart: (artifactId: number) => void;
+  onOperationFinished: () => void;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
@@ -3573,14 +3695,19 @@ function ArtifactPushPanel({
     if (!artifactId || !Number(endpointId) || !Number(registryId)) {
       return;
     }
-    await mutation.mutateAsync({
-      artifactId,
-      payload: {
-        EndpointId: Number(endpointId),
-        RegistryId: Number(registryId),
-      },
-    });
-    onDone();
+    onOperationStart(artifactId);
+    try {
+      await mutation.mutateAsync({
+        artifactId,
+        payload: {
+          EndpointId: Number(endpointId),
+          RegistryId: Number(registryId),
+        },
+      });
+      onDone();
+    } finally {
+      onOperationFinished();
+    }
   }
 
   return (
@@ -3630,9 +3757,15 @@ function ArtifactPushPanel({
         </div>
         <FormActions
           isSubmitting={mutation.isLoading}
-          submitLabel={t('platform.actions.pushArtifact', {
-            defaultValue: 'Push candidate image',
-          })}
+          submitLabel={
+            mutation.isLoading
+              ? t('platform.artifacts.taskRunning', {
+                  defaultValue: 'Operation in progress…',
+                })
+              : t('platform.actions.pushArtifact', {
+                  defaultValue: 'Push candidate image',
+                })
+          }
           submitDisabled={!artifactId || !endpointId || !registryId}
           onCancel={onDone}
         />
@@ -3643,9 +3776,13 @@ function ArtifactPushPanel({
 
 function ArtifactCleanupPanel({
   artifacts,
+  onOperationStart,
+  onOperationFinished,
   onDone,
 }: {
   artifacts: PlatformArtifact[];
+  onOperationStart: (artifactId: number) => void;
+  onOperationFinished: () => void;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
@@ -3660,8 +3797,13 @@ function ArtifactCleanupPanel({
     if (!artifactId || !confirmed) {
       return;
     }
-    await mutation.mutateAsync(artifactId);
-    onDone();
+    onOperationStart(artifactId);
+    try {
+      await mutation.mutateAsync(artifactId);
+      onDone();
+    } finally {
+      onOperationFinished();
+    }
   }
 
   return (
@@ -3710,14 +3852,168 @@ function ArtifactCleanupPanel({
         </label>
         <FormActions
           isSubmitting={mutation.isLoading}
-          submitLabel={t('platform.actions.cleanupArtifactOriginal', {
-            defaultValue: 'Clean original artifact',
-          })}
+          submitLabel={
+            mutation.isLoading
+              ? t('platform.artifacts.taskRunning', {
+                  defaultValue: 'Operation in progress…',
+                })
+              : t('platform.actions.cleanupArtifactOriginal', {
+                  defaultValue: 'Clean original artifact',
+                })
+          }
           submitDisabled={!artifactId || !confirmed}
           onCancel={onDone}
         />
       </form>
     </ActionPanel>
+  );
+}
+
+function isArtifactTaskInProgress(artifact?: PlatformArtifact) {
+  const events = artifact?.TaskEvents ?? [];
+  const latest = events[events.length - 1];
+  return !!artifact?.TaskId && latest?.Status === 'running';
+}
+
+type PlatformTranslation = (
+  key: string,
+  options?: { defaultValue?: string }
+) => string;
+
+function artifactTaskStageLabel(t: PlatformTranslation, stage: string) {
+  return t(`platform.artifacts.taskStages.${stage}`, {
+    defaultValue: stage,
+  });
+}
+
+function artifactTaskStatusLabel(
+  t: PlatformTranslation,
+  status: PlatformArtifactTaskEvent['Status']
+) {
+  return t(`platform.artifacts.taskStatuses.${status}`, {
+    defaultValue: status,
+  });
+}
+
+function artifactTaskReasonLabel(t: PlatformTranslation, reason?: string) {
+  if (!reason) {
+    return '';
+  }
+  return t(`platform.artifacts.failureReasons.${reason}`, {
+    defaultValue: reason,
+  });
+}
+
+function ArtifactTaskProgress({
+  artifact,
+  isPolling,
+  onDismiss,
+}: {
+  artifact: PlatformArtifact;
+  isPolling: boolean;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  const events = artifact.TaskEvents ?? [];
+  const isActive = isArtifactTaskInProgress(artifact);
+  const isWaiting = isPolling && events.length === 0;
+
+  return (
+    <section className="mx-4 mb-4 rounded border border-solid border-blue-6 bg-blue-1 p-4 th-highcontrast:bg-black th-dark:bg-blue-11">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-lg font-semibold">
+            <Activity className="icon" />
+            {t('platform.artifacts.taskProgressTitle', {
+              defaultValue: 'Artifact operation progress',
+            })}
+          </div>
+          <div className="text-muted mt-1 text-sm">
+            {artifact.Name} · {artifact.Version}
+          </div>
+        </div>
+        {!isActive && !isWaiting && (
+          <Button
+            color="light"
+            size="xsmall"
+            onClick={onDismiss}
+            data-cy="platform-artifact-task-dismiss"
+          >
+            {t('platform.actions.dismiss', { defaultValue: 'Dismiss' })}
+          </Button>
+        )}
+      </div>
+      <p className="text-muted mt-3 text-sm">
+        {isActive || isWaiting
+          ? t('platform.artifacts.taskPolling', {
+              defaultValue:
+                'The control plane is running this operation. Progress refreshes automatically every 1.5 seconds.',
+            })
+          : t('platform.artifacts.taskFinished', {
+              defaultValue: 'This operation has finished.',
+            })}
+      </p>
+      {artifact.FailureReason && (
+        <Alert
+          className="mt-3"
+          color="error"
+          title={t('platform.artifacts.taskFailureTitle', {
+            defaultValue: 'Operation failed',
+          })}
+        >
+          {artifactTaskReasonLabel(t, artifact.FailureReason)}
+        </Alert>
+      )}
+      <div className="mt-3 overflow-x-auto">
+        <PlatformTable
+          columns={[
+            t('platform.columns.time', { defaultValue: 'Time' }),
+            t('platform.columns.stage', { defaultValue: 'Stage' }),
+            t('platform.columns.status', { defaultValue: 'Status' }),
+            t('platform.columns.failureReason', {
+              defaultValue: 'Failure reason',
+            }),
+          ]}
+          rows={events.map((event, index) => ({
+            key: `${event.Stage}-${event.OccurredAt}-${index}`,
+            cells: [
+              formatUnixTime(event.OccurredAt),
+              artifactTaskStageLabel(t, event.Stage),
+              <span
+                key="status"
+                className={`inline-flex rounded border border-solid px-2 py-0.5 text-xs font-semibold ${
+                  event.Status === 'failed'
+                    ? 'border-red-7 bg-red-1 text-red-9 th-dark:bg-red-11'
+                    : event.Status === 'succeeded'
+                      ? 'border-green-7 bg-green-1 text-green-9 th-dark:bg-green-11'
+                      : 'border-blue-7 bg-blue-1 text-blue-9 th-dark:bg-blue-11'
+                }`}
+              >
+                {artifactTaskStatusLabel(t, event.Status)}
+              </span>,
+              artifactTaskReasonLabel(t, event.Reason),
+            ],
+          }))}
+        />
+      </div>
+      {events.length === 0 && (
+        <div className="text-muted mt-3 text-sm">
+          {isPolling
+            ? t('platform.artifacts.taskWaiting', {
+                defaultValue: 'Waiting for the control plane to accept the operation.',
+              })
+            : t('platform.artifacts.taskNoEvents', {
+                defaultValue: 'No safe execution events are available for this artifact.',
+              })}
+        </div>
+      )}
+      <div className="text-muted mt-3 text-xs">
+        {t('platform.artifacts.taskSecurityNotice', {
+          defaultValue:
+            'Only platform-defined stages and reason codes are shown. Raw Docker, registry, and artifact output is intentionally excluded to protect credentials and server details.',
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -4719,6 +5015,25 @@ function ReleaseRollbackAction({ release }: { release: PlatformRelease }) {
   const diffQuery = usePlatformReleaseRollbackDiff(release.Id);
   const rollbackMutation = useRollbackPlatformReleaseMutation();
   const [diff, setDiff] = useState<PlatformReleaseRollbackDiff>();
+  const [rollbackResult, setRollbackResult] =
+    useState<PlatformReleaseCreateResponse>();
+  const [shouldPollRollback, setShouldPollRollback] = useState(false);
+  const rollbackReleaseId =
+    rollbackResult?.ReleaseId ?? rollbackResult?.Release?.Id;
+  const rollbackReleaseQuery = usePlatformRelease(
+    rollbackReleaseId,
+    shouldPollRollback
+  );
+  const rollbackRelease = rollbackReleaseQuery.data ?? rollbackResult?.Release;
+
+  useEffect(() => {
+    if (
+      rollbackRelease &&
+      !isReleaseInProgress(rollbackRelease.Status)
+    ) {
+      setShouldPollRollback(false);
+    }
+  }, [rollbackRelease]);
 
   async function previewRollback() {
     const result = await diffQuery.refetch();
@@ -4727,7 +5042,7 @@ function ReleaseRollbackAction({ release }: { release: PlatformRelease }) {
     }
   }
 
-  function confirmRollback() {
+  async function confirmRollback() {
     if (!diff || diff.SourceReleaseId === diff.CurrentReleaseId) {
       return;
     }
@@ -4743,12 +5058,37 @@ function ReleaseRollbackAction({ release }: { release: PlatformRelease }) {
       return;
     }
 
-    rollbackMutation.mutate({
+    const result = await rollbackMutation.mutateAsync({
       releaseId: release.Id,
       payload: { ConfirmProduction: diff.Production },
       idempotencyKey: createRollbackIdempotencyKey(release.Id),
     });
+    setRollbackResult(result);
+    setShouldPollRollback(!!(result.ReleaseId ?? result.Release?.Id));
     setDiff(undefined);
+  }
+
+  if (rollbackReleaseId) {
+    return (
+      <div className="min-w-56 space-y-2">
+        <ReleaseProgressPanel
+          release={rollbackRelease}
+          releaseId={rollbackReleaseId}
+          isLoading={rollbackReleaseQuery.isLoading}
+          compact
+        />
+        {rollbackRelease && !isReleaseInProgress(rollbackRelease.Status) && (
+          <Button
+            color="light"
+            size="xsmall"
+            onClick={() => setRollbackResult(undefined)}
+            data-cy={`platform-release-${release.Id}-dismiss-rollback-progress`}
+          >
+            {t('platform.actions.dismiss', { defaultValue: 'Dismiss' })}
+          </Button>
+        )}
+      </div>
+    );
   }
 
   if (!diff) {
@@ -4846,9 +5186,13 @@ function ReleaseRollbackAction({ release }: { release: PlatformRelease }) {
             onClick={confirmRollback}
             data-cy={`platform-release-${release.Id}-confirm-rollback`}
           >
-            {t('platform.actions.confirmRollback', {
-              defaultValue: 'Confirm rollback',
-            })}
+            {rollbackMutation.isLoading
+              ? t('platform.rollback.creating', {
+                  defaultValue: 'Creating rollback…',
+                })
+              : t('platform.actions.confirmRollback', {
+                  defaultValue: 'Confirm rollback',
+                })}
           </Button>
           <Button
             color="light"

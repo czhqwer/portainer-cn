@@ -4497,6 +4497,51 @@
         "cleanable": "已保留 / 可清理",
         "protected": "已保留 / 受保护",
         "cleaned": "原始文件已清理"
+      },
+      "uploading": "正在上传制品… {{percent}}%",
+      "taskRunning": "操作执行中…",
+      "taskProgressTitle": "制品操作进度",
+      "taskPolling": "控制面正在执行该操作，进度每 1.5 秒自动刷新。",
+      "taskFinished": "本次操作已结束。",
+      "taskFailureTitle": "操作失败",
+      "taskWaiting": "正在等待控制面受理该操作。",
+      "taskNoEvents": "该制品暂无可展示的安全执行记录。",
+      "taskSecurityNotice": "这里只展示平台定义的阶段和原因码；Docker、registry 与原始制品输出可能包含凭据或服务器细节，因此不会显示。",
+      "taskStatuses": {
+        "running": "执行中",
+        "succeeded": "已完成",
+        "failed": "失败"
+      },
+      "taskStages": {
+        "prepare": "准备操作",
+        "verify-artifact": "校验 Jar 制品",
+        "prepare-build-context": "准备受控构建上下文",
+        "validate-artifact": "校验静态制品",
+        "build-image": "构建受控镜像",
+        "validate-archive": "校验镜像归档",
+        "import-image": "导入候选镜像",
+        "push-image": "推送候选镜像",
+        "remove-original": "清理保留的原始制品",
+        "complete": "完成操作"
+      },
+      "failureReasons": {
+        "ARTIFACT_TYPE_INVALID": "Jar 格式或清单校验失败。",
+        "DIST_ENTRY_MISSING": "dist 制品缺少静态站点所需的入口文件。",
+        "BASE_IMAGE_UNAVAILABLE": "目标 Docker 环境无法拉取或找到受控基础镜像。",
+        "BUILD_TIMEOUT": "受控镜像构建超时。",
+        "CONTROLLED_BUILD_FAILED": "受控镜像构建失败。",
+        "ARCHIVE_SOURCE_UNAVAILABLE": "保留的归档源文件不可用。",
+        "ARCHIVE_ARCHITECTURE_UNSUPPORTED": "归档镜像架构不受支持。",
+        "ARCHIVE_MANIFEST_INVALID": "归档 manifest 无效。",
+        "ARCHIVE_UNSAFE": "归档未通过平台安全校验。",
+        "IMAGE_IMPORT_FAILED": "候选镜像导入失败。",
+        "REGISTRY_TAG_CONFLICT": "生成的 registry tag 已被其他制品占用。",
+        "REGISTRY_DIGEST_UNAVAILABLE": "registry 未返回最终镜像 digest。",
+        "REGISTRY_AUTH_FAILED": "配置的 registry 凭据无权执行此操作。",
+        "REGISTRY_TLS_FAILED": "目标 Docker 环境无法与 registry 建立受信任的 TLS 连接。",
+        "REGISTRY_PUSH_FAILED": "候选镜像推送失败。",
+        "ARTIFACT_CLEANUP_BLOCKED": "原始制品仍被进行中的任务或发布历史引用。",
+        "ARTIFACT_CLEANUP_FAILED": "无法清理保留的原始制品。"
       }
     },
     "releases": { "tableTitle": "发布记录" },
@@ -4579,6 +4624,7 @@
       "logsTitle": "运行日志"
     },
     "rollback": {
+      "creating": "正在创建回滚…",
       "previewTitle": "回滚到发布 #{{id}}",
       "imageSummary": "{{current}} -> {{source}}",
       "changedSummary": "变更项：{{changes}}",
@@ -4628,6 +4674,8 @@
       "message": "消息",
       "runtime": "运行时",
       "execution": "执行",
+      "time": "时间",
+      "stage": "阶段",
       "actions": "操作"
     },
     "empty": {
@@ -4660,6 +4708,7 @@
       "backToProjects": "全部项目",
       "backToProject": "返回项目",
       "backToApplication": "返回应用",
+      "dismiss": "关闭",
       "edit": "编辑",
       "archive": "归档",
       "reveal": "查看",

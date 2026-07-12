@@ -85,6 +85,7 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 		buildArtifact.TaskLeaseExpiresAt = now + int64(artifactStaticBuildTimeout/time.Second)
 		buildArtifact.BuildTemplate = platformservice.StaticBuildTemplateName(options)
 		buildArtifact.FailureReason = ""
+		resetArtifactTaskEvents(buildArtifact, "prepare", now)
 		touchLifecycle(&buildArtifact.PlatformLifecycle, now)
 		return tx.PlatformArtifact().Update(buildArtifact.ID, buildArtifact)
 	})
@@ -94,13 +95,16 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 
 	filePath, err := handler.artifactLocalFilePath(*buildArtifact)
 	if err != nil {
-		return handler.finishArtifactStaticBuild(r, *buildArtifact, leaseID, payload.EndpointID, options, "CONTROLLED_BUILD_FAILED")
+		return handler.finishArtifactStaticBuild(w, r, *buildArtifact, leaseID, payload.EndpointID, options, "CONTROLLED_BUILD_FAILED")
 	}
 	temporaryDirectory := filepath.Join(handler.FileService.GetDatastorePath(), "platform-artifacts", ".tmp")
+	handler.recordArtifactTaskEvent(buildArtifact.ID, leaseID, "prepare", artifactTaskEventSucceeded, "")
+	handler.recordArtifactTaskEvent(buildArtifact.ID, leaseID, "validate-artifact", artifactTaskEventRunning, "")
 	contextFile, err := platformservice.NewStaticDistBuildContextFile(filePath, temporaryDirectory, options)
 	if err != nil {
-		return handler.finishArtifactStaticBuild(r, *buildArtifact, leaseID, payload.EndpointID, options, platformservice.DistBuildFailureReason(err))
+		return handler.finishArtifactStaticBuild(w, r, *buildArtifact, leaseID, payload.EndpointID, options, platformservice.DistBuildFailureReason(err))
 	}
+	handler.recordArtifactTaskEvent(buildArtifact.ID, leaseID, "validate-artifact", artifactTaskEventSucceeded, "")
 	defer func() {
 		_ = contextFile.Close()
 		_ = os.Remove(contextFile.Name())
@@ -109,6 +113,7 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 	candidateRef := fmt.Sprintf("portainer-platform-static/%d:%s", buildArtifact.ID, leaseID[:12])
 	ctx, cancel := context.WithTimeout(r.Context(), artifactStaticBuildTimeout)
 	defer cancel()
+	handler.recordArtifactTaskEvent(buildArtifact.ID, leaseID, "build-image", artifactTaskEventRunning, "")
 	result, err := handler.StaticImageBuilder.Build(ctx, platformservice.StaticImageBuildRequest{
 		EndpointID:   int(payload.EndpointID),
 		Context:      contextFile,
@@ -116,8 +121,13 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 	})
 	if err != nil || result.CandidateRef == "" || result.ImageID == "" {
 		_ = handler.StaticImageBuilder.Cleanup(context.Background(), int(payload.EndpointID), candidateRef)
-		return handler.finishArtifactStaticBuild(r, *buildArtifact, leaseID, payload.EndpointID, options, "CONTROLLED_BUILD_FAILED")
+		reason := "CONTROLLED_BUILD_FAILED"
+		if err != nil {
+			reason = platformservice.ControlledBuildFailureReason(err)
+		}
+		return handler.finishArtifactStaticBuild(w, r, *buildArtifact, leaseID, payload.EndpointID, options, reason)
 	}
+	handler.recordArtifactTaskEvent(buildArtifact.ID, leaseID, "build-image", artifactTaskEventSucceeded, "")
 
 	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformArtifact().Read(buildArtifact.ID)
@@ -127,8 +137,10 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 		current.Status = portainer.PlatformArtifactStatusBuilt
 		current.CandidateImageRef = result.CandidateRef
 		current.CandidateImageID = result.ImageID
+		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
 		current.FailureReason = ""
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventSucceeded, "", time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		if err := tx.PlatformArtifact().Update(current.ID, current); err != nil {
 			return err
@@ -137,28 +149,30 @@ func (handler *Handler) artifactStaticBuild(w http.ResponseWriter, r *http.Reque
 	})
 	if err != nil {
 		_ = handler.StaticImageBuilder.Cleanup(context.Background(), int(payload.EndpointID), result.CandidateRef)
-		return handler.finishArtifactStaticBuild(r, *buildArtifact, leaseID, payload.EndpointID, options, "CONTROLLED_BUILD_FAILED")
+		return handler.finishArtifactStaticBuild(w, r, *buildArtifact, leaseID, payload.EndpointID, options, "CONTROLLED_BUILD_FAILED")
 	}
 	updated, _ := handler.DataStore.PlatformArtifact().Read(buildArtifact.ID)
 	return response.JSON(w, artifactResponse(*updated))
 }
 
-func (handler *Handler) finishArtifactStaticBuild(r *http.Request, artifact portainer.PlatformArtifact, leaseID string, endpointID portainer.EndpointID, options platformservice.DistBuildOptions, reason string) *httperror.HandlerError {
+func (handler *Handler) finishArtifactStaticBuild(w http.ResponseWriter, r *http.Request, artifact portainer.PlatformArtifact, leaseID string, endpointID portainer.EndpointID, options platformservice.DistBuildOptions, reason string) *httperror.HandlerError {
 	_ = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformArtifact().Read(artifact.ID)
 		if err != nil || current.TaskID != leaseID {
 			return err
 		}
 		current.Status = portainer.PlatformArtifactStatusFailed
+		current.TaskID = ""
 		current.TaskLeaseExpiresAt = 0
 		current.FailureReason = reason
+		appendArtifactTaskEvent(current, "complete", artifactTaskEventFailed, reason, time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		if err := tx.PlatformArtifact().Update(current.ID, current); err != nil {
 			return err
 		}
 		return handler.createArtifactStaticBuildAudit(tx, r, *current, endpointID, options, portainer.PlatformAuditResultFailed, reason)
 	})
-	return validationFailedError("Static artifact build failed")
+	return writePlatformError(w, http.StatusBadRequest, errPlatformValidationFailed, "Static artifact build failed", reason, nil)
 }
 
 func (handler *Handler) createArtifactStaticBuildAudit(tx dataservices.DataStoreTx, r *http.Request, artifact portainer.PlatformArtifact, endpointID portainer.EndpointID, options platformservice.DistBuildOptions, result portainer.PlatformAuditResult, reason string) error {

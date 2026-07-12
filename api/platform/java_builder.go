@@ -2,8 +2,10 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/image"
@@ -13,6 +15,57 @@ import (
 	dockerclient "github.com/portainer/portainer/api/docker/client"
 	"github.com/portainer/portainer/api/logs"
 )
+
+type controlledBuildError struct {
+	reason string
+}
+
+func (err controlledBuildError) Error() string {
+	return err.reason
+}
+
+type dockerBuildStreamMessage struct {
+	Error string `json:"error"`
+}
+
+// ControlledBuildFailureReason 仅将 Docker 构建输出归类为固定原因码。
+// 原始输出可能包含镜像仓库地址、认证或环境细节，不能写入制品、审计、错误响应或前端日志。
+func ControlledBuildFailureReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "BUILD_TIMEOUT"
+	}
+	var buildErr controlledBuildError
+	if errors.As(err, &buildErr) && buildErr.reason != "" {
+		return buildErr.reason
+	}
+	return "CONTROLLED_BUILD_FAILED"
+}
+
+func consumeDockerBuildOutput(reader io.Reader) error {
+	decoder := json.NewDecoder(reader)
+	for {
+		var message dockerBuildStreamMessage
+		if err := decoder.Decode(&message); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return controlledBuildError{reason: "CONTROLLED_BUILD_FAILED"}
+		}
+		if message.Error != "" {
+			return controlledBuildError{reason: classifyDockerBuildFailure(message.Error)}
+		}
+	}
+}
+
+func classifyDockerBuildFailure(message string) string {
+	message = strings.ToLower(message)
+	if strings.Contains(message, "pull") ||
+		strings.Contains(message, "manifest unknown") ||
+		strings.Contains(message, "not found") {
+		return "BASE_IMAGE_UNAVAILABLE"
+	}
+	return "CONTROLLED_BUILD_FAILED"
+}
 
 type DockerJavaImageBuilder struct {
 	dataStore dataservices.DataStore
@@ -40,7 +93,7 @@ func (b *DockerJavaImageBuilder) Build(ctx context.Context, request JavaImageBui
 		return JavaImageBuildResult{}, err
 	}
 	defer logs.CloseAndLogErr(response.Body)
-	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+	if err := consumeDockerBuildOutput(response.Body); err != nil {
 		return JavaImageBuildResult{}, err
 	}
 	inspect, _, err := cli.ImageInspectWithRaw(ctx, request.CandidateRef)

@@ -47,6 +47,7 @@ func (handler *Handler) artifactOriginalCleanup(w http.ResponseWriter, r *http.R
 		cleanupArtifact.TaskID = leaseID
 		cleanupArtifact.TaskLeaseExpiresAt = now + artifactCleanupLeaseSeconds
 		cleanupArtifact.Cleanable = false
+		resetArtifactTaskEvents(cleanupArtifact, "prepare", now)
 		touchLifecycle(&cleanupArtifact.PlatformLifecycle, now)
 		return tx.PlatformArtifact().Update(cleanupArtifact.ID, cleanupArtifact)
 	})
@@ -59,13 +60,16 @@ func (handler *Handler) artifactOriginalCleanup(w http.ResponseWriter, r *http.R
 	}
 
 	path, err := handler.artifactLocalFilePath(*cleanupArtifact)
+	handler.recordArtifactTaskEvent(cleanupArtifact.ID, leaseID, "prepare", artifactTaskEventSucceeded, "")
 	if err == nil {
+		handler.recordArtifactTaskEvent(cleanupArtifact.ID, leaseID, "remove-original", artifactTaskEventRunning, "")
 		err = os.Remove(path)
 	}
 	if err != nil && !os.IsNotExist(err) {
 		handler.finishArtifactCleanup(r, *cleanupArtifact, leaseID, false, "ARTIFACT_CLEANUP_FAILED")
 		return writePlatformError(w, http.StatusBadRequest, errPlatformValidationFailed, "Artifact cleanup failed", "ARTIFACT_CLEANUP_FAILED", nil)
 	}
+	handler.recordArtifactTaskEvent(cleanupArtifact.ID, leaseID, "remove-original", artifactTaskEventSucceeded, "")
 	if err := handler.finishArtifactCleanup(r, *cleanupArtifact, leaseID, true, ""); err != nil {
 		return handler.convertError(err)
 	}
@@ -89,6 +93,11 @@ func (handler *Handler) finishArtifactCleanup(r *http.Request, artifact portaine
 			current.Cleanable = true
 			current.FailureReason = reason
 		}
+		status := artifactTaskEventSucceeded
+		if !succeeded {
+			status = artifactTaskEventFailed
+		}
+		appendArtifactTaskEvent(current, "complete", status, reason, time.Now().Unix())
 		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 		if err := tx.PlatformArtifact().Update(current.ID, current); err != nil {
 			return err

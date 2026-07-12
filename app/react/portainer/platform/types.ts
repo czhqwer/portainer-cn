@@ -229,9 +229,19 @@ export interface PlatformArtifact extends PlatformLifecycle {
 	ImageTag?: string;
 	RegistryId?: number;
 	BuildTemplate?: string;
+	TaskId?: string;
+	TaskLeaseExpiresAt?: number;
+	TaskEvents?: PlatformArtifactTaskEvent[];
 	FailureReason?: string;
 	Retained?: boolean;
 	Cleanable?: boolean;
+}
+
+export interface PlatformArtifactTaskEvent {
+  Stage: string;
+  Status: 'running' | 'succeeded' | 'failed';
+  Reason?: string;
+  OccurredAt: number;
 }
 
 export interface BuildJavaArtifactPayload {
@@ -449,6 +459,7 @@ export interface UploadPlatformArtifactPayload {
   Type: 'java-jar' | 'frontend-dist' | 'docker-image-tar' | 'oci-archive';
   ExpectedSHA256?: string;
   File: File;
+  onProgress?: (percent: number) => void;
 }
 
 export interface CreatePlatformReleasePayload {

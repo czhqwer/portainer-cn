@@ -305,7 +305,15 @@ async function uploadPlatformArtifact(payload: UploadPlatformArtifactPayload) {
 
 	const response = await axios.post<PlatformArtifact>(
 		'/platform/artifacts/upload',
-		formData
+		formData,
+		{
+			onUploadProgress: (event) => {
+				if (!event.total || !payload.onProgress) {
+					return;
+				}
+				payload.onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+			},
+		}
 	);
 	return response.data;
 }
@@ -522,7 +530,7 @@ export function useUploadPlatformArtifactMutation() {
 
 	return useMutation({
 		mutationFn: uploadPlatformArtifact,
-		onSuccess: () =>
+		onSettled: () =>
 			queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
 		...withError('Failed uploading platform artifact'),
 	});
@@ -530,22 +538,22 @@ export function useUploadPlatformArtifactMutation() {
 
 export function useBuildJavaArtifactMutation() {
 	const queryClient = useQueryClient();
-	return useMutation({ mutationFn: buildJavaArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging Java artifact') });
+	return useMutation({ mutationFn: buildJavaArtifact, onSettled: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging Java artifact') });
 }
 
 export function useBuildStaticArtifactMutation() {
 	const queryClient = useQueryClient();
-	return useMutation({ mutationFn: buildStaticArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging static artifact') });
+	return useMutation({ mutationFn: buildStaticArtifact, onSettled: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging static artifact') });
 }
 
 export function usePushPlatformArtifactMutation() {
 	const queryClient = useQueryClient();
-	return useMutation({ mutationFn: pushPlatformArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed pushing platform artifact') });
+	return useMutation({ mutationFn: pushPlatformArtifact, onSettled: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed pushing platform artifact') });
 }
 
 export function useCleanupPlatformArtifactOriginalMutation() {
 	const queryClient = useQueryClient();
-	return useMutation({ mutationFn: cleanupPlatformArtifactOriginal, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed cleaning platform artifact original') });
+	return useMutation({ mutationFn: cleanupPlatformArtifactOriginal, onSettled: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed cleaning platform artifact original') });
 }
 
 export function usePlatformConfigSets({
@@ -676,10 +684,11 @@ export function usePlatformServiceDeploymentLogs(
   });
 }
 
-export function usePlatformArtifacts() {
+export function usePlatformArtifacts(poll = false) {
   return useQuery({
     queryKey: platformQueryKeys.artifacts(),
     queryFn: getArtifacts,
+    refetchInterval: poll ? 1500 : false,
     ...withError('Failed loading platform artifacts'),
   });
 }

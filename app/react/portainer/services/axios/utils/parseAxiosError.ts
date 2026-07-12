@@ -38,7 +38,7 @@ export function parseAxiosError(
 
 type DefaultAxiosErrorType = {
   message: string;
-  details?: string;
+  details?: string | { reason?: unknown };
 };
 
 export function defaultErrorParser(axiosError: AxiosError<unknown>) {
@@ -63,21 +63,26 @@ function extractErrorDetails(axiosError: AxiosError): {
       const firstError = data.errors[0];
       return {
         message: firstError.message || '',
-        details: firstError.details || firstError.message || '',
+        details:
+          platformErrorDetails(firstError.details) ||
+          firstError.message ||
+          '',
       };
     }
 
     if (Array.isArray(data) && data.length > 0 && isDefaultResponse(data[0])) {
       return {
         message: data[0].message || '',
-        details: data[0].details || data[0].message || '',
+        details:
+          platformErrorDetails(data[0].details) || data[0].message || '',
       };
     }
 
     if (isDefaultResponse(data)) {
+      const details = platformErrorDetails(data.details) || data.message;
       return {
         message: data.message || '',
-        details: data.details || data.message || '',
+        details,
       };
     }
 
@@ -151,6 +156,22 @@ function extractErrorDetails(axiosError: AxiosError): {
 
   const fallback = 'An unknown error occurred';
   return { message: fallback, details: fallback };
+}
+
+// 平台控制面把安全原因码放在 details.reason 中；这里只提取这个固定字段，
+// 避免将任意嵌套错误对象字符串化后显示到 toast，既保证可读性也避免泄露后端细节。
+function platformErrorDetails(details: DefaultAxiosErrorType['details']) {
+  if (typeof details === 'string') {
+    return details;
+  }
+  if (
+    details &&
+    typeof details === 'object' &&
+    typeof details.reason === 'string'
+  ) {
+    return details.reason;
+  }
+  return '';
 }
 
 function isMultipleErrorsResponse(data: unknown): data is {
