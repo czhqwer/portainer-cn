@@ -34,6 +34,7 @@ import (
 	"github.com/portainer/portainer/api/dataservices/platformgatewayconfigversion"
 	"github.com/portainer/portainer/api/dataservices/platformgatewayroute"
 	"github.com/portainer/portainer/api/dataservices/platformhostgroup"
+	"github.com/portainer/portainer/api/dataservices/platformobservabilityconfig"
 	"github.com/portainer/portainer/api/dataservices/platformproject"
 	"github.com/portainer/portainer/api/dataservices/platformrelease"
 	"github.com/portainer/portainer/api/dataservices/platformreleaselock"
@@ -86,6 +87,7 @@ type Store struct {
 	PlatformHostGroupService              *platformhostgroup.Service
 	PlatformDatabaseResourceService       *platformdatabaseresource.Service
 	PlatformServiceDatabaseBindingService *platformservicedatabasebinding.Service
+	PlatformObservabilityConfigService    *platformobservabilityconfig.Service
 	PlatformGatewayService                *platformgateway.Service
 	PlatformGatewayRouteService           *platformgatewayroute.Service
 	PlatformGatewayCertificateService     *platformgatewaycertificate.Service
@@ -216,6 +218,12 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.PlatformServiceDatabaseBindingService = platformServiceDatabaseBindingService
+
+	platformObservabilityConfigService, err := platformobservabilityconfig.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformObservabilityConfigService = platformObservabilityConfigService
 
 	platformGatewayService, err := platformgateway.NewService(store.connection)
 	if err != nil {
@@ -520,6 +528,11 @@ func (store *Store) PlatformServiceDatabaseBinding() dataservices.PlatformServic
 	return store.PlatformServiceDatabaseBindingService
 }
 
+// PlatformObservabilityConfig gives access to encrypted external observability integration metadata.
+func (store *Store) PlatformObservabilityConfig() dataservices.PlatformObservabilityConfigService {
+	return store.PlatformObservabilityConfigService
+}
+
 // PlatformGateway gives access to environment-scoped gateway control-plane metadata.
 func (store *Store) PlatformGateway() dataservices.PlatformGatewayService {
 	return store.PlatformGatewayService
@@ -724,6 +737,7 @@ type storeExport struct {
 	PlatformHostGroup              []portainer.PlatformHostGroup              `json:"platform_host_groups,omitempty"`
 	PlatformDatabaseResource       []portainer.PlatformDatabaseResource       `json:"platform_database_resources,omitempty"`
 	PlatformServiceDatabaseBinding []portainer.PlatformServiceDatabaseBinding `json:"platform_service_database_bindings,omitempty"`
+	PlatformObservabilityConfig    []portainer.PlatformObservabilityConfig    `json:"platform_observability_configs,omitempty"`
 	PlatformGateway                []portainer.PlatformGateway                `json:"platform_gateways,omitempty"`
 	PlatformGatewayRoute           []portainer.PlatformGatewayRoute           `json:"platform_gateway_routes,omitempty"`
 	PlatformGatewayCertificate     []portainer.PlatformGatewayCertificate     `json:"platform_gateway_certificates,omitempty"`
@@ -1040,6 +1054,21 @@ func (store *Store) Export(filename string) (err error) {
 		backup.PlatformServiceDatabaseBinding = bindings
 	}
 
+	if configs, err := store.PlatformObservabilityConfig().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Observability Configurations")
+		}
+	} else {
+		// 备份文件可能离开当前加密域，保留服务地址以便恢复接入，但绝不携带令牌或其元数据。
+		for i := range configs {
+			configs[i].BearerTokenCipherText = ""
+			configs[i].CredentialEncryptionVersion = ""
+			configs[i].CredentialHash = ""
+			configs[i].HasCredentials = false
+		}
+		backup.PlatformObservabilityConfig = configs
+	}
+
 	if g, err := store.PlatformGateway().ReadAll(); err != nil {
 		if !store.IsErrObjectNotFound(err) {
 			log.Error().Err(err).Msg("exporting Platform Gateways")
@@ -1334,6 +1363,12 @@ func (store *Store) Import(filename string) (err error) {
 	for _, v := range backup.PlatformServiceDatabaseBinding {
 		if err := store.PlatformServiceDatabaseBinding().Update(v.ID, &v); err != nil {
 			log.Warn().Err(err).Msg("failed to update the platform service database binding in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformObservabilityConfig {
+		if err := store.PlatformObservabilityConfig().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform observability configuration in the database")
 		}
 	}
 

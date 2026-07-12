@@ -21,6 +21,7 @@ type (
 	PlatformHostGroupID              int
 	PlatformDatabaseResourceID       int
 	PlatformServiceDatabaseBindingID int
+	PlatformObservabilityConfigID    int
 	PlatformGatewayID                int
 	PlatformGatewayRouteID           int
 	PlatformGatewayCertificateID     int
@@ -135,6 +136,7 @@ const (
 
 	PlatformArtifactStorageCredentialEncryptionVersion = "boltdb-v1"
 	PlatformDatabaseCredentialEncryptionVersion        = "boltdb-v1"
+	PlatformObservabilityCredentialEncryptionVersion   = "boltdb-v1"
 
 	PlatformDatabaseTypeMySQL    PlatformDatabaseType = "mysql"
 	PlatformDatabaseTypeMariaDB  PlatformDatabaseType = "mariadb"
@@ -541,6 +543,22 @@ type PlatformServiceDatabaseBinding struct {
 	ServiceDeploymentID PlatformServiceDeploymentID      `json:"ServiceDeploymentId" example:"1"`
 	DatabaseResourceID  PlatformDatabaseResourceID       `json:"DatabaseResourceId" example:"1"`
 	Revision            int                              `json:"Revision" example:"1"`
+	PlatformLifecycle
+}
+
+// PlatformObservabilityConfig 只保存既有观测系统的受控连接信息。查询模板由后端固定，
+// 因此不能把任意 PromQL、LogQL 或 Grafana 地址作为可编辑字段持久化。
+type PlatformObservabilityConfig struct {
+	ID                          PlatformObservabilityConfigID `json:"Id" example:"1"`
+	PrometheusURL               string                        `json:"PrometheusUrl,omitempty" example:"https://prometheus.example.com"`
+	LokiURL                     string                        `json:"LokiUrl,omitempty" example:"https://loki.example.com"`
+	GrafanaURL                  string                        `json:"GrafanaUrl,omitempty" example:"https://grafana.example.com"`
+	BearerTokenCipherText       string                        `json:"BearerTokenCipherText,omitempty" swaggerignore:"true"`
+	CredentialEncryptionVersion string                        `json:"CredentialEncryptionVersion,omitempty"`
+	CredentialHash              string                        `json:"CredentialHash,omitempty"`
+	HasCredentials              bool                          `json:"HasCredentials" example:"true"`
+	Enabled                     bool                          `json:"Enabled" example:"true"`
+	Revision                    int                           `json:"Revision" example:"1"`
 	PlatformLifecycle
 }
 
@@ -965,6 +983,49 @@ func NewPlatformDatabaseResource() PlatformDatabaseResource {
 
 func NewPlatformServiceDatabaseBinding() PlatformServiceDatabaseBinding {
 	return PlatformServiceDatabaseBinding{Revision: 1, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformObservabilityConfig() PlatformObservabilityConfig {
+	return PlatformObservabilityConfig{Revision: 1, Enabled: true, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+// NormalizePlatformObservabilityConfig 统一观测服务地址与凭据元数据，避免后续 adapter
+// 因空白或不成对的安全字段访问到未受控的外部服务。
+func NormalizePlatformObservabilityConfig(config *PlatformObservabilityConfig) {
+	if config == nil {
+		return
+	}
+	config.PrometheusURL = strings.TrimSpace(config.PrometheusURL)
+	config.LokiURL = strings.TrimSpace(config.LokiURL)
+	config.GrafanaURL = strings.TrimSpace(config.GrafanaURL)
+	config.CredentialEncryptionVersion = strings.TrimSpace(config.CredentialEncryptionVersion)
+	config.CredentialHash = strings.TrimSpace(config.CredentialHash)
+	if config.Revision == 0 {
+		config.Revision = 1
+	}
+}
+
+func ValidatePlatformObservabilityConfig(config PlatformObservabilityConfig) error {
+	NormalizePlatformObservabilityConfig(&config)
+	if config.PrometheusURL == "" && config.LokiURL == "" && config.GrafanaURL == "" {
+		return fmt.Errorf("at least one observability endpoint is required")
+	}
+	for _, endpoint := range []string{config.PrometheusURL, config.LokiURL, config.GrafanaURL} {
+		if endpoint == "" {
+			continue
+		}
+		parsed, err := url.ParseRequestURI(endpoint)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("observability endpoint is invalid")
+		}
+	}
+	if config.HasCredentials && (config.BearerTokenCipherText == "" || config.CredentialEncryptionVersion != PlatformObservabilityCredentialEncryptionVersion || config.CredentialHash == "") {
+		return fmt.Errorf("observability credentials must use encrypted storage")
+	}
+	if !config.HasCredentials && (config.BearerTokenCipherText != "" || config.CredentialEncryptionVersion != "" || config.CredentialHash != "") {
+		return fmt.Errorf("observability credential state is invalid")
+	}
+	return nil
 }
 
 // NormalizePlatformDatabaseResource 固定连接元数据的存储形式。密码必须已由 handler

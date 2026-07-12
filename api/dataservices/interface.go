@@ -22,6 +22,7 @@ type (
 		PlatformHostGroup() PlatformHostGroupService
 		PlatformDatabaseResource() PlatformDatabaseResourceService
 		PlatformServiceDatabaseBinding() PlatformServiceDatabaseBindingService
+		PlatformObservabilityConfig() PlatformObservabilityConfigService
 		PlatformGateway() PlatformGatewayService
 		PlatformGatewayRoute() PlatformGatewayRouteService
 		PlatformGatewayCertificate() PlatformGatewayCertificateService
@@ -162,6 +163,12 @@ type (
 	// PlatformServiceDatabaseBindingService stores secret-free deployment-to-resource references.
 	PlatformServiceDatabaseBindingService interface {
 		BaseCRUD[portainer.PlatformServiceDatabaseBinding, portainer.PlatformServiceDatabaseBindingID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformObservabilityConfigService stores the encrypted global integration configuration.
+	PlatformObservabilityConfigService interface {
+		BaseCRUD[portainer.PlatformObservabilityConfig, portainer.PlatformObservabilityConfigID]
 		GetNextIdentifier() int
 	}
 

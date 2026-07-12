@@ -70,6 +70,10 @@ func (tx *StoreTx) PlatformServiceDatabaseBinding() dataservices.PlatformService
 	return tx.store.PlatformServiceDatabaseBindingService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformObservabilityConfig() dataservices.PlatformObservabilityConfigService {
+	return tx.store.PlatformObservabilityConfigService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PlatformGateway() dataservices.PlatformGatewayService {
 	return tx.store.PlatformGatewayService.Tx(tx.tx)
 }

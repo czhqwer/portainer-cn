@@ -372,6 +372,29 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	require.Equal(t, release.ID, importedAudit.ReleaseID)
 }
 
+func TestPlatformObservabilityConfigExportStripsCredentials(t *testing.T) {
+	t.Parallel()
+	_, store := MustNewTestStore(t, true, false)
+
+	config := portainer.NewPlatformObservabilityConfig()
+	config.PrometheusURL = "https://prometheus.example.test"
+	config.BearerTokenCipherText = "cipher"
+	config.CredentialEncryptionVersion = portainer.PlatformObservabilityCredentialEncryptionVersion
+	config.CredentialHash = "hash"
+	config.HasCredentials = true
+	require.NoError(t, store.PlatformObservabilityConfig().Create(&config))
+
+	backupFile := filepath.Join(t.TempDir(), "backup.json")
+	require.NoError(t, store.Export(backupFile))
+	_, importedStore := MustNewTestStore(t, true, false)
+	require.NoError(t, importedStore.Import(backupFile))
+
+	imported, err := importedStore.PlatformObservabilityConfig().Read(config.ID)
+	require.NoError(t, err)
+	require.False(t, imported.HasCredentials)
+	require.Empty(t, imported.BearerTokenCipherText)
+}
+
 func samplePlatformProject() *portainer.PlatformProject {
 	return &portainer.PlatformProject{
 		Name:              "Demo",

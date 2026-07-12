@@ -27,6 +27,7 @@ type testDatastore struct {
 	platformHostGroup              dataservices.PlatformHostGroupService
 	platformDatabaseResource       dataservices.PlatformDatabaseResourceService
 	platformServiceDatabaseBinding dataservices.PlatformServiceDatabaseBindingService
+	platformObservabilityConfig    dataservices.PlatformObservabilityConfigService
 	platformGateway                dataservices.PlatformGatewayService
 	platformGatewayRoute           dataservices.PlatformGatewayRouteService
 	platformGatewayCertificate     dataservices.PlatformGatewayCertificateService
@@ -112,6 +113,9 @@ func (d *testDatastore) PlatformDatabaseResource() dataservices.PlatformDatabase
 }
 func (d *testDatastore) PlatformServiceDatabaseBinding() dataservices.PlatformServiceDatabaseBindingService {
 	return d.platformServiceDatabaseBinding
+}
+func (d *testDatastore) PlatformObservabilityConfig() dataservices.PlatformObservabilityConfigService {
+	return d.platformObservabilityConfig
 }
 func (d *testDatastore) PlatformGateway() dataservices.PlatformGatewayService {
 	return d.platformGateway
