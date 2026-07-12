@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	portainer "github.com/portainer/portainer/api"
 	"github.com/portainer/portainer/api/dataservices"
 	"github.com/portainer/portainer/api/http/security"
 	platformservice "github.com/portainer/portainer/api/platform"
@@ -14,6 +15,7 @@ import (
 type Handler struct {
 	*mux.Router
 	DataStore               dataservices.DataStore
+	FileService             portainer.FileService
 	ReleaseExecutor         platformservice.ReleaseExecutor
 	ReleaseRecoveryExecutor platformservice.ReleaseRecoveryExecutor
 	RuntimeInspector        platformservice.RuntimeInspector
@@ -106,6 +108,8 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.configSecretCopy))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/image-reference",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactImageReferenceCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/artifacts/upload",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactUpload))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/{artifactId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/artifacts/{artifactId}/validate",

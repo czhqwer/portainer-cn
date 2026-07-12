@@ -248,6 +248,8 @@ const (
 	PlatformAuditActionSecretRevealed            PlatformAuditAction = "secret.revealed"
 	PlatformAuditActionSecretCopied              PlatformAuditAction = "secret.copied"
 	PlatformAuditActionProjectPermissionsUpdated PlatformAuditAction = "project.permissions_updated"
+	PlatformAuditActionArtifactUploaded          PlatformAuditAction = "artifact.uploaded"
+	PlatformAuditActionArtifactUploadFailed      PlatformAuditAction = "artifact.upload_failed"
 	PlatformAuditActionAccessDenied              PlatformAuditAction = "platform.access_denied"
 	PlatformAuditActionRollbackCreated           PlatformAuditAction = "rollback.created"
 	PlatformAuditActionRollbackSucceeded         PlatformAuditAction = "rollback.succeeded"

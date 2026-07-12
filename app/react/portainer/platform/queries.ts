@@ -5,6 +5,7 @@ import { withError } from '@/react-tools/react-query';
 
 import {
   CreateImageReferenceArtifactPayload,
+	UploadPlatformArtifactPayload,
   CreatePlatformApplicationPayload,
   CreatePlatformConfigSetPayload,
   CreatePlatformEnvironmentPayload,
@@ -282,6 +283,28 @@ async function createImageReferenceArtifact(
   return response.data;
 }
 
+async function uploadPlatformArtifact(payload: UploadPlatformArtifactPayload) {
+	const formData = new FormData();
+	formData.set('ProjectId', String(payload.ProjectId));
+	if (payload.ApplicationId) {
+		formData.set('ApplicationId', String(payload.ApplicationId));
+	}
+	formData.set('ServiceDefinitionId', String(payload.ServiceDefinitionId));
+	formData.set('Name', payload.Name);
+	formData.set('Version', payload.Version);
+	formData.set('Type', payload.Type);
+	if (payload.ExpectedSHA256) {
+		formData.set('ExpectedSHA256', payload.ExpectedSHA256);
+	}
+	formData.set('file', payload.File);
+
+	const response = await axios.post<PlatformArtifact>(
+		'/platform/artifacts/upload',
+		formData
+	);
+	return response.data;
+}
+
 async function getReleases() {
   const response = await axios.get<PlatformRelease[]>('/platform/releases');
   return response.data;
@@ -461,6 +484,17 @@ export function useCreateImageReferenceArtifactMutation() {
       queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
     ...withError('Failed registering image artifact'),
   });
+}
+
+export function useUploadPlatformArtifactMutation() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: uploadPlatformArtifact,
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
+		...withError('Failed uploading platform artifact'),
+	});
 }
 
 export function usePlatformConfigSets({

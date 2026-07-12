@@ -56,6 +56,9 @@ func (handler *Handler) artifactList(w http.ResponseWriter, r *http.Request) *ht
 	if err != nil {
 		return handler.convertError(err)
 	}
+	for i := range artifacts {
+		artifacts[i] = artifactResponse(artifacts[i])
+	}
 
 	return response.JSON(w, artifacts)
 }
@@ -71,7 +74,14 @@ func (handler *Handler) artifactInspect(w http.ResponseWriter, r *http.Request) 
 		return handlerErr
 	}
 
-	return response.JSON(w, artifact)
+	return response.JSON(w, artifactResponse(*artifact))
+}
+
+// artifactResponse 只向普通制品 API 返回可追溯元数据，不暴露内部对象键。
+// 后续读取原始文件只能由受控服务基于 Artifact ID 完成，避免前端或日志把存储布局当作公开接口。
+func artifactResponse(artifact portainer.PlatformArtifact) portainer.PlatformArtifact {
+	artifact.StoragePath = ""
+	return artifact
 }
 
 func (handler *Handler) artifactImageReferenceCreate(w http.ResponseWriter, r *http.Request) *httperror.HandlerError {

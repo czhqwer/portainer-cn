@@ -3,13 +3,18 @@ package platform
 import (
 	"bytes"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	portainer "github.com/portainer/portainer/api"
 	"github.com/portainer/portainer/api/apikey"
 	"github.com/portainer/portainer/api/datastore"
+	"github.com/portainer/portainer/api/filesystem"
 	"github.com/portainer/portainer/api/http/security"
 	"github.com/portainer/portainer/api/internal/testhelpers"
 	"github.com/portainer/portainer/api/jwt"
@@ -22,6 +27,7 @@ type platformTestContext struct {
 	handler     *Handler
 	adminJWT    string
 	standardJWT string
+	fileService *filesystem.Service
 }
 
 func newPlatformTestContext(t *testing.T) platformTestContext {
@@ -43,6 +49,9 @@ func newPlatformTestContext(t *testing.T) platformTestContext {
 
 	handler := NewHandler(requestBouncer)
 	handler.DataStore = store
+	fileService, err := filesystem.NewService(t.TempDir(), "")
+	require.NoError(t, err)
+	handler.FileService = fileService
 
 	adminJWT, _, err := jwtService.GenerateToken(&portainer.TokenData{ID: adminUser.ID, Username: adminUser.Username, Role: adminUser.Role})
 	require.NoError(t, err)
@@ -54,6 +63,7 @@ func newPlatformTestContext(t *testing.T) platformTestContext {
 		handler:     handler,
 		adminJWT:    adminJWT,
 		standardJWT: standardJWT,
+		fileService: fileService,
 	}
 }
 
@@ -196,6 +206,121 @@ func doRawJSON(t *testing.T, ctx platformTestContext, token string, method strin
 	require.Equal(t, expectedStatus, recorder.Code, recorder.Body.String())
 
 	return recorder
+}
+
+func doRawMultipart(t *testing.T, ctx platformTestContext, token string, fields map[string]string, fileName string, fileContent []byte, expectedStatus int) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for name, value := range fields {
+		require.NoError(t, writer.WriteField(name, value))
+	}
+	file, err := writer.CreateFormFile("file", fileName)
+	require.NoError(t, err)
+	_, err = file.Write(fileContent)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/platform/artifacts/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	testhelpers.AddTestSecurityCookie(req, token)
+
+	recorder := httptest.NewRecorder()
+	ctx.handler.ServeHTTP(recorder, req)
+	require.Equal(t, expectedStatus, recorder.Code, recorder.Body.String())
+
+	return recorder
+}
+
+func TestPlatformArtifactUploadCreatesTraceableArtifactAndAudit(t *testing.T) {
+	ctx := newPlatformTestContext(t)
+	project := createProject(t, ctx, createProjectPayload{Name: "Artifact Project", Slug: "artifact-project"})
+	application := createApplication(t, ctx, project.ID, createApplicationPayload{Name: "Artifact App", Slug: "artifact-app"})
+	service := createServiceDefinition(t, ctx, application.ID, createServiceDefinitionPayload{Name: "Artifact Service", Slug: "artifact-service", Type: portainer.PlatformServiceTypeJavaService})
+
+	recorder := doRawMultipart(t, ctx, ctx.adminJWT, map[string]string{
+		"ProjectId":           fmt.Sprint(project.ID),
+		"ApplicationId":       fmt.Sprint(application.ID),
+		"ServiceDefinitionId": fmt.Sprint(service.ID),
+		"Name":                "artifact-service",
+		"Version":             "1.0.0",
+		"Type":                string(portainer.PlatformArtifactTypeJavaJar),
+	}, "service.jar", []byte("PK\x03\x04fixture"), http.StatusCreated)
+
+	var artifact portainer.PlatformArtifact
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &artifact))
+	require.Equal(t, portainer.PlatformArtifactStatusUploaded, artifact.Status)
+	require.True(t, artifact.Retained)
+	require.False(t, artifact.Cleanable)
+	require.NotEmpty(t, artifact.SHA256)
+	require.Empty(t, artifact.StoragePath)
+	persistedArtifact, err := ctx.handler.DataStore.PlatformArtifact().Read(artifact.ID)
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(ctx.fileService.GetDatastorePath(), "platform-artifacts", filepath.FromSlash(persistedArtifact.StoragePath)))
+	require.NoError(t, err)
+
+	audits, err := ctx.handler.DataStore.PlatformAuditLog().ReadAll(func(audit portainer.PlatformAuditLog) bool {
+		return audit.ArtifactID == artifact.ID
+	})
+	require.NoError(t, err)
+	require.Len(t, audits, 1)
+	require.Equal(t, portainer.PlatformAuditActionArtifactUploaded, audits[0].Action)
+	require.NotContains(t, fmt.Sprint(audits[0].AfterSummary), ctx.fileService.GetDatastorePath())
+}
+
+func TestPlatformArtifactUploadRejectsHashMismatchWithoutPersistingFile(t *testing.T) {
+	ctx := newPlatformTestContext(t)
+	project := createProject(t, ctx, createProjectPayload{Name: "Mismatch Project", Slug: "mismatch-project"})
+	application := createApplication(t, ctx, project.ID, createApplicationPayload{Name: "Mismatch App", Slug: "mismatch-app"})
+	service := createServiceDefinition(t, ctx, application.ID, createServiceDefinitionPayload{Name: "Mismatch Service", Slug: "mismatch-service"})
+
+	doRawMultipart(t, ctx, ctx.adminJWT, map[string]string{
+		"ProjectId":           fmt.Sprint(project.ID),
+		"ApplicationId":       fmt.Sprint(application.ID),
+		"ServiceDefinitionId": fmt.Sprint(service.ID),
+		"Name":                "mismatch-service",
+		"Version":             "1.0.0",
+		"Type":                string(portainer.PlatformArtifactTypeJavaJar),
+		"ExpectedSHA256":      strings.Repeat("0", 64),
+	}, "service.jar", []byte("PK\x03\x04fixture"), http.StatusBadRequest)
+
+	artifacts, err := ctx.handler.DataStore.PlatformArtifact().ReadAll()
+	require.NoError(t, err)
+	require.Empty(t, artifacts)
+	audits, err := ctx.handler.DataStore.PlatformAuditLog().ReadAll(func(audit portainer.PlatformAuditLog) bool {
+		return audit.ProjectID == project.ID
+	})
+	require.NoError(t, err)
+	require.Len(t, audits, 1)
+	require.Equal(t, portainer.PlatformAuditActionArtifactUploadFailed, audits[0].Action)
+	require.Equal(t, "SHA256_MISMATCH", audits[0].FailureReason)
+	require.NotContains(t, fmt.Sprint(audits[0].AfterSummary), "0000000000000000")
+	entries, err := os.ReadDir(filepath.Join(ctx.fileService.GetDatastorePath(), "platform-artifacts", "uploads"))
+	if os.IsNotExist(err) {
+		return
+	}
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}
+
+func TestPlatformArtifactUploadRejectsUnauthorizedRequestBeforeWritingFile(t *testing.T) {
+	ctx := newPlatformTestContext(t)
+	project := createProject(t, ctx, createProjectPayload{Name: "Private Artifact Project", Slug: "private-artifact-project"})
+	application := createApplication(t, ctx, project.ID, createApplicationPayload{Name: "Private Artifact App", Slug: "private-artifact-app"})
+	service := createServiceDefinition(t, ctx, application.ID, createServiceDefinitionPayload{Name: "Private Artifact Service", Slug: "private-artifact-service"})
+
+	doRawMultipart(t, ctx, ctx.standardJWT, map[string]string{
+		"ProjectId":           fmt.Sprint(project.ID),
+		"ApplicationId":       fmt.Sprint(application.ID),
+		"ServiceDefinitionId": fmt.Sprint(service.ID),
+		"Name":                "private-artifact-service",
+		"Version":             "1.0.0",
+		"Type":                string(portainer.PlatformArtifactTypeJavaJar),
+	}, "service.jar", []byte("PK\x03\x04fixture"), http.StatusForbidden)
+
+	_, err := os.Stat(filepath.Join(ctx.fileService.GetDatastorePath(), "platform-artifacts"))
+	require.True(t, os.IsNotExist(err))
 }
 
 func stringPtr(value string) *string {

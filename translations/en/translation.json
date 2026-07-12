@@ -4359,7 +4359,11 @@
     "environments": { "tableTitle": "Environments" },
     "applications": { "tableTitle": "Applications" },
     "services": { "tableTitle": "Services" },
-    "artifacts": { "tableTitle": "Artifacts" },
+    "artifacts": {
+      "tableTitle": "Artifacts",
+      "sourceImage": "Existing image reference",
+      "sourceUpload": "Upload Jar, dist ZIP, or image archive"
+    },
     "releases": { "tableTitle": "Release records" },
     "config": {
       "scopeTitle": "Select configuration scope",
@@ -4506,7 +4510,11 @@
       "healthVerification": "Health verification",
       "healthPath": "Health path",
       "envOverrides": "Environment variables",
-      "traceabilityWeak": "Traceability: weak / image-reference only"
+      "traceabilityWeak": "Traceability: weak / image-reference only",
+      "artifactSource": "Artifact source",
+      "artifactType": "Artifact type",
+      "artifactFile": "Artifact file",
+      "expectedSHA256": "Expected SHA256 (optional)"
     },
     "formTitles": {
       "project": "Create project",

@@ -49,6 +49,7 @@ import {
   useRollbackPlatformReleaseMutation,
   useUpdatePlatformConfigSetMutation,
   useUpdatePlatformServiceDeploymentMutation,
+	useUploadPlatformArtifactMutation,
   useValidatePlatformReleaseMutation,
 } from './queries';
 import {
@@ -1741,6 +1742,7 @@ function CreateArtifactPanel({
 }) {
   const { t } = useTranslation();
   const mutation = useCreateImageReferenceArtifactMutation();
+	const uploadMutation = useUploadPlatformArtifactMutation();
   const [selectedProjectId, setSelectedProjectId] = useState<
     number | undefined
   >(projects[0]?.Id);
@@ -1760,15 +1762,39 @@ function CreateArtifactPanel({
   const [version, setVersion] = useState('');
   const [imageRef, setImageRef] = useState('');
   const [imageDigest, setImageDigest] = useState('');
+	const [source, setSource] = useState<'image' | 'upload'>('image');
+	const [uploadType, setUploadType] = useState<
+		'java-jar' | 'frontend-dist' | 'docker-image-tar' | 'oci-archive'
+	>('java-jar');
+	const [uploadFile, setUploadFile] = useState<File>();
+	const [expectedSHA256, setExpectedSHA256] = useState('');
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedProjectId) {
-      return;
-    }
-    mutation.mutate(
-      {
-        ProjectId: selectedProjectId,
+  async function handleSubmit(event: FormEvent) {
+	 event.preventDefault();
+	 if (!selectedProjectId || !currentService) {
+		return;
+	 }
+	 if (source === 'upload') {
+		if (!uploadFile) {
+			return;
+		}
+		await uploadMutation.mutateAsync({
+			ProjectId: selectedProjectId,
+			ApplicationId: currentApplication?.Id,
+			ServiceDefinitionId: currentService.Id,
+			Name: name.trim(),
+			Version: version.trim(),
+			Type: uploadType,
+			ExpectedSHA256: expectedSHA256.trim() || undefined,
+			File: uploadFile,
+		});
+		setUploadFile(undefined);
+		setExpectedSHA256('');
+		onDone();
+		return;
+	 }
+	 await mutation.mutateAsync({
+		ProjectId: selectedProjectId,
         ApplicationId: currentApplication?.Id,
         ServiceDefinitionId: currentService?.Id,
         Name: name.trim(),
@@ -1776,17 +1802,12 @@ function CreateArtifactPanel({
         ImageRef: imageRef.trim(),
         ImageDigest: imageDigest.trim() || undefined,
         Traceability: 'weak',
-      },
-      {
-        onSuccess: () => {
-          setName('');
-          setVersion('');
-          setImageRef('');
-          setImageDigest('');
-          onDone();
-        },
-      }
-    );
+	 });
+	 setName('');
+	 setVersion('');
+	 setImageRef('');
+	 setImageDigest('');
+	 onDone();
   }
 
   return (
@@ -1796,7 +1817,30 @@ function CreateArtifactPanel({
       })}
     >
       <form className="grid gap-3 md:grid-cols-3" onSubmit={handleSubmit}>
-        <SelectField
+		<label className="form-control-label self-end">
+		  {t('platform.forms.artifactSource', {
+			defaultValue: 'Artifact source',
+		  })}
+		  <select
+			className="form-control mt-1"
+			value={source}
+			onChange={(event) =>
+			  setSource(event.target.value as 'image' | 'upload')
+			}
+		  >
+			<option value="image">
+			  {t('platform.artifacts.sourceImage', {
+				defaultValue: 'Existing image reference',
+			  })}
+			</option>
+			<option value="upload">
+			  {t('platform.artifacts.sourceUpload', {
+				defaultValue: 'Upload Jar, dist ZIP, or image archive',
+			  })}
+			</option>
+		  </select>
+		</label>
+		<SelectField
           label={t('platform.forms.project', { defaultValue: 'Project' })}
           value={selectedProjectId}
           disabled={projects.length === 0}
@@ -1855,28 +1899,70 @@ function CreateArtifactPanel({
           required
           onChange={setVersion}
         />
-        <TextInputField
-          label={t('platform.forms.imageRef', {
-            defaultValue: 'Image reference',
-          })}
-          value={imageRef}
-          required
-          onChange={setImageRef}
-        />
-        <TextInputField
-          label={t('platform.forms.imageDigest', {
-            defaultValue: 'Image digest',
-          })}
-          value={imageDigest}
-          onChange={setImageDigest}
-        />
-        <div className="text-muted self-end text-sm">
-          {t('platform.forms.traceabilityWeak', {
-            defaultValue: 'Traceability: weak / image-reference only',
-          })}
-        </div>
-        <FormActions
-          isSubmitting={mutation.isLoading}
+		{source === 'image' ? (
+		  <>
+			<TextInputField
+			  label={t('platform.forms.imageRef', {
+				defaultValue: 'Image reference',
+			  })}
+			  value={imageRef}
+			  required
+			  onChange={setImageRef}
+			/>
+			<TextInputField
+			  label={t('platform.forms.imageDigest', {
+				defaultValue: 'Image digest',
+			  })}
+			  value={imageDigest}
+			  onChange={setImageDigest}
+			/>
+			<div className="text-muted self-end text-sm">
+			  {t('platform.forms.traceabilityWeak', {
+				defaultValue: 'Traceability: weak / image-reference only',
+			  })}
+			</div>
+		  </>
+		) : (
+		  <>
+			<label className="form-control-label self-end">
+			  {t('platform.forms.artifactType', {
+				defaultValue: 'Artifact type',
+			  })}
+			  <select
+				className="form-control mt-1"
+				value={uploadType}
+				onChange={(event) =>
+				  setUploadType(event.target.value as typeof uploadType)
+				}
+			  >
+				<option value="java-jar">Java 8 Jar</option>
+				<option value="frontend-dist">Frontend dist ZIP</option>
+				<option value="docker-image-tar">Docker image tar</option>
+				<option value="oci-archive">OCI archive</option>
+			  </select>
+			</label>
+			<label className="form-control-label self-end">
+			  {t('platform.forms.artifactFile', {
+				defaultValue: 'Artifact file',
+			  })}
+			  <input
+				type="file"
+				className="form-control mt-1"
+				accept=".jar,.zip,.tar"
+				onChange={(event) => setUploadFile(event.target.files?.[0])}
+			  />
+			</label>
+			<TextInputField
+			  label={t('platform.forms.expectedSHA256', {
+				defaultValue: 'Expected SHA256 (optional)',
+			  })}
+			  value={expectedSHA256}
+			  onChange={setExpectedSHA256}
+			/>
+		  </>
+		)}
+		<FormActions
+		  isSubmitting={mutation.isLoading || uploadMutation.isLoading}
           submitLabel={t('platform.actions.createArtifact', {
             defaultValue: 'Register image artifact',
           })}
@@ -1884,7 +1970,7 @@ function CreateArtifactPanel({
             !selectedProjectId ||
             !name.trim() ||
             !version.trim() ||
-            !imageRef.trim()
+			(source === 'image' ? !imageRef.trim() : !uploadFile)
           }
           onCancel={onDone}
         />

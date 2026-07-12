@@ -4418,7 +4418,11 @@
     "environments": { "tableTitle": "环境" },
     "applications": { "tableTitle": "应用" },
     "services": { "tableTitle": "服务" },
-    "artifacts": { "tableTitle": "制品" },
+    "artifacts": {
+      "tableTitle": "制品",
+      "sourceImage": "已有镜像地址",
+      "sourceUpload": "上传 Jar、dist ZIP 或镜像归档"
+    },
     "releases": { "tableTitle": "发布记录" },
     "config": {
       "scopeTitle": "选择配置作用域",
@@ -4565,7 +4569,11 @@
       "healthVerification": "健康验证等级",
       "healthPath": "健康检查路径",
       "envOverrides": "环境变量",
-      "traceabilityWeak": "可追溯等级：weak / 仅 image-reference"
+      "traceabilityWeak": "可追溯等级：weak / 仅 image-reference",
+      "artifactSource": "制品来源",
+      "artifactType": "制品类型",
+      "artifactFile": "制品文件",
+      "expectedSHA256": "期望 SHA256（可选）"
     },
     "formTitles": {
       "project": "创建项目",

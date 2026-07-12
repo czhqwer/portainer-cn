@@ -221,6 +221,9 @@ export interface PlatformArtifact extends PlatformLifecycle {
   ImageDigest?: string;
   SHA256?: string;
   Traceability?: string;
+	FileName?: string;
+	Size?: number;
+	Status?: string;
 }
 
 export interface PlatformReleaseStep {
@@ -408,6 +411,17 @@ export interface CreateImageReferenceArtifactPayload {
   ImageRef: string;
   ImageDigest?: string;
   Traceability: string;
+}
+
+export interface UploadPlatformArtifactPayload {
+  ProjectId: number;
+  ApplicationId?: number;
+  ServiceDefinitionId: number;
+  Name: string;
+  Version: string;
+  Type: 'java-jar' | 'frontend-dist' | 'docker-image-tar' | 'oci-archive';
+  ExpectedSHA256?: string;
+  File: File;
 }
 
 export interface CreatePlatformReleasePayload {
