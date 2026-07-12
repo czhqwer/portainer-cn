@@ -37,9 +37,24 @@ func (executor *MultiTargetExecutor) Execute(ctx context.Context, request Releas
 	}
 
 	release := request.Release
+	policy := request.Environment.BatchPolicy
+	if policy.BatchSize == 0 {
+		policy = portainer.NewPlatformBatchPolicy()
+	}
+	if err := portainer.ValidatePlatformBatchPolicy(policy); err != nil {
+		failRelease(&release, ReleaseFailureReasonTargetNotConfigured, safeReleaseFailureMessage(ReleaseFailureReasonTargetNotConfigured), executor.now().Unix())
+		return ReleaseExecutionResult{Release: release}, nil
+	}
+	release.TargetSnapshots = multiTargetSnapshots(targets, request.Deployment.DesiredSpec.Runtime.RuntimeDriver)
+	release.BatchPolicySnapshot = policy
+	release.BatchSnapshots = multiBatchSnapshots(len(targets), policy.BatchSize)
+	if len(release.TargetSnapshots) > 0 {
+		release.TargetSnapshot = release.TargetSnapshots[0]
+	}
 	results := make([]portainer.PlatformReleaseTargetResult, 0, len(targets))
 	previous := targetResultByEndpoint(request.Deployment.CurrentTargetRuntimeRefs)
 	for index, target := range targets {
+		batchIndex := index / policy.BatchSize
 		perTargetRequest := request
 		perTargetRequest.Environment = request.Environment
 		perTargetRequest.Environment.TargetMode = portainer.PlatformTargetModeSingle
@@ -53,7 +68,7 @@ func (executor *MultiTargetExecutor) Execute(ctx context.Context, request Releas
 		if err != nil {
 			return ReleaseExecutionResult{}, err
 		}
-		targetResult := portainer.PlatformReleaseTargetResult{EndpointID: target.EndpointID, NodeName: target.NodeName, HostAddress: target.HostAddress, BatchIndex: index, Status: targetStatusFromRelease(result.Release)}
+		targetResult := portainer.PlatformReleaseTargetResult{EndpointID: target.EndpointID, NodeName: target.NodeName, HostAddress: target.HostAddress, BatchIndex: batchIndex, Status: targetStatusFromRelease(result.Release)}
 		if result.Release.Status == portainer.PlatformReleaseStatusSucceeded {
 			targetResult.RuntimeRef = result.Release.RuntimeSnapshot.CurrentRuntimeRef
 			targetResult.PublishedPorts = result.Release.RuntimeSnapshot.PublishedPorts
@@ -64,8 +79,21 @@ func (executor *MultiTargetExecutor) Execute(ctx context.Context, request Releas
 		results = append(results, targetResult)
 		release.Steps = append(release.Steps, result.Release.Steps...)
 		if targetResult.Status != portainer.PlatformReleaseTargetStatusSucceeded {
+			for _, skippedTarget := range targets[index+1:] {
+				results = append(results, portainer.PlatformReleaseTargetResult{EndpointID: skippedTarget.EndpointID, NodeName: skippedTarget.NodeName, HostAddress: skippedTarget.HostAddress, BatchIndex: (index + 1) / policy.BatchSize, Status: portainer.PlatformReleaseTargetStatusSkipped, Reason: "BATCH_PAUSED_AFTER_TARGET_FAILURE"})
+			}
 			release.TargetResults = results
 			return executor.failAndRecover(ctx, request, release, results)
+		}
+		if (index+1)%policy.BatchSize == 0 && index+1 < len(targets) && policy.IntervalSeconds > 0 {
+			if err := waitBatchInterval(ctx, time.Duration(policy.IntervalSeconds)*time.Second); err != nil {
+				for _, skippedTarget := range targets[index+1:] {
+					results = append(results, portainer.PlatformReleaseTargetResult{EndpointID: skippedTarget.EndpointID, NodeName: skippedTarget.NodeName, HostAddress: skippedTarget.HostAddress, BatchIndex: (index + 1) / policy.BatchSize, Status: portainer.PlatformReleaseTargetStatusSkipped, Reason: "BATCH_CANCELED"})
+				}
+				release.TargetResults = results
+				failRelease(&release, ReleaseFailureReasonRuntimeOperationFailed, safeReleaseFailureMessage(ReleaseFailureReasonRuntimeOperationFailed), executor.now().Unix())
+				return ReleaseExecutionResult{Release: release}, nil
+			}
 		}
 	}
 
@@ -87,6 +115,41 @@ func (executor *MultiTargetExecutor) Execute(ctx context.Context, request Releas
 	deployment.ResourceVersion++
 	deployment.UpdatedAt = now
 	return ReleaseExecutionResult{Release: release, Deployment: &deployment}, nil
+}
+
+func multiTargetSnapshots(targets []portainer.PlatformDeploymentTarget, driver portainer.PlatformRuntimeDriver) []portainer.PlatformTargetSnapshot {
+	snapshots := make([]portainer.PlatformTargetSnapshot, 0, len(targets))
+	for _, target := range targets {
+		snapshots = append(snapshots, portainer.PlatformTargetSnapshot{TargetMode: portainer.PlatformTargetModeMulti, EndpointID: target.EndpointID, NodeName: target.NodeName, HostAddress: target.HostAddress, RuntimeDriver: driver, ExecutorMode: portainer.PlatformExecutorModeBatch})
+	}
+	return snapshots
+}
+
+func multiBatchSnapshots(targetCount, batchSize int) []portainer.PlatformReleaseBatchSnapshot {
+	batches := make([]portainer.PlatformReleaseBatchSnapshot, 0, (targetCount+batchSize-1)/batchSize)
+	for start, index := 0, 0; start < targetCount; start, index = start+batchSize, index+1 {
+		end := start + batchSize
+		if end > targetCount {
+			end = targetCount
+		}
+		indices := make([]int, 0, end-start)
+		for current := start; current < end; current++ {
+			indices = append(indices, current)
+		}
+		batches = append(batches, portainer.PlatformReleaseBatchSnapshot{Index: index, TargetIndices: indices})
+	}
+	return batches
+}
+
+func waitBatchInterval(ctx context.Context, interval time.Duration) error {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (executor *MultiTargetExecutor) failAndRecover(ctx context.Context, request ReleaseExecutionRequest, release portainer.PlatformRelease, results []portainer.PlatformReleaseTargetResult) (ReleaseExecutionResult, error) {

@@ -135,9 +135,32 @@ func TestMultiTargetExecutorRecordsEachWorkloadResult(t *testing.T) {
 	require.Len(t, result.Release.TargetResults, 2)
 	require.Equal(t, portainer.EndpointID(1), result.Release.TargetResults[0].EndpointID)
 	require.Equal(t, portainer.PlatformReleaseTargetStatusSucceeded, result.Release.TargetResults[0].Status)
+	require.Equal(t, 0, result.Release.TargetResults[0].BatchIndex)
 	require.Equal(t, portainer.EndpointID(2), result.Release.TargetResults[1].EndpointID)
+	require.Equal(t, 1, result.Release.TargetResults[1].BatchIndex)
+	require.Equal(t, portainer.PlatformTargetModeMulti, result.Release.TargetSnapshot.TargetMode)
+	require.Len(t, result.Release.TargetSnapshots, 2)
+	require.Len(t, result.Release.BatchSnapshots, 2)
 	require.NotNil(t, result.Deployment)
 	require.Len(t, result.Deployment.CurrentTargetRuntimeRefs, 2)
+}
+
+func TestMultiTargetExecutorSkipsRemainingTargetsAfterFailure(t *testing.T) {
+	driver := &fakeRuntimeDriver{candidateHealthErr: errors.New("candidate failed")}
+	request := sampleReleaseExecutionRequest()
+	request.Environment.TargetMode = portainer.PlatformTargetModeMulti
+	request.Environment.Targets = []portainer.PlatformDeploymentTarget{
+		{EndpointID: 1, NodeName: "worker-a", HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 2, NodeName: "worker-b", HostAddress: "10.0.0.12", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+	}
+
+	result, err := NewMultiTargetExecutor(driver).Execute(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.Len(t, result.Release.TargetResults, 2)
+	require.Equal(t, portainer.PlatformReleaseTargetStatusFailed, result.Release.TargetResults[0].Status)
+	require.Equal(t, portainer.PlatformReleaseTargetStatusSkipped, result.Release.TargetResults[1].Status)
+	require.Equal(t, "BATCH_PAUSED_AFTER_TARGET_FAILURE", result.Release.TargetResults[1].Reason)
 }
 
 func TestSingleTargetExecutorRecoversPreviousWhenGatewayCutoverFails(t *testing.T) {
