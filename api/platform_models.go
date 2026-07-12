@@ -253,6 +253,8 @@ const (
 	PlatformAuditActionArtifactUploadFailed      PlatformAuditAction = "artifact.upload_failed"
 	PlatformAuditActionArtifactFetched           PlatformAuditAction = "artifact.fetched"
 	PlatformAuditActionArtifactFetchFailed       PlatformAuditAction = "artifact.fetch_failed"
+	PlatformAuditActionArtifactImported          PlatformAuditAction = "artifact.imported"
+	PlatformAuditActionArtifactImportFailed      PlatformAuditAction = "artifact.import_failed"
 	PlatformAuditActionArtifactStorageCreated    PlatformAuditAction = "artifact_storage.created"
 	PlatformAuditActionArtifactStorageUpdated    PlatformAuditAction = "artifact_storage.updated"
 	PlatformAuditActionArtifactStorageTested     PlatformAuditAction = "artifact_storage.tested"

@@ -288,6 +288,26 @@ func (handler *Handler) requireEndpointAccessForTargets(r *http.Request, targets
 	return nil
 }
 
+// requireEndpointAccess 保护不依附既有 Deployment 的 Docker 动作，确保归档导入也不能只凭项目角色访问任意 Endpoint。
+func (handler *Handler) requireEndpointAccess(r *http.Request, endpointID portainer.EndpointID) *httperror.HandlerError {
+	context, err := security.RetrieveRestrictedRequestContext(r)
+	if err != nil {
+		return handler.convertError(err)
+	}
+	if context.IsAdmin {
+		return nil
+	}
+	endpoint, err := handler.DataStore.Endpoint().Endpoint(endpointID)
+	if err != nil {
+		return platformAccessDenied()
+	}
+	group, err := handler.DataStore.EndpointGroup().Read(endpoint.GroupID)
+	if err != nil || !security.AuthorizedEndpointAccess(endpoint, group, context.UserID, context.UserMemberships) {
+		return platformAccessDenied()
+	}
+	return nil
+}
+
 func projectRoleForContext(project *portainer.PlatformProject, context *security.RestrictedRequestContext) portainer.PlatformProjectRole {
 	if project == nil || context == nil {
 		return ""

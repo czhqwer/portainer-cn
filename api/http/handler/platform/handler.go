@@ -17,6 +17,7 @@ type Handler struct {
 	DataStore               dataservices.DataStore
 	FileService             portainer.FileService
 	ArtifactStorageAdapter  platformservice.ArtifactStorageAdapter
+	ArchiveImageImporter    platformservice.ArchiveImageImporter
 	ReleaseExecutor         platformservice.ReleaseExecutor
 	ReleaseRecoveryExecutor platformservice.ReleaseRecoveryExecutor
 	RuntimeInspector        platformservice.RuntimeInspector
@@ -133,6 +134,8 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/artifacts/{artifactId}/validate",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactValidate))).Methods(http.MethodPost)
+	h.Handle("/platform/artifacts/{artifactId}/import",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactArchiveImport))).Methods(http.MethodPost)
 	h.Handle("/platform/artifacts/{artifactId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactArchive))).Methods(http.MethodDelete)
 

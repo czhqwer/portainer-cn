@@ -189,6 +189,17 @@ func readActiveServiceDefinition(tx dataservices.DataStoreTx, id portainer.Platf
 	return service, nil
 }
 
+func readActiveArtifact(tx dataservices.DataStoreTx, id portainer.PlatformArtifactID) (*portainer.PlatformArtifact, error) {
+	artifact, err := tx.PlatformArtifact().Read(id)
+	if err != nil {
+		return nil, err
+	}
+	if !isActive(artifact.PlatformLifecycle) {
+		return nil, notFoundError("Artifact is archived")
+	}
+	return artifact, nil
+}
+
 func readActiveServiceDeployment(tx dataservices.DataStoreTx, id portainer.PlatformServiceDeploymentID) (*portainer.PlatformServiceDeployment, error) {
 	deployment, err := tx.PlatformServiceDeployment().Read(id)
 	if err != nil {
