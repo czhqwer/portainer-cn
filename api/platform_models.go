@@ -10,16 +10,20 @@ import (
 )
 
 type (
-	PlatformProjectID           int
-	PlatformEnvironmentID       int
-	PlatformApplicationID       int
-	PlatformServiceDefinitionID int
-	PlatformServiceDeploymentID int
-	PlatformConfigSetID         int
-	PlatformArtifactID          int
-	PlatformArtifactStorageID   int
-	PlatformReleaseID           int
-	PlatformAuditLogID          int
+	PlatformProjectID              int
+	PlatformEnvironmentID          int
+	PlatformApplicationID          int
+	PlatformServiceDefinitionID    int
+	PlatformServiceDeploymentID    int
+	PlatformConfigSetID            int
+	PlatformArtifactID             int
+	PlatformArtifactStorageID      int
+	PlatformGatewayID              int
+	PlatformGatewayRouteID         int
+	PlatformGatewayCertificateID   int
+	PlatformGatewayConfigVersionID int
+	PlatformReleaseID              int
+	PlatformAuditLogID             int
 
 	PlatformProjectRole             string
 	PlatformLifecycleStatus         string
@@ -58,6 +62,7 @@ type (
 	PlatformDeploymentDriftStatus   string
 	PlatformAuditAction             string
 	PlatformAuditResult             string
+	PlatformGatewayConfigStatus     string
 )
 
 const (
@@ -226,6 +231,10 @@ const (
 	PlatformExecutorModeMulti  PlatformExecutorMode = "multi"
 	PlatformExecutorModeBatch  PlatformExecutorMode = "batch"
 
+	PlatformGatewayConfigStatusCandidate PlatformGatewayConfigStatus = "candidate"
+	PlatformGatewayConfigStatusActive    PlatformGatewayConfigStatus = "active"
+	PlatformGatewayConfigStatusFailed    PlatformGatewayConfigStatus = "failed"
+
 	PlatformDeploymentDriftNone           PlatformDeploymentDriftStatus = "none"
 	PlatformDeploymentDriftConfigChanged  PlatformDeploymentDriftStatus = "config-changed"
 	PlatformDeploymentDriftRuntimeMissing PlatformDeploymentDriftStatus = "runtime-missing"
@@ -269,6 +278,13 @@ const (
 	PlatformAuditActionRollbackCreated           PlatformAuditAction = "rollback.created"
 	PlatformAuditActionRollbackSucceeded         PlatformAuditAction = "rollback.succeeded"
 	PlatformAuditActionRollbackFailed            PlatformAuditAction = "rollback.failed"
+	PlatformAuditActionGatewayCreated            PlatformAuditAction = "gateway.created"
+	PlatformAuditActionGatewayRouteCreated       PlatformAuditAction = "gateway_route.created"
+	PlatformAuditActionGatewayRouteUpdated       PlatformAuditAction = "gateway_route.updated"
+	PlatformAuditActionGatewayRouteArchived      PlatformAuditAction = "gateway_route.archived"
+	PlatformAuditActionGatewayCertificateCreated PlatformAuditAction = "gateway_certificate.created"
+	PlatformAuditActionGatewayConfigApplied      PlatformAuditAction = "gateway_config.applied"
+	PlatformAuditActionGatewayConfigFailed       PlatformAuditAction = "gateway_config.failed"
 
 	PlatformAuditResultSuccess PlatformAuditResult = "success"
 	PlatformAuditResultFailed  PlatformAuditResult = "failed"
@@ -553,6 +569,71 @@ type PlatformArtifactStorage struct {
 	PlatformLifecycle
 }
 
+// PlatformGateway 表示一个环境受控的中心 Nginx 实例；它只保存定位和活动配置事实，
+// 绝不接受用户提供的容器 ID、主机路径或任意 Nginx 指令，以免网关管理变成越权 Docker 操作入口。
+type PlatformGateway struct {
+	ID                    PlatformGatewayID              `json:"Id" example:"1"`
+	ProjectID             PlatformProjectID              `json:"ProjectId" example:"1"`
+	EnvironmentID         PlatformEnvironmentID          `json:"EnvironmentId" example:"1"`
+	EndpointID            EndpointID                     `json:"EndpointId" example:"1"`
+	NodeName              string                         `json:"NodeName,omitempty"`
+	Name                  string                         `json:"Name" example:"production-gateway"`
+	ManagedContainerID    string                         `json:"ManagedContainerId,omitempty" swaggerignore:"true"`
+	ActiveConfigVersionID PlatformGatewayConfigVersionID `json:"ActiveConfigVersionId,omitempty"`
+	ActiveConfigHash      string                         `json:"ActiveConfigHash,omitempty"`
+	PlatformLifecycle
+}
+
+// PlatformGatewayRoute 是服务到受控 upstream 的声明。upstream 本身由发布运行时生成，
+// 不持久化用户可编辑地址，避免通过域名路由把流量代理到任意内网目标。
+type PlatformGatewayRoute struct {
+	ID                  PlatformGatewayRouteID       `json:"Id" example:"1"`
+	GatewayID           PlatformGatewayID            `json:"GatewayId" example:"1"`
+	ProjectID           PlatformProjectID            `json:"ProjectId" example:"1"`
+	EnvironmentID       PlatformEnvironmentID        `json:"EnvironmentId" example:"1"`
+	ServiceDeploymentID PlatformServiceDeploymentID  `json:"ServiceDeploymentId" example:"1"`
+	Domain              string                       `json:"Domain" example:"api.example.com"`
+	Path                string                       `json:"Path" example:"/api"`
+	TargetPort          int                          `json:"TargetPort" example:"8080"`
+	EnableTLS           bool                         `json:"EnableTls" example:"true"`
+	ForceHTTPS          bool                         `json:"ForceHttps" example:"true"`
+	WebSocket           bool                         `json:"WebSocket" example:"false"`
+	ProxyTimeoutSeconds int                          `json:"ProxyTimeoutSeconds,omitempty" example:"60"`
+	MaxRequestBodyBytes int64                        `json:"MaxRequestBodyBytes,omitempty" example:"10485760"`
+	CertificateID       PlatformGatewayCertificateID `json:"CertificateId,omitempty"`
+	PlatformLifecycle
+}
+
+// PlatformGatewayCertificate 只保存证书公开元数据和受控材料引用。
+// 私钥的具体存储由后续安全存储实现负责，不能作为普通 JSON 字段、备份字段或审计摘要落库。
+type PlatformGatewayCertificate struct {
+	ID            PlatformGatewayCertificateID `json:"Id" example:"1"`
+	ProjectID     PlatformProjectID            `json:"ProjectId" example:"1"`
+	Name          string                       `json:"Name" example:"example.com-2026"`
+	Domains       []string                     `json:"Domains"`
+	Serial        string                       `json:"Serial,omitempty"`
+	NotBefore     int64                        `json:"NotBefore,omitempty"`
+	NotAfter      int64                        `json:"NotAfter,omitempty"`
+	SHA256        string                       `json:"SHA256,omitempty"`
+	MaterialRef   string                       `json:"MaterialRef,omitempty" swaggerignore:"true"`
+	HasPrivateKey bool                         `json:"HasPrivateKey"`
+	PlatformLifecycle
+}
+
+// PlatformGatewayConfigVersion 保存经过渲染和校验的配置版本事实，而不是 Nginx 原文。
+// 这样 Release 可以不可变地引用 hash/路由集合，同时避免配置文本和证书路径从控制面泄漏。
+type PlatformGatewayConfigVersion struct {
+	ID              PlatformGatewayConfigVersionID `json:"Id" example:"1"`
+	GatewayID       PlatformGatewayID              `json:"GatewayId" example:"1"`
+	Revision        int                            `json:"Revision" example:"1"`
+	Status          PlatformGatewayConfigStatus    `json:"Status" example:"active"`
+	ConfigHash      string                         `json:"ConfigHash"`
+	RouteIDs        []PlatformGatewayRouteID       `json:"RouteIds"`
+	CreatedAt       int64                          `json:"CreatedAt" example:"1783740000"`
+	CreatedByUserID UserID                         `json:"CreatedByUserId,omitempty"`
+	FailureReason   string                         `json:"FailureReason,omitempty"`
+}
+
 type PlatformRelease struct {
 	ID                      PlatformReleaseID             `json:"Id" example:"1"`
 	ProjectID               PlatformProjectID             `json:"ProjectId" example:"1"`
@@ -751,6 +832,164 @@ func NewPlatformLifecycle() PlatformLifecycle {
 
 var platformConfigEntryKeyPattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 var platformArtifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var platformGatewayDomainPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
+
+func NewPlatformGateway() PlatformGateway {
+	return PlatformGateway{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformGatewayRoute() PlatformGatewayRoute {
+	return PlatformGatewayRoute{
+		Path:                "/",
+		ProxyTimeoutSeconds: 60,
+		PlatformLifecycle:   NewPlatformLifecycle(),
+	}
+}
+
+func NewPlatformGatewayCertificate() PlatformGatewayCertificate {
+	return PlatformGatewayCertificate{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+// NormalizePlatformGateway 统一控制面定位字段，避免后续 Docker adapter 根据未规范化名称
+// 推导容器或配置路径；真实运行时资源只能由平台标签和 Endpoint 配置决定。
+func NormalizePlatformGateway(gateway *PlatformGateway) {
+	if gateway == nil {
+		return
+	}
+
+	gateway.Name = strings.TrimSpace(gateway.Name)
+	gateway.NodeName = strings.TrimSpace(gateway.NodeName)
+	gateway.ManagedContainerID = strings.TrimSpace(gateway.ManagedContainerID)
+	gateway.ActiveConfigHash = strings.TrimSpace(gateway.ActiveConfigHash)
+}
+
+func ValidatePlatformGateway(gateway PlatformGateway) error {
+	NormalizePlatformGateway(&gateway)
+	if gateway.ProjectID <= 0 || gateway.EnvironmentID <= 0 || gateway.EndpointID <= 0 || gateway.Name == "" {
+		return fmt.Errorf("gateway project, environment, endpoint and name are required")
+	}
+	if gateway.ActiveConfigHash != "" && !platformArtifactSHA256Pattern.MatchString(gateway.ActiveConfigHash) {
+		return fmt.Errorf("gateway active config hash is invalid")
+	}
+	return nil
+}
+
+// NormalizePlatformGatewayRoute 只接受可以安全渲染的域名和 URI 路径片段。
+// 规范化在 dataservice 与 handler 两侧复用，避免备份恢复绕过 API 校验后产生不同配置。
+func NormalizePlatformGatewayRoute(route *PlatformGatewayRoute) {
+	if route == nil {
+		return
+	}
+
+	route.Domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(route.Domain), "."))
+	route.Path = strings.TrimSpace(route.Path)
+	if route.Path == "" {
+		route.Path = "/"
+	}
+	if route.ProxyTimeoutSeconds == 0 {
+		route.ProxyTimeoutSeconds = 60
+	}
+}
+
+func ValidatePlatformGatewayRoute(route PlatformGatewayRoute) error {
+	NormalizePlatformGatewayRoute(&route)
+	if route.GatewayID <= 0 || route.ProjectID <= 0 || route.EnvironmentID <= 0 || route.ServiceDeploymentID <= 0 {
+		return fmt.Errorf("gateway route ownership is required")
+	}
+	if !platformGatewayDomainPattern.MatchString(route.Domain) || len(route.Domain) > 253 {
+		return fmt.Errorf("gateway route domain is invalid")
+	}
+	if !strings.HasPrefix(route.Path, "/") || strings.ContainsAny(route.Path, "?#\\n\\r\\x00") || path.Clean(route.Path) != route.Path {
+		return fmt.Errorf("gateway route path is invalid")
+	}
+	if route.TargetPort < 1 || route.TargetPort > 65535 {
+		return fmt.Errorf("gateway route target port is invalid")
+	}
+	if route.ForceHTTPS && !route.EnableTLS {
+		return fmt.Errorf("gateway route force HTTPS requires TLS")
+	}
+	if route.EnableTLS && route.CertificateID <= 0 {
+		return fmt.Errorf("gateway route TLS requires a certificate")
+	}
+	if !route.EnableTLS && route.CertificateID != 0 {
+		return fmt.Errorf("gateway route certificate requires TLS")
+	}
+	if route.ProxyTimeoutSeconds < 1 || route.ProxyTimeoutSeconds > 600 {
+		return fmt.Errorf("gateway route proxy timeout is invalid")
+	}
+	if route.MaxRequestBodyBytes < 0 || route.MaxRequestBodyBytes > 2*1024*1024*1024 {
+		return fmt.Errorf("gateway route max request body is invalid")
+	}
+	return nil
+}
+
+func NormalizePlatformGatewayCertificate(certificate *PlatformGatewayCertificate) {
+	if certificate == nil {
+		return
+	}
+
+	certificate.Name = strings.TrimSpace(certificate.Name)
+	certificate.Serial = strings.TrimSpace(certificate.Serial)
+	certificate.SHA256 = strings.TrimSpace(certificate.SHA256)
+	certificate.MaterialRef = strings.TrimSpace(certificate.MaterialRef)
+	certificate.Domains = append([]string(nil), certificate.Domains...)
+	for i := range certificate.Domains {
+		certificate.Domains[i] = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(certificate.Domains[i]), "."))
+	}
+	sort.Strings(certificate.Domains)
+}
+
+func ValidatePlatformGatewayCertificate(certificate PlatformGatewayCertificate) error {
+	NormalizePlatformGatewayCertificate(&certificate)
+	if certificate.ProjectID <= 0 || certificate.Name == "" || len(certificate.Domains) == 0 {
+		return fmt.Errorf("gateway certificate project, name and domains are required")
+	}
+	for i, domain := range certificate.Domains {
+		if !platformGatewayDomainPattern.MatchString(domain) || (i > 0 && certificate.Domains[i-1] == domain) {
+			return fmt.Errorf("gateway certificate domains are invalid")
+		}
+	}
+	if certificate.NotBefore < 0 || certificate.NotAfter < 0 || (certificate.NotAfter != 0 && certificate.NotBefore >= certificate.NotAfter) {
+		return fmt.Errorf("gateway certificate validity is invalid")
+	}
+	if certificate.SHA256 != "" && !platformArtifactSHA256Pattern.MatchString(certificate.SHA256) {
+		return fmt.Errorf("gateway certificate hash is invalid")
+	}
+	if certificate.HasPrivateKey != (certificate.MaterialRef != "") {
+		return fmt.Errorf("gateway certificate material reference is invalid")
+	}
+	return nil
+}
+
+func NormalizePlatformGatewayConfigVersion(version *PlatformGatewayConfigVersion) {
+	if version == nil {
+		return
+	}
+
+	version.ConfigHash = strings.TrimSpace(version.ConfigHash)
+	version.FailureReason = strings.TrimSpace(version.FailureReason)
+	version.RouteIDs = append([]PlatformGatewayRouteID(nil), version.RouteIDs...)
+	sort.Slice(version.RouteIDs, func(i, j int) bool { return version.RouteIDs[i] < version.RouteIDs[j] })
+}
+
+func ValidatePlatformGatewayConfigVersion(version PlatformGatewayConfigVersion) error {
+	NormalizePlatformGatewayConfigVersion(&version)
+	if version.GatewayID <= 0 || version.Revision <= 0 || !platformArtifactSHA256Pattern.MatchString(version.ConfigHash) {
+		return fmt.Errorf("gateway config version fields are invalid")
+	}
+	if version.Status != PlatformGatewayConfigStatusCandidate && version.Status != PlatformGatewayConfigStatusActive && version.Status != PlatformGatewayConfigStatusFailed {
+		return fmt.Errorf("gateway config version status is invalid")
+	}
+	if len(version.RouteIDs) == 0 {
+		return fmt.Errorf("gateway config version requires routes")
+	}
+	for i, routeID := range version.RouteIDs {
+		if routeID <= 0 || (i > 0 && version.RouteIDs[i-1] == routeID) {
+			return fmt.Errorf("gateway config version routes are invalid")
+		}
+	}
+	return nil
+}
 
 // NewPlatformConfigSet creates the safe metadata-only baseline for a configuration set.
 // 敏感值的加密保存将在阶段 2 批次 4 接入；这里先固定默认配置集和版本，避免

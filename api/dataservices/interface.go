@@ -19,6 +19,10 @@ type (
 		PlatformConfigSet() PlatformConfigSetService
 		PlatformArtifact() PlatformArtifactService
 		PlatformArtifactStorage() PlatformArtifactStorageService
+		PlatformGateway() PlatformGatewayService
+		PlatformGatewayRoute() PlatformGatewayRouteService
+		PlatformGatewayCertificate() PlatformGatewayCertificateService
+		PlatformGatewayConfigVersion() PlatformGatewayConfigVersionService
 		PlatformRelease() PlatformReleaseService
 		PlatformReleaseLock() PlatformReleaseLockService
 		PlatformAuditLog() PlatformAuditLogService
@@ -137,6 +141,30 @@ type (
 	// Callers must encrypt credentials before persistence; the service never returns or transforms plaintext credentials.
 	PlatformArtifactStorageService interface {
 		BaseCRUD[portainer.PlatformArtifactStorage, portainer.PlatformArtifactStorageID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayService manages the environment-scoped Nginx control-plane record.
+	PlatformGatewayService interface {
+		BaseCRUD[portainer.PlatformGateway, portainer.PlatformGatewayID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayRouteService manages validated domain/path declarations.
+	PlatformGatewayRouteService interface {
+		BaseCRUD[portainer.PlatformGatewayRoute, portainer.PlatformGatewayRouteID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayCertificateService stores certificate metadata and an opaque material reference only.
+	PlatformGatewayCertificateService interface {
+		BaseCRUD[portainer.PlatformGatewayCertificate, portainer.PlatformGatewayCertificateID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayConfigVersionService records immutable rendered-config facts without persisting Nginx text.
+	PlatformGatewayConfigVersionService interface {
+		BaseCRUD[portainer.PlatformGatewayConfigVersion, portainer.PlatformGatewayConfigVersionID]
 		GetNextIdentifier() int
 	}
 

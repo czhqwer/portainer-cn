@@ -92,6 +92,44 @@ func TestPlatformDataServicesCRUDAndArchive(t *testing.T) {
 	storage.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
 	require.NoError(t, store.PlatformArtifactStorage().Update(storage.ID, storage))
 
+	gateway := portainer.NewPlatformGateway()
+	gateway.ProjectID = project.ID
+	gateway.EnvironmentID = environment.ID
+	gateway.EndpointID = 1
+	gateway.Name = "demo-gateway"
+	require.NoError(t, store.PlatformGateway().Create(&gateway))
+
+	route := portainer.NewPlatformGatewayRoute()
+	route.GatewayID = gateway.ID
+	route.ProjectID = project.ID
+	route.EnvironmentID = environment.ID
+	route.ServiceDeploymentID = deployment.ID
+	route.Domain = "api.example.test"
+	route.Path = "/api"
+	route.TargetPort = 8080
+	require.NoError(t, store.PlatformGatewayRoute().Create(&route))
+
+	certificate := portainer.NewPlatformGatewayCertificate()
+	certificate.ProjectID = project.ID
+	certificate.Name = "example-test"
+	certificate.Domains = []string{"api.example.test"}
+	require.NoError(t, store.PlatformGatewayCertificate().Create(&certificate))
+
+	configVersion := portainer.PlatformGatewayConfigVersion{
+		GatewayID:  gateway.ID,
+		Revision:   1,
+		Status:     portainer.PlatformGatewayConfigStatusCandidate,
+		ConfigHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		RouteIDs:   []portainer.PlatformGatewayRouteID{route.ID},
+	}
+	require.NoError(t, store.PlatformGatewayConfigVersion().Create(&configVersion))
+	gotGateway, err := store.PlatformGateway().Read(gateway.ID)
+	require.NoError(t, err)
+	require.Equal(t, gateway.Name, gotGateway.Name)
+	gotConfigVersion, err := store.PlatformGatewayConfigVersion().Read(configVersion.ID)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformGatewayConfigStatusCandidate, gotConfigVersion.Status)
+
 	release := samplePlatformRelease(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID)
 	require.NoError(t, store.PlatformRelease().Create(release))
 	gotRelease, err := store.PlatformRelease().Read(release.ID)
@@ -187,6 +225,35 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	require.NoError(t, store.PlatformArtifact().Create(artifact))
 	storage := samplePlatformArtifactStorage()
 	require.NoError(t, store.PlatformArtifactStorage().Create(storage))
+	gateway := portainer.NewPlatformGateway()
+	gateway.ProjectID = project.ID
+	gateway.EnvironmentID = environment.ID
+	gateway.EndpointID = 1
+	gateway.Name = "export-gateway"
+	require.NoError(t, store.PlatformGateway().Create(&gateway))
+	route := portainer.NewPlatformGatewayRoute()
+	route.GatewayID = gateway.ID
+	route.ProjectID = project.ID
+	route.EnvironmentID = environment.ID
+	route.ServiceDeploymentID = deployment.ID
+	route.Domain = "export.example.test"
+	route.TargetPort = 8080
+	require.NoError(t, store.PlatformGatewayRoute().Create(&route))
+	certificate := portainer.NewPlatformGatewayCertificate()
+	certificate.ProjectID = project.ID
+	certificate.Name = "export-certificate"
+	certificate.Domains = []string{"export.example.test"}
+	certificate.MaterialRef = "gateway-certificates/export-certificate"
+	certificate.HasPrivateKey = true
+	require.NoError(t, store.PlatformGatewayCertificate().Create(&certificate))
+	configVersion := portainer.PlatformGatewayConfigVersion{
+		GatewayID:  gateway.ID,
+		Revision:   1,
+		Status:     portainer.PlatformGatewayConfigStatusActive,
+		ConfigHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		RouteIDs:   []portainer.PlatformGatewayRouteID{route.ID},
+	}
+	require.NoError(t, store.PlatformGatewayConfigVersion().Create(&configVersion))
 	release := samplePlatformRelease(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID)
 	require.NoError(t, store.PlatformRelease().Create(release))
 	lock := &portainer.PlatformReleaseLock{
@@ -228,6 +295,20 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	require.Empty(t, importedStorage.SecretKeyCipherText)
 	require.Empty(t, importedStorage.CredentialEncryptionVersion)
 	require.Empty(t, importedStorage.CredentialHash)
+
+	importedGateway, err := importedStore.PlatformGateway().Read(gateway.ID)
+	require.NoError(t, err)
+	require.Equal(t, gateway.Name, importedGateway.Name)
+	importedRoute, err := importedStore.PlatformGatewayRoute().Read(route.ID)
+	require.NoError(t, err)
+	require.Equal(t, route.Domain, importedRoute.Domain)
+	importedCertificate, err := importedStore.PlatformGatewayCertificate().Read(certificate.ID)
+	require.NoError(t, err)
+	require.Empty(t, importedCertificate.MaterialRef)
+	require.False(t, importedCertificate.HasPrivateKey)
+	importedConfigVersion, err := importedStore.PlatformGatewayConfigVersion().Read(configVersion.ID)
+	require.NoError(t, err)
+	require.Equal(t, configVersion.ConfigHash, importedConfigVersion.ConfigHash)
 
 	importedLock, err := importedStore.PlatformReleaseLock().Read(lock.ID)
 	require.NoError(t, err)
