@@ -26,6 +26,7 @@ type Handler struct {
 	RuntimeInspector        platformservice.RuntimeInspector
 	GatewayRuntime          platformservice.GatewayRuntime
 	DatabaseResourceProbe   platformservice.DatabaseResourceProbe
+	ObservabilityAdapter    platformservice.ObservabilityAdapter
 }
 
 // NewHandler 注册阶段 2 平台接口。路由层只完成认证和受限上下文注入，
@@ -35,7 +36,15 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		Router:                 mux.NewRouter(),
 		ArtifactStorageAdapter: platformservice.NewS3CompatibleArtifactStorageAdapter(),
 		DatabaseResourceProbe:  platformservice.NewDirectDatabaseResourceProbe(),
+		ObservabilityAdapter:   platformservice.NewHTTPObservabilityAdapter(nil),
 	}
+
+	h.Handle("/platform/observability-config",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityConfigInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/observability-config",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityConfigUpsert))).Methods(http.MethodPut)
+	h.Handle("/platform/projects/{projectId}/observability",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityQuery))).Methods(http.MethodGet)
 
 	h.Handle("/platform/projects",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectList))).Methods(http.MethodGet)

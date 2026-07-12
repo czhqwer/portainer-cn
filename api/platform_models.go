@@ -309,6 +309,8 @@ const (
 	PlatformAuditActionDatabaseBindingCreated     PlatformAuditAction = "database_binding.created"
 	PlatformAuditActionDatabaseBindingUpdated     PlatformAuditAction = "database_binding.updated"
 	PlatformAuditActionDatabaseBindingArchived    PlatformAuditAction = "database_binding.archived"
+	PlatformAuditActionObservabilityConfigured    PlatformAuditAction = "observability.configured"
+	PlatformAuditActionObservabilityQueried       PlatformAuditAction = "observability.queried"
 
 	PlatformAuditResultSuccess PlatformAuditResult = "success"
 	PlatformAuditResultFailed  PlatformAuditResult = "failed"
