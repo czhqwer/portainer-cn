@@ -119,6 +119,27 @@ func TestSingleTargetExecutorSucceeds(t *testing.T) {
 	require.Equal(t, []string{"pull", "start-candidate", "validate-candidate", "delete-candidate", "switch", "validate-current"}, driver.calls)
 }
 
+func TestMultiTargetExecutorRecordsEachWorkloadResult(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	request := sampleReleaseExecutionRequest()
+	request.Environment.TargetMode = portainer.PlatformTargetModeMulti
+	request.Environment.Targets = []portainer.PlatformDeploymentTarget{
+		{EndpointID: 2, NodeName: "worker-b", HostAddress: "10.0.0.12", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 1, NodeName: "worker-a", HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 3, NodeName: "gateway", Role: portainer.PlatformDeploymentTargetRoleGateway, Enabled: true},
+	}
+
+	result, err := NewMultiTargetExecutor(driver).Execute(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusSucceeded, result.Release.Status)
+	require.Len(t, result.Release.TargetResults, 2)
+	require.Equal(t, portainer.EndpointID(1), result.Release.TargetResults[0].EndpointID)
+	require.Equal(t, portainer.PlatformReleaseTargetStatusSucceeded, result.Release.TargetResults[0].Status)
+	require.Equal(t, portainer.EndpointID(2), result.Release.TargetResults[1].EndpointID)
+	require.NotNil(t, result.Deployment)
+	require.Len(t, result.Deployment.CurrentTargetRuntimeRefs, 2)
+}
+
 func TestSingleTargetExecutorRecoversPreviousWhenGatewayCutoverFails(t *testing.T) {
 	driver := &fakeRuntimeDriver{}
 	executor := NewSingleTargetExecutor(driver).WithGatewayCutover(fakeGatewayCutover{err: errors.New("gateway reload failed")})

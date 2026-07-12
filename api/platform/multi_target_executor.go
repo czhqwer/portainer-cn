@@ -1,0 +1,151 @@
+package platform
+
+import (
+	"context"
+	"errors"
+	"sort"
+	"time"
+
+	portainer "github.com/portainer/portainer/api"
+)
+
+// MultiTargetExecutor 在阶段 5.4 将现有单目标受控动作复用于每台 workload 主机。
+// 每次调用仍只把一个 target 交给 Docker driver，避免共享全局 RuntimeRef 导致不同主机互相切换容器。
+type MultiTargetExecutor struct {
+	driver RuntimeDriver
+	now    func() time.Time
+}
+
+func NewMultiTargetExecutor(driver RuntimeDriver) *MultiTargetExecutor {
+	return &MultiTargetExecutor{driver: driver, now: time.Now}
+}
+
+func (executor *MultiTargetExecutor) Execute(ctx context.Context, request ReleaseExecutionRequest) (ReleaseExecutionResult, error) {
+	if request.Environment.TargetMode != portainer.PlatformTargetModeMulti {
+		return NewSingleTargetExecutor(executor.driver).Execute(ctx, request)
+	}
+	if executor.driver == nil {
+		release := request.Release
+		failRelease(&release, ReleaseFailureReasonExecutorUnavailable, safeReleaseFailureMessage(ReleaseFailureReasonExecutorUnavailable), executor.now().Unix())
+		return ReleaseExecutionResult{Release: release}, nil
+	}
+	targets, err := selectMultiWorkloadTargets(request.Environment)
+	if err != nil {
+		release := request.Release
+		failRelease(&release, ReleaseFailureReasonTargetNotConfigured, safeReleaseFailureMessage(ReleaseFailureReasonTargetNotConfigured), executor.now().Unix())
+		return ReleaseExecutionResult{Release: release}, nil
+	}
+
+	release := request.Release
+	results := make([]portainer.PlatformReleaseTargetResult, 0, len(targets))
+	previous := targetResultByEndpoint(request.Deployment.CurrentTargetRuntimeRefs)
+	for index, target := range targets {
+		perTargetRequest := request
+		perTargetRequest.Environment = request.Environment
+		perTargetRequest.Environment.TargetMode = portainer.PlatformTargetModeSingle
+		perTargetRequest.Environment.Targets = []portainer.PlatformDeploymentTarget{target}
+		perTargetRequest.Progress = nil
+		perTargetRequest.Deployment = request.Deployment
+		if prior, found := previous[target.EndpointID]; found {
+			perTargetRequest.Deployment.CurrentRuntimeRef = prior.RuntimeRef
+		}
+		result, err := NewSingleTargetExecutor(executor.driver).Execute(ctx, perTargetRequest)
+		if err != nil {
+			return ReleaseExecutionResult{}, err
+		}
+		targetResult := portainer.PlatformReleaseTargetResult{EndpointID: target.EndpointID, NodeName: target.NodeName, HostAddress: target.HostAddress, BatchIndex: index, Status: targetStatusFromRelease(result.Release)}
+		if result.Release.Status == portainer.PlatformReleaseStatusSucceeded {
+			targetResult.RuntimeRef = result.Release.RuntimeSnapshot.CurrentRuntimeRef
+			targetResult.PublishedPorts = result.Release.RuntimeSnapshot.PublishedPorts
+		}
+		if result.Release.FailureReason != "" {
+			targetResult.Reason = result.Release.FailureReason
+		}
+		results = append(results, targetResult)
+		release.Steps = append(release.Steps, result.Release.Steps...)
+		if targetResult.Status != portainer.PlatformReleaseTargetStatusSucceeded {
+			release.TargetResults = results
+			return executor.failAndRecover(ctx, request, release, results)
+		}
+	}
+
+	now := executor.now().Unix()
+	release.Status = portainer.PlatformReleaseStatusSucceeded
+	release.FailureReason = ""
+	release.TargetResults = results
+	release.FinishedAt = now
+	release.LeaseOwner, release.LeaseExpiresAt = "", 0
+	deployment := request.Deployment
+	deployment.CurrentServingReleaseID = release.ID
+	deployment.CurrentTargetRuntimeRefs = append([]portainer.PlatformReleaseTargetResult(nil), results...)
+	if len(results) > 0 {
+		deployment.CurrentRuntimeRef = results[0].RuntimeRef // 保留旧 single 字段，供未迁移调用方读取首个稳定 target。
+	}
+	deployment.LastDeployedSpecRevision = deployment.SpecRevision
+	deployment.LastDeployedAt = now
+	deployment.DriftStatus = portainer.PlatformDeploymentDriftNone
+	deployment.ResourceVersion++
+	deployment.UpdatedAt = now
+	return ReleaseExecutionResult{Release: release, Deployment: &deployment}, nil
+}
+
+func (executor *MultiTargetExecutor) failAndRecover(ctx context.Context, request ReleaseExecutionRequest, release portainer.PlatformRelease, results []portainer.PlatformReleaseTargetResult) (ReleaseExecutionResult, error) {
+	for i := range results {
+		if results[i].Status != portainer.PlatformReleaseTargetStatusSucceeded {
+			continue
+		}
+		perTargetRequest := request
+		perTargetRequest.Deployment = request.Deployment
+		if prior, found := targetResultByEndpoint(request.Deployment.CurrentTargetRuntimeRefs)[results[i].EndpointID]; found {
+			perTargetRequest.Deployment.CurrentRuntimeRef = prior.RuntimeRef
+		}
+		target := portainer.PlatformDeploymentTarget{EndpointID: results[i].EndpointID, NodeName: results[i].NodeName, HostAddress: results[i].HostAddress, Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true}
+		if err := executor.driver.Recover(ctx, perTargetRequest, target); err != nil {
+			results[i].Status, results[i].Reason = portainer.PlatformReleaseTargetStatusRecoveryFailed, ReleaseFailureReasonRecoveryFailed
+			release.Status, release.FailureReason, release.ManualActionRequired = portainer.PlatformReleaseStatusRecoveryFailed, ReleaseFailureReasonRecoveryFailed, true
+			release.TargetResults, release.FinishedAt = results, executor.now().Unix()
+			return ReleaseExecutionResult{Release: release}, nil
+		}
+		results[i].Status, results[i].Reason = portainer.PlatformReleaseTargetStatusRecovered, ""
+	}
+	release.TargetResults = results
+	failRelease(&release, ReleaseFailureReasonFinalHealthFailed, safeReleaseFailureMessage(ReleaseFailureReasonFinalHealthFailed), executor.now().Unix())
+	return ReleaseExecutionResult{Release: release}, nil
+}
+
+func selectMultiWorkloadTargets(environment portainer.PlatformEnvironment) ([]portainer.PlatformDeploymentTarget, error) {
+	if environment.TargetMode != portainer.PlatformTargetModeMulti {
+		return nil, errors.New("multi target mode is required")
+	}
+	targets := make([]portainer.PlatformDeploymentTarget, 0)
+	for _, target := range environment.Targets {
+		if target.Enabled && target.Role == portainer.PlatformDeploymentTargetRoleWorkload {
+			targets = append(targets, target)
+		}
+	}
+	if len(targets) == 0 {
+		return nil, errors.New("workload target is required")
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		if targets[i].EndpointID != targets[j].EndpointID {
+			return targets[i].EndpointID < targets[j].EndpointID
+		}
+		return targets[i].NodeName < targets[j].NodeName
+	})
+	return targets, nil
+}
+
+func targetResultByEndpoint(results []portainer.PlatformReleaseTargetResult) map[portainer.EndpointID]portainer.PlatformReleaseTargetResult {
+	byEndpoint := make(map[portainer.EndpointID]portainer.PlatformReleaseTargetResult, len(results))
+	for _, result := range results {
+		byEndpoint[result.EndpointID] = result
+	}
+	return byEndpoint
+}
+
+func targetStatusFromRelease(release portainer.PlatformRelease) portainer.PlatformReleaseTargetStatus {
+	if release.Status == portainer.PlatformReleaseStatusSucceeded {
+		return portainer.PlatformReleaseTargetStatusSucceeded
+	}
+	return portainer.PlatformReleaseTargetStatusFailed
+}

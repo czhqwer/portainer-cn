@@ -401,6 +401,7 @@ type PlatformServiceDeployment struct {
 	CurrentServingReleaseID  PlatformReleaseID             `json:"CurrentServingReleaseId" example:"0"`
 	CurrentArtifactID        PlatformArtifactID            `json:"CurrentArtifactId" example:"0"`
 	CurrentRuntimeRef        RuntimeRef                    `json:"CurrentRuntimeRef"`
+	CurrentTargetRuntimeRefs []PlatformReleaseTargetResult `json:"CurrentTargetRuntimeRefs,omitempty"`
 	CurrentImage             string                        `json:"CurrentImage,omitempty"`
 	DriftStatus              PlatformDeploymentDriftStatus `json:"DriftStatus" example:"none"`
 	LastObservedAt           int64                         `json:"LastObservedAt" example:"0"`
