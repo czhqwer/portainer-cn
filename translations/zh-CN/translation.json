@@ -4532,6 +4532,7 @@
       "createApplication": "创建应用",
       "createService": "创建服务",
       "createArtifact": "登记镜像制品",
+      "packageJava": "包装 Java 8 制品",
       "validateRelease": "校验发布",
       "createRelease": "创建发布",
       "createConfigSet": "创建配置集",
@@ -4574,6 +4575,10 @@
       "artifactType": "制品类型",
       "artifactFile": "制品文件",
       "expectedSHA256": "期望 SHA256（可选）"
+      ,"javaArtifact": "Java 制品",
+      "javaPort": "容器端口",
+      "jvmArgs": "JVM 参数（以空格分隔）",
+      "appArgs": "应用参数（以空格分隔）"
     },
     "formTitles": {
       "project": "创建项目",
@@ -4581,6 +4586,10 @@
       "application": "创建应用",
       "service": "创建服务",
       "artifact": "登记镜像制品"
+      ,"javaBuild": "包装 Java 8 制品"
+    },
+    "javaBuild": {
+      "restriction": "仅使用平台维护的 Java 8 模板；不接受 Dockerfile、Shell 命令或自定义基础镜像。"
     },
     "environmentTypes": {
       "dev": "开发",

@@ -6,6 +6,7 @@ import { withError } from '@/react-tools/react-query';
 import {
   CreateImageReferenceArtifactPayload,
 	UploadPlatformArtifactPayload,
+	BuildJavaArtifactPayload,
   CreatePlatformApplicationPayload,
   CreatePlatformConfigSetPayload,
   CreatePlatformEnvironmentPayload,
@@ -305,6 +306,11 @@ async function uploadPlatformArtifact(payload: UploadPlatformArtifactPayload) {
 	return response.data;
 }
 
+async function buildJavaArtifact({ artifactId, payload }: { artifactId: number; payload: BuildJavaArtifactPayload }) {
+	const response = await axios.post<PlatformArtifact>(`/platform/artifacts/${artifactId}/build-java`, payload);
+	return response.data;
+}
+
 async function getReleases() {
   const response = await axios.get<PlatformRelease[]>('/platform/releases');
   return response.data;
@@ -495,6 +501,11 @@ export function useUploadPlatformArtifactMutation() {
 			queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }),
 		...withError('Failed uploading platform artifact'),
 	});
+}
+
+export function useBuildJavaArtifactMutation() {
+	const queryClient = useQueryClient();
+	return useMutation({ mutationFn: buildJavaArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging Java artifact') });
 }
 
 export function usePlatformConfigSets({

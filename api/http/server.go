@@ -230,6 +230,7 @@ func (server *Server) Start(ctx context.Context) error {
 	if server.DockerClientFactory != nil {
 		dockerRuntimeDriver := platform.NewDockerRuntimeDriver(server.DataStore, server.DockerClientFactory)
 		platformHandler.ArchiveImageImporter = platform.NewDockerArchiveImporter(server.DataStore, server.DockerClientFactory)
+		platformHandler.JavaImageBuilder = platform.NewDockerJavaImageBuilder(server.DataStore, server.DockerClientFactory)
 		releaseExecutor := platform.NewSingleTargetExecutor(dockerRuntimeDriver)
 		platformHandler.ReleaseExecutor = releaseExecutor
 		platformHandler.ReleaseRecoveryExecutor = releaseExecutor

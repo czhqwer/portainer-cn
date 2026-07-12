@@ -224,6 +224,16 @@ export interface PlatformArtifact extends PlatformLifecycle {
 	FileName?: string;
 	Size?: number;
 	Status?: string;
+	CandidateImageRef?: string;
+	CandidateImageId?: string;
+	BuildTemplate?: string;
+}
+
+export interface BuildJavaArtifactPayload {
+  EndpointId: number;
+  JvmArgs?: string[];
+  AppArgs?: string[];
+  Port: number;
 }
 
 export interface PlatformReleaseStep {

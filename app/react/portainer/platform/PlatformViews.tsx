@@ -50,6 +50,7 @@ import {
   useUpdatePlatformConfigSetMutation,
   useUpdatePlatformServiceDeploymentMutation,
 	useUploadPlatformArtifactMutation,
+	useBuildJavaArtifactMutation,
   useValidatePlatformReleaseMutation,
 } from './queries';
 import {
@@ -427,6 +428,7 @@ export function PlatformArtifactsView() {
     (project) => project.Permissions?.CanDeploy
   );
   const [isArtifactFormOpen, setIsArtifactFormOpen] = useState(false);
+  const [isJavaBuildFormOpen, setIsJavaBuildFormOpen] = useState(false);
 
   return (
     <PlatformPage
@@ -447,12 +449,16 @@ export function PlatformArtifactsView() {
           })}
         </Button>
       </ActionBar>
+		<Button color="light" disabled={!artifacts.some((artifact) => artifact.Type === 'java-jar')} onClick={() => setIsJavaBuildFormOpen((value) => !value)} data-cy="platform-java-build-open">
+			{t('platform.actions.packageJava', { defaultValue: 'Package Java 8 artifact' })}
+		</Button>
       {isArtifactFormOpen && (
         <CreateArtifactPanel
           projects={artifactProjects}
           onDone={() => setIsArtifactFormOpen(false)}
         />
       )}
+		{isJavaBuildFormOpen && <JavaBuildPanel artifacts={artifacts} onDone={() => setIsJavaBuildFormOpen(false)} />}
       <DataSection
         title={t('platform.artifacts.tableTitle', {
           defaultValue: 'Artifacts',
@@ -2423,6 +2429,28 @@ function AuditLogsTable({ logs }: { logs: PlatformAuditLog[] }) {
       }))}
     />
   );
+}
+
+function JavaBuildPanel({ artifacts, onDone }: { artifacts: PlatformArtifact[]; onDone: () => void }) {
+  const { t } = useTranslation();
+  const mutation = useBuildJavaArtifactMutation();
+  const javaArtifacts = artifacts.filter((artifact) => artifact.Type === 'java-jar' && artifact.Status !== 'building');
+  const [artifactId, setArtifactId] = useState<number | undefined>(javaArtifacts[0]?.Id);
+  const [endpointId, setEndpointId] = useState('');
+  const [port, setPort] = useState('8080');
+  const [jvmArgs, setJvmArgs] = useState('');
+  const [appArgs, setAppArgs] = useState('');
+  const tokens = (value: string) => value.split(/\s+/).map((item) => item.trim()).filter(Boolean);
+  async function submit(event: FormEvent) { event.preventDefault(); if (!artifactId || !Number(endpointId) || !Number(port)) return; await mutation.mutateAsync({ artifactId, payload: { EndpointId: Number(endpointId), Port: Number(port), JvmArgs: tokens(jvmArgs), AppArgs: tokens(appArgs) } }); onDone(); }
+  return <ActionPanel title={t('platform.formTitles.javaBuild', { defaultValue: 'Package Java 8 artifact' })}><form className="grid gap-3 md:grid-cols-3" onSubmit={submit}>
+    <label className="form-control-label">{t('platform.forms.javaArtifact', { defaultValue: 'Java artifact' })}<select className="form-control mt-1" value={artifactId} onChange={(event) => setArtifactId(Number(event.target.value))}>{javaArtifacts.map((artifact) => <option key={artifact.Id} value={artifact.Id}>{artifact.Name} · {artifact.Version}</option>)}</select></label>
+    <TextInputField label={t('platform.forms.endpointId', { defaultValue: 'Docker endpoint ID' })} value={endpointId} required onChange={setEndpointId} />
+    <TextInputField label={t('platform.forms.javaPort', { defaultValue: 'Container port' })} value={port} required onChange={setPort} />
+    <TextInputField label={t('platform.forms.jvmArgs', { defaultValue: 'JVM arguments (space-separated tokens)' })} value={jvmArgs} onChange={setJvmArgs} />
+    <TextInputField label={t('platform.forms.appArgs', { defaultValue: 'Application arguments (space-separated tokens)' })} value={appArgs} onChange={setAppArgs} />
+    <div className="text-muted self-end text-sm">{t('platform.javaBuild.restriction', { defaultValue: 'Uses the platform Java 8 template. Dockerfile, shell commands, and custom base images are not accepted.' })}</div>
+    <FormActions isSubmitting={mutation.isLoading} submitLabel={t('platform.actions.packageJava', { defaultValue: 'Package Java 8 artifact' })} submitDisabled={!artifactId || !endpointId || !port} onCancel={onDone} />
+  </form></ActionPanel>;
 }
 
 function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {

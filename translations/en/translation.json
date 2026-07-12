@@ -4473,6 +4473,7 @@
       "createApplication": "Create application",
       "createService": "Create service",
       "createArtifact": "Register image artifact",
+      "packageJava": "Package Java 8 artifact",
       "validateRelease": "Validate release",
       "createRelease": "Create release",
       "createConfigSet": "Create config set",
@@ -4515,6 +4516,10 @@
       "artifactType": "Artifact type",
       "artifactFile": "Artifact file",
       "expectedSHA256": "Expected SHA256 (optional)"
+      ,"javaArtifact": "Java artifact",
+      "javaPort": "Container port",
+      "jvmArgs": "JVM arguments (space-separated tokens)",
+      "appArgs": "Application arguments (space-separated tokens)"
     },
     "formTitles": {
       "project": "Create project",
@@ -4522,6 +4527,10 @@
       "application": "Create application",
       "service": "Create service",
       "artifact": "Register image artifact"
+      ,"javaBuild": "Package Java 8 artifact"
+    },
+    "javaBuild": {
+      "restriction": "Uses the platform Java 8 template. Dockerfile, shell commands, and custom base images are not accepted."
     },
     "environmentTypes": {
       "dev": "Dev",
