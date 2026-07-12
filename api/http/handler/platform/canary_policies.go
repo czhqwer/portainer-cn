@@ -196,7 +196,6 @@ func (handler *Handler) changeCanaryWeight(w http.ResponseWriter, r *http.Reques
 			return writePlatformError(w, http.StatusBadRequest, errPlatformValidationFailed, "Canary release is not healthy", "CANARY_HEALTH_FAILED", nil)
 		}
 	}
-	old := p.CurrentWeight
 	err := handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
 		current, err := tx.PlatformCanaryPolicy().Read(p.ID)
 		if err != nil {
@@ -227,7 +226,8 @@ func (handler *Handler) changeCanaryWeight(w http.ResponseWriter, r *http.Reques
 			if readErr != nil {
 				return readErr
 			}
-			current.CurrentWeight = old
+			// 发布失败时不能继续让候选版本承接旧流量；稳定 Release 仍由渲染器的默认 upstream 保持服务。
+			current.CurrentWeight = 0
 			current.LastFailureReason = reason
 			touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
 			return tx.PlatformCanaryPolicy().Update(current.ID, current)

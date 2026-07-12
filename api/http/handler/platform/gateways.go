@@ -583,7 +583,7 @@ func (handler *Handler) gatewayConfigApply(w http.ResponseWriter, r *http.Reques
 }
 
 // applyGatewayConfiguration 将候选写入、预检、激活和审计封装为可复用操作；灰度放量可以先
-// 临时持久化目标权重让渲染器读取，若发布失败再恢复旧权重，避免数据库状态领先于 Nginx。
+// 临时持久化目标权重让渲染器读取，若发布失败再将候选权重归零，避免数据库状态领先于 Nginx。
 func (handler *Handler) applyGatewayConfiguration(r *http.Request, gateway *portainer.PlatformGateway) (portainer.PlatformGatewayConfigVersion, string, error) {
 	targets, handlerErr := handler.gatewayRouteTargets(gateway)
 	if handlerErr != nil {
