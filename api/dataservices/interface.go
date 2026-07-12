@@ -20,6 +20,8 @@ type (
 		PlatformArtifact() PlatformArtifactService
 		PlatformArtifactStorage() PlatformArtifactStorageService
 		PlatformHostGroup() PlatformHostGroupService
+		PlatformDatabaseResource() PlatformDatabaseResourceService
+		PlatformServiceDatabaseBinding() PlatformServiceDatabaseBindingService
 		PlatformGateway() PlatformGatewayService
 		PlatformGatewayRoute() PlatformGatewayRouteService
 		PlatformGatewayCertificate() PlatformGatewayCertificateService
@@ -148,6 +150,18 @@ type (
 	// PlatformHostGroupService stores project-scoped workload membership for future multi-target releases.
 	PlatformHostGroupService interface {
 		BaseCRUD[portainer.PlatformHostGroup, portainer.PlatformHostGroupID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformDatabaseResourceService stores project-owned encrypted database connection metadata.
+	PlatformDatabaseResourceService interface {
+		BaseCRUD[portainer.PlatformDatabaseResource, portainer.PlatformDatabaseResourceID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformServiceDatabaseBindingService stores secret-free deployment-to-resource references.
+	PlatformServiceDatabaseBindingService interface {
+		BaseCRUD[portainer.PlatformServiceDatabaseBinding, portainer.PlatformServiceDatabaseBindingID]
 		GetNextIdentifier() int
 	}
 

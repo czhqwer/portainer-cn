@@ -62,6 +62,14 @@ func (tx *StoreTx) PlatformHostGroup() dataservices.PlatformHostGroupService {
 	return tx.store.PlatformHostGroupService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformDatabaseResource() dataservices.PlatformDatabaseResourceService {
+	return tx.store.PlatformDatabaseResourceService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformServiceDatabaseBinding() dataservices.PlatformServiceDatabaseBindingService {
+	return tx.store.PlatformServiceDatabaseBindingService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PlatformGateway() dataservices.PlatformGatewayService {
 	return tx.store.PlatformGatewayService.Tx(tx.tx)
 }

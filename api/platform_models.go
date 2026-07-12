@@ -10,21 +10,23 @@ import (
 )
 
 type (
-	PlatformProjectID              int
-	PlatformEnvironmentID          int
-	PlatformApplicationID          int
-	PlatformServiceDefinitionID    int
-	PlatformServiceDeploymentID    int
-	PlatformConfigSetID            int
-	PlatformArtifactID             int
-	PlatformArtifactStorageID      int
-	PlatformHostGroupID            int
-	PlatformGatewayID              int
-	PlatformGatewayRouteID         int
-	PlatformGatewayCertificateID   int
-	PlatformGatewayConfigVersionID int
-	PlatformReleaseID              int
-	PlatformAuditLogID             int
+	PlatformProjectID                int
+	PlatformEnvironmentID            int
+	PlatformApplicationID            int
+	PlatformServiceDefinitionID      int
+	PlatformServiceDeploymentID      int
+	PlatformConfigSetID              int
+	PlatformArtifactID               int
+	PlatformArtifactStorageID        int
+	PlatformHostGroupID              int
+	PlatformDatabaseResourceID       int
+	PlatformServiceDatabaseBindingID int
+	PlatformGatewayID                int
+	PlatformGatewayRouteID           int
+	PlatformGatewayCertificateID     int
+	PlatformGatewayConfigVersionID   int
+	PlatformReleaseID                int
+	PlatformAuditLogID               int
 
 	PlatformProjectRole             string
 	PlatformLifecycleStatus         string
@@ -64,6 +66,7 @@ type (
 	PlatformAuditAction             string
 	PlatformAuditResult             string
 	PlatformGatewayConfigStatus     string
+	PlatformDatabaseType            string
 )
 
 const (
@@ -131,6 +134,12 @@ const (
 	PlatformArtifactStatusFailed    PlatformArtifactStatus = "failed"
 
 	PlatformArtifactStorageCredentialEncryptionVersion = "boltdb-v1"
+	PlatformDatabaseCredentialEncryptionVersion        = "boltdb-v1"
+
+	PlatformDatabaseTypeMySQL    PlatformDatabaseType = "mysql"
+	PlatformDatabaseTypeMariaDB  PlatformDatabaseType = "mariadb"
+	PlatformDatabaseTypePostgres PlatformDatabaseType = "postgres"
+	PlatformDatabaseTypeRedis    PlatformDatabaseType = "redis"
 
 	PlatformImagePullPolicyAlways       PlatformImagePullPolicy = "always"
 	PlatformImagePullPolicyIfNotPresent PlatformImagePullPolicy = "if-not-present"
@@ -292,6 +301,12 @@ const (
 	PlatformAuditActionHostGroupCreated           PlatformAuditAction = "host_group.created"
 	PlatformAuditActionHostGroupUpdated           PlatformAuditAction = "host_group.updated"
 	PlatformAuditActionHostGroupArchived          PlatformAuditAction = "host_group.archived"
+	PlatformAuditActionDatabaseResourceCreated    PlatformAuditAction = "database_resource.created"
+	PlatformAuditActionDatabaseResourceUpdated    PlatformAuditAction = "database_resource.updated"
+	PlatformAuditActionDatabaseResourceArchived   PlatformAuditAction = "database_resource.archived"
+	PlatformAuditActionDatabaseBindingCreated     PlatformAuditAction = "database_binding.created"
+	PlatformAuditActionDatabaseBindingUpdated     PlatformAuditAction = "database_binding.updated"
+	PlatformAuditActionDatabaseBindingArchived    PlatformAuditAction = "database_binding.archived"
 
 	PlatformAuditResultSuccess PlatformAuditResult = "success"
 	PlatformAuditResultFailed  PlatformAuditResult = "failed"
@@ -495,6 +510,40 @@ type PlatformConfigSet struct {
 	PlatformLifecycle
 }
 
+// PlatformDatabaseResource 是项目部署可引用的环境级数据库连接。它与个人工作台
+// DatabaseConnection 分离，避免把某个用户的私有密码隐式共享给项目成员。
+type PlatformDatabaseResource struct {
+	ID                          PlatformDatabaseResourceID `json:"Id" example:"1"`
+	ProjectID                   PlatformProjectID          `json:"ProjectId" example:"1"`
+	EnvironmentID               PlatformEnvironmentID      `json:"EnvironmentId" example:"1"`
+	EndpointID                  EndpointID                 `json:"EndpointId" example:"1"`
+	Name                        string                     `json:"Name" example:"orders-db"`
+	Type                        PlatformDatabaseType       `json:"Type" example:"postgres"`
+	Host                        string                     `json:"Host" example:"db.internal"`
+	Port                        int                        `json:"Port" example:"5432"`
+	Database                    string                     `json:"Database,omitempty" example:"orders"`
+	Username                    string                     `json:"Username,omitempty" example:"orders_app"`
+	PasswordCipherText          string                     `json:"PasswordCipherText,omitempty" swaggerignore:"true"`
+	CredentialEncryptionVersion string                     `json:"CredentialEncryptionVersion,omitempty"`
+	CredentialHash              string                     `json:"CredentialHash,omitempty"`
+	HasPassword                 bool                       `json:"HasPassword" example:"true"`
+	ConnectionTimeoutSeconds    int                        `json:"ConnectionTimeoutSeconds" example:"5"`
+	Revision                    int                        `json:"Revision" example:"1"`
+	PlatformLifecycle
+}
+
+// PlatformServiceDatabaseBinding 只保存部署与平台资源的引用。固定变量名由运行期
+// 解析器生成，避免绑定层允许任意变量名而绕过敏感配置与审计边界。
+type PlatformServiceDatabaseBinding struct {
+	ID                  PlatformServiceDatabaseBindingID `json:"Id" example:"1"`
+	ProjectID           PlatformProjectID                `json:"ProjectId" example:"1"`
+	EnvironmentID       PlatformEnvironmentID            `json:"EnvironmentId" example:"1"`
+	ServiceDeploymentID PlatformServiceDeploymentID      `json:"ServiceDeploymentId" example:"1"`
+	DatabaseResourceID  PlatformDatabaseResourceID       `json:"DatabaseResourceId" example:"1"`
+	Revision            int                              `json:"Revision" example:"1"`
+	PlatformLifecycle
+}
+
 type PlatformConfigEntry struct {
 	Key               string                    `json:"Key" example:"APP_ENV"`
 	ValueType         PlatformConfigValueType   `json:"ValueType" example:"plain"`
@@ -532,6 +581,17 @@ type PlatformSecretSnapshot struct {
 	EncryptionVersion string `json:"EncryptionVersion,omitempty"`
 	Hash              string `json:"Hash,omitempty"`
 	HasValue          bool   `json:"HasValue,omitempty"`
+}
+
+// PlatformDatabaseBindingSnapshot 是 Release 的可追溯事实，不携带数据库密码、完整
+// URL 或密文。运行期会根据资源与版本重新受控解密，普通 Release 读取无法恢复凭据。
+type PlatformDatabaseBindingSnapshot struct {
+	BindingID          PlatformServiceDatabaseBindingID `json:"BindingId" example:"1"`
+	BindingRevision    int                              `json:"BindingRevision" example:"1"`
+	DatabaseResourceID PlatformDatabaseResourceID       `json:"DatabaseResourceId" example:"1"`
+	ResourceRevision   int                              `json:"ResourceRevision" example:"1"`
+	Type               PlatformDatabaseType             `json:"Type" example:"postgres"`
+	VariableHash       string                           `json:"VariableHash,omitempty"`
 }
 
 // PlatformArtifactTaskEvent 只记录平台定义的阶段、结果和原因码，用于让用户追踪耗时制品操作。
@@ -736,11 +796,12 @@ type PlatformArtifactSnapshot struct {
 }
 
 type PlatformServiceConfigSnapshot struct {
-	SpecRevision            int                             `json:"SpecRevision" example:"1"`
-	DesiredSpecSnapshot     PlatformDeploymentDesiredSpec   `json:"DesiredSpecSnapshot"`
-	EffectiveConfigSnapshot PlatformEffectiveConfigSnapshot `json:"EffectiveConfigSnapshot"`
-	SecretSnapshots         []PlatformSecretSnapshot        `json:"SecretSnapshots,omitempty"`
-	ConfigHash              string                          `json:"ConfigHash,omitempty"`
+	SpecRevision            int                               `json:"SpecRevision" example:"1"`
+	DesiredSpecSnapshot     PlatformDeploymentDesiredSpec     `json:"DesiredSpecSnapshot"`
+	EffectiveConfigSnapshot PlatformEffectiveConfigSnapshot   `json:"EffectiveConfigSnapshot"`
+	SecretSnapshots         []PlatformSecretSnapshot          `json:"SecretSnapshots,omitempty"`
+	DatabaseBindings        []PlatformDatabaseBindingSnapshot `json:"DatabaseBindings,omitempty"`
+	ConfigHash              string                            `json:"ConfigHash,omitempty"`
 }
 
 type PlatformTargetSnapshot struct {
@@ -892,6 +953,76 @@ func NewPlatformGatewayCertificate() PlatformGatewayCertificate {
 
 func NewPlatformHostGroup() PlatformHostGroup {
 	return PlatformHostGroup{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformDatabaseResource() PlatformDatabaseResource {
+	return PlatformDatabaseResource{
+		ConnectionTimeoutSeconds: 5,
+		Revision:                 1,
+		PlatformLifecycle:        NewPlatformLifecycle(),
+	}
+}
+
+func NewPlatformServiceDatabaseBinding() PlatformServiceDatabaseBinding {
+	return PlatformServiceDatabaseBinding{Revision: 1, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+// NormalizePlatformDatabaseResource 固定连接元数据的存储形式。密码必须已由 handler
+// 加密并清空明文后才能调用 datastore，避免直连调用意外把密码写入 BoltDB。
+func NormalizePlatformDatabaseResource(resource *PlatformDatabaseResource) {
+	if resource == nil {
+		return
+	}
+	resource.Name = strings.TrimSpace(resource.Name)
+	resource.Host = strings.TrimSpace(resource.Host)
+	resource.Database = strings.TrimSpace(resource.Database)
+	resource.Username = strings.TrimSpace(resource.Username)
+	if resource.ConnectionTimeoutSeconds == 0 {
+		resource.ConnectionTimeoutSeconds = 5
+	}
+	if resource.Revision == 0 {
+		resource.Revision = 1
+	}
+}
+
+func ValidatePlatformDatabaseResource(resource PlatformDatabaseResource) error {
+	NormalizePlatformDatabaseResource(&resource)
+	if resource.ProjectID <= 0 || resource.EnvironmentID <= 0 || resource.EndpointID <= 0 || resource.Name == "" || resource.Host == "" {
+		return fmt.Errorf("database resource ownership and connection metadata are required")
+	}
+	if resource.Type != PlatformDatabaseTypeMySQL && resource.Type != PlatformDatabaseTypeMariaDB && resource.Type != PlatformDatabaseTypePostgres && resource.Type != PlatformDatabaseTypeRedis {
+		return fmt.Errorf("database resource type is invalid")
+	}
+	if resource.Port <= 0 || resource.Port > 65535 || resource.ConnectionTimeoutSeconds < 1 || resource.ConnectionTimeoutSeconds > 30 {
+		return fmt.Errorf("database resource network settings are invalid")
+	}
+	if strings.ContainsAny(resource.Host, "\r\n\x00/@\\") || strings.ContainsAny(resource.Database, "\r\n\x00") || strings.ContainsAny(resource.Username, "\r\n\x00") {
+		return fmt.Errorf("database resource connection metadata is invalid")
+	}
+	if resource.HasPassword && (resource.PasswordCipherText == "" || resource.CredentialEncryptionVersion != PlatformDatabaseCredentialEncryptionVersion || resource.CredentialHash == "") {
+		return fmt.Errorf("database resource password must use encrypted storage")
+	}
+	if !resource.HasPassword && (resource.PasswordCipherText != "" || resource.CredentialEncryptionVersion != "" || resource.CredentialHash != "") {
+		return fmt.Errorf("database resource credential state is invalid")
+	}
+	return nil
+}
+
+func NormalizePlatformServiceDatabaseBinding(binding *PlatformServiceDatabaseBinding) {
+	if binding == nil {
+		return
+	}
+	if binding.Revision == 0 {
+		binding.Revision = 1
+	}
+}
+
+func ValidatePlatformServiceDatabaseBinding(binding PlatformServiceDatabaseBinding) error {
+	NormalizePlatformServiceDatabaseBinding(&binding)
+	if binding.ProjectID <= 0 || binding.EnvironmentID <= 0 || binding.ServiceDeploymentID <= 0 || binding.DatabaseResourceID <= 0 {
+		return fmt.Errorf("database binding ownership is required")
+	}
+	return nil
 }
 
 // NormalizePlatformBatchPolicy 固定安全默认值，避免缺省 multi 发布被意外并发放大。
