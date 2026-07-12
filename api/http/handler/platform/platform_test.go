@@ -2,6 +2,7 @@ package platform
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -52,6 +53,7 @@ func newPlatformTestContext(t *testing.T) platformTestContext {
 	fileService, err := filesystem.NewService(t.TempDir(), "")
 	require.NoError(t, err)
 	handler.FileService = fileService
+	handler.GatewayRuntime = platformGatewayRuntimeFake{}
 
 	adminJWT, _, err := jwtService.GenerateToken(&portainer.TokenData{ID: adminUser.ID, Username: adminUser.Username, Role: adminUser.Role})
 	require.NoError(t, err)
@@ -65,6 +67,22 @@ func newPlatformTestContext(t *testing.T) platformTestContext {
 		standardJWT: standardJWT,
 		fileService: fileService,
 	}
+}
+
+// platformGatewayRuntimeFake 让 handler 测试覆盖控制面状态机，不依赖本机 Docker daemon。
+// Docker/Agent 行为由 api/platform 的运行时适配器单测覆盖，避免测试误操作真实容器。
+type platformGatewayRuntimeFake struct{}
+
+func (platformGatewayRuntimeFake) Ensure(context.Context, portainer.PlatformGateway, string) (string, error) {
+	return "platform-test-gateway", nil
+}
+
+func (platformGatewayRuntimeFake) Test(context.Context, portainer.PlatformGateway, string) error {
+	return nil
+}
+
+func (platformGatewayRuntimeFake) Reload(context.Context, portainer.PlatformGateway) error {
+	return nil
 }
 
 func TestPlatformCRUDAdminCreatesFullChain(t *testing.T) {

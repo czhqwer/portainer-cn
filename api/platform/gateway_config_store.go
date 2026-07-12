@@ -13,6 +13,8 @@ import (
 
 const gatewayConfigFileName = "active.conf"
 
+var emptyGatewayConfig = []byte("worker_processes 1;\n\nevents {\n    worker_connections 1024;\n}\n\nhttp {\n}\n")
+
 // GatewayConfigStore 将 Nginx 配置限制在数据目录下的网关专用根目录。
 // ID 和 hash 均由平台模型生成，调用方不能传入相对路径，因此候选配置不会借由文件系统写到平台目录外。
 type GatewayConfigStore struct {
@@ -86,6 +88,22 @@ func (store *GatewayConfigStore) ActiveConfig(gatewayID portainer.PlatformGatewa
 		return nil, "", err
 	}
 	return config, fmt.Sprintf("%x", sha256.Sum256(config)), nil
+}
+
+// EnsureActive 为新建网关准备最小且可通过 nginx -t 的活动配置。
+// 受控容器启动前必须已有只读挂载源文件，空配置也不能通过用户提供的模板或宿主机路径生成。
+func (store *GatewayConfigStore) EnsureActive(gatewayID portainer.PlatformGatewayID) (string, error) {
+	if _, hash, err := store.ActiveConfig(gatewayID); err == nil {
+		return hash, nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	hash, err := store.WriteCandidate(gatewayID, emptyGatewayConfig)
+	if err != nil {
+		return "", err
+	}
+	_, err = store.Activate(gatewayID, hash)
+	return hash, err
 }
 
 func (store *GatewayConfigStore) versionPath(gatewayID portainer.PlatformGatewayID, hash string) string {

@@ -76,6 +76,10 @@ type fakeGatewayRuntime struct {
 	originalHash string
 }
 
+func (runtime *fakeGatewayRuntime) Ensure(context.Context, portainer.PlatformGateway, string) (string, error) {
+	return "gateway", nil
+}
+
 func (runtime *fakeGatewayRuntime) Test(context.Context, portainer.PlatformGateway, string) error {
 	return runtime.testErr
 }

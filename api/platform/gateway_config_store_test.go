@@ -43,3 +43,15 @@ func TestGatewayConfigStoreRejectsInvalidInputs(t *testing.T) {
 	_, err = store.Activate(portainer.PlatformGatewayID(1), "../escape")
 	require.Error(t, err)
 }
+
+func TestGatewayConfigStoreEnsuresInitialActiveConfig(t *testing.T) {
+	store, err := NewGatewayConfigStore(t.TempDir())
+	require.NoError(t, err)
+
+	hash, err := store.EnsureActive(1)
+	require.NoError(t, err)
+	config, activeHash, err := store.ActiveConfig(1)
+	require.NoError(t, err)
+	require.Equal(t, hash, activeHash)
+	require.Equal(t, emptyGatewayConfig, config)
+}

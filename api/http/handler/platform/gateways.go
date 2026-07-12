@@ -110,6 +110,9 @@ func (handler *Handler) gatewayCreate(w http.ResponseWriter, r *http.Request) *h
 	if handlerErr = handler.requireEndpointAccess(r, payload.EndpointID); handlerErr != nil {
 		return handlerErr
 	}
+	if handler.GatewayRuntime == nil || handler.FileService == nil {
+		return writePlatformError(w, http.StatusServiceUnavailable, errPlatformUnsupportedOperation, "Gateway runtime is unavailable", "GATEWAY_RUNTIME_UNAVAILABLE", nil)
+	}
 	gateway := portainer.NewPlatformGateway()
 	gateway.ProjectID, gateway.EnvironmentID, gateway.EndpointID = portainer.PlatformProjectID(projectID), payload.EnvironmentID, payload.EndpointID
 	gateway.NodeName, gateway.Name, gateway.PlatformLifecycle = payload.NodeName, payload.Name, newLifecycle(time.Now().Unix())
@@ -124,6 +127,37 @@ func (handler *Handler) gatewayCreate(w http.ResponseWriter, r *http.Request) *h
 			return duplicateError("environment already has an active gateway")
 		}
 		if err := tx.PlatformGateway().Create(&gateway); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return handler.convertError(err)
+	}
+	configStore, err := platformservice.NewGatewayConfigStore(handler.FileService.GetDatastorePath())
+	if err == nil {
+		_, err = configStore.EnsureActive(gateway.ID)
+	}
+	if err == nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		gateway.ManagedContainerID, err = handler.GatewayRuntime.Ensure(ctx, gateway, handler.FileService.GetDatastorePath())
+	}
+	if err != nil {
+		_ = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+			_ = tx.PlatformGateway().Delete(gateway.ID)
+			return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{Action: portainer.PlatformAuditActionGatewayCreated, Result: portainer.PlatformAuditResultFailed, ProjectID: gateway.ProjectID, EnvironmentID: gateway.EnvironmentID, FailureReason: "GATEWAY_RUNTIME_CREATE_FAILED", AfterSummary: map[string]any{"gatewayId": gateway.ID, "endpointId": gateway.EndpointID}})
+		})
+		return writePlatformError(w, http.StatusBadGateway, errPlatformValidationFailed, "Gateway could not be created", "GATEWAY_RUNTIME_CREATE_FAILED", nil)
+	}
+	err = handler.DataStore.UpdateTx(func(tx dataservices.DataStoreTx) error {
+		current, err := tx.PlatformGateway().Read(gateway.ID)
+		if err != nil {
+			return err
+		}
+		current.ManagedContainerID = gateway.ManagedContainerID
+		touchLifecycle(&current.PlatformLifecycle, time.Now().Unix())
+		if err := tx.PlatformGateway().Update(current.ID, current); err != nil {
 			return err
 		}
 		return handler.createPlatformAuditLog(tx, r, &portainer.PlatformAuditLog{Action: portainer.PlatformAuditActionGatewayCreated, Result: portainer.PlatformAuditResultSuccess, ProjectID: gateway.ProjectID, EnvironmentID: gateway.EnvironmentID, AfterSummary: map[string]any{"gatewayId": gateway.ID, "endpointId": gateway.EndpointID}})
