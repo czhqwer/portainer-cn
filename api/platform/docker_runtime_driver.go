@@ -3,6 +3,7 @@ package platform
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net"
 	"net/http"
@@ -596,29 +597,33 @@ func (driver *DockerRuntimeDriver) dockerEnv(request ReleaseExecutionRequest) ([
 			}
 			env = append(env, entry.Key+"="+entry.Value)
 		}
-		if len(request.Release.ConfigSnapshot.SecretSnapshots) == 0 {
-			return env, nil
-		}
-		if driver == nil || driver.dataStore == nil {
-			return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Docker runtime driver is not configured."}
-		}
-		cipher, err := NewSecretCipher(driver.dataStore.Connection())
-		if err != nil {
-			return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Encrypted platform secret storage is unavailable."}
-		}
-		for _, secret := range request.Release.ConfigSnapshot.SecretSnapshots {
-			if !secret.HasValue || secret.Name == "" {
-				continue
+		if len(request.Release.ConfigSnapshot.SecretSnapshots) > 0 {
+			if driver == nil || driver.dataStore == nil {
+				return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Docker runtime driver is not configured."}
 			}
-			if secret.EncryptionVersion != PlatformSecretEncryptionVersion {
-				return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Platform secret encryption version is unavailable."}
-			}
-			value, err := cipher.Decrypt(secret.CipherText)
+			cipher, err := NewSecretCipher(driver.dataStore.Connection())
 			if err != nil {
-				return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Platform secret snapshot cannot be decrypted."}
+				return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Encrypted platform secret storage is unavailable."}
 			}
-			env = append(env, secret.Name+"="+value)
+			for _, secret := range request.Release.ConfigSnapshot.SecretSnapshots {
+				if !secret.HasValue || secret.Name == "" {
+					continue
+				}
+				if secret.EncryptionVersion != PlatformSecretEncryptionVersion {
+					return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Platform secret encryption version is unavailable."}
+				}
+				value, err := cipher.Decrypt(secret.CipherText)
+				if err != nil {
+					return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Platform secret snapshot cannot be decrypted."}
+				}
+				env = append(env, secret.Name+"="+value)
+			}
 		}
+		databaseEnv, err := driver.databaseBindingEnv(request)
+		if err != nil {
+			return nil, err
+		}
+		env = append(env, databaseEnv...)
 
 		return env, nil
 	}
@@ -626,6 +631,81 @@ func (driver *DockerRuntimeDriver) dockerEnv(request ReleaseExecutionRequest) ([
 	// 旧 Release 没有有效配置快照时保留阶段 1 的字面量环境变量路径，保证恢复和
 	// 清理等历史运行资源操作不会因阶段 2 快照字段为空而改变容器配置。
 	return dockerEnvOverrides(request.Deployment.DesiredSpec.EnvOverrides), nil
+}
+
+// databaseBindingEnv 在 Docker 创建参数的最后一刻才解密数据库密码并构造 URL。Release
+// 快照只保留资源版本和变量哈希；若资源已被修改或归档，宁可在切流前失败，也不能把新凭据
+// 静默注入历史 Release。
+func (driver *DockerRuntimeDriver) databaseBindingEnv(request ReleaseExecutionRequest) ([]string, error) {
+	snapshots := request.Release.ConfigSnapshot.DatabaseBindings
+	if len(snapshots) == 0 {
+		return nil, nil
+	}
+	if driver == nil || driver.dataStore == nil {
+		return nil, codedRuntimeError{reason: ReleaseFailureReasonExecutorUnavailable, message: "Docker runtime driver is not configured."}
+	}
+	cipher, err := NewSecretCipher(driver.dataStore.Connection())
+	if err != nil {
+		return nil, codedRuntimeError{reason: ReleaseFailureReasonDatabaseCredentialUnavailable, message: "Database credential storage is unavailable."}
+	}
+	env := make([]string, 0, len(snapshots)*6)
+	for _, snapshot := range snapshots {
+		resource, err := driver.dataStore.PlatformDatabaseResource().Read(snapshot.DatabaseResourceID)
+		if err != nil || resource.LifecycleStatus != portainer.PlatformLifecycleStatusActive || resource.Revision != snapshot.ResourceRevision || resource.Type != snapshot.Type || !resource.HasPassword || resource.PasswordCipherText == "" || resource.CredentialEncryptionVersion != portainer.PlatformDatabaseCredentialEncryptionVersion {
+			return nil, codedRuntimeError{reason: ReleaseFailureReasonDatabaseBindingUnavailable, message: "Database binding snapshot is unavailable."}
+		}
+		password, err := cipher.Decrypt(resource.PasswordCipherText)
+		if err != nil {
+			return nil, codedRuntimeError{reason: ReleaseFailureReasonDatabaseCredentialUnavailable, message: "Database credential cannot be decrypted."}
+		}
+		values, err := databaseEnvironmentValues(*resource, password)
+		password = ""
+		if err != nil || DatabaseBindingVariableHash(*resource) != snapshot.VariableHash {
+			return nil, codedRuntimeError{reason: ReleaseFailureReasonDatabaseBindingUnavailable, message: "Database binding variables are unavailable."}
+		}
+		env = append(env, "DATABASE_HOST="+values.host, "DATABASE_PORT="+values.port, "DATABASE_USER="+values.user, "DATABASE_PASSWORD="+values.password, "DATABASE_NAME="+values.database, "DATABASE_URL="+values.url)
+	}
+	return env, nil
+}
+
+type databaseEnvironmentValueSet struct {
+	host     string
+	port     string
+	user     string
+	password string
+	database string
+	url      string
+}
+
+func databaseEnvironmentValues(resource portainer.PlatformDatabaseResource, password string) (databaseEnvironmentValueSet, error) {
+	values := databaseEnvironmentValueSet{host: resource.Host, port: strconv.Itoa(resource.Port), user: resource.Username, password: password, database: resource.Database}
+	connectionURL := url.URL{Host: net.JoinHostPort(resource.Host, strconv.Itoa(resource.Port))}
+	switch resource.Type {
+	case portainer.PlatformDatabaseTypeMySQL, portainer.PlatformDatabaseTypeMariaDB:
+		connectionURL.Scheme = "mysql"
+		connectionURL.Path = "/" + resource.Database
+	case portainer.PlatformDatabaseTypePostgres:
+		connectionURL.Scheme = "postgres"
+		connectionURL.Path = "/" + resource.Database
+	case portainer.PlatformDatabaseTypeRedis:
+		connectionURL.Scheme = "redis"
+		if resource.Database != "" {
+			connectionURL.Path = "/" + resource.Database
+		}
+	default:
+		return databaseEnvironmentValueSet{}, fmt.Errorf("unsupported database type")
+	}
+	if resource.Username != "" || password != "" {
+		connectionURL.User = url.UserPassword(resource.Username, password)
+	}
+	values.url = connectionURL.String()
+	return values, nil
+}
+
+// DatabaseBindingVariableHash 标识数据库变量所依赖的非明文元数据与密码摘要；它不包含
+// 密码或完整 URL，可安全保存到 Release 快照用于检测排队期间的资源变更。
+func DatabaseBindingVariableHash(resource portainer.PlatformDatabaseResource) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d:%d:%s:%s:%d:%s:%s:%s", resource.ID, resource.Revision, resource.Type, resource.Host, resource.Port, resource.Database, resource.Username, resource.CredentialHash))))
 }
 
 func dockerEnvOverrides(vars []portainer.PlatformEnvVar) []string {

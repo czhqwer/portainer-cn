@@ -26,11 +26,20 @@ import (
 	"github.com/portainer/portainer/api/dataservices/platformartifact"
 	"github.com/portainer/portainer/api/dataservices/platformartifactstorage"
 	"github.com/portainer/portainer/api/dataservices/platformauditlog"
+	"github.com/portainer/portainer/api/dataservices/platformcanarypolicy"
 	"github.com/portainer/portainer/api/dataservices/platformconfigset"
+	"github.com/portainer/portainer/api/dataservices/platformdatabaseresource"
 	"github.com/portainer/portainer/api/dataservices/platformenvironment"
+	"github.com/portainer/portainer/api/dataservices/platformgateway"
+	"github.com/portainer/portainer/api/dataservices/platformgatewaycertificate"
+	"github.com/portainer/portainer/api/dataservices/platformgatewayconfigversion"
+	"github.com/portainer/portainer/api/dataservices/platformgatewayroute"
+	"github.com/portainer/portainer/api/dataservices/platformhostgroup"
+	"github.com/portainer/portainer/api/dataservices/platformobservabilityconfig"
 	"github.com/portainer/portainer/api/dataservices/platformproject"
 	"github.com/portainer/portainer/api/dataservices/platformrelease"
 	"github.com/portainer/portainer/api/dataservices/platformreleaselock"
+	"github.com/portainer/portainer/api/dataservices/platformservicedatabasebinding"
 	"github.com/portainer/portainer/api/dataservices/platformservicedefinition"
 	"github.com/portainer/portainer/api/dataservices/platformservicedeployment"
 	"github.com/portainer/portainer/api/dataservices/registry"
@@ -64,52 +73,61 @@ type Store struct {
 	flags      *portainer.CLIFlags
 	connection portainer.Connection
 
-	fileService                      portainer.FileService
-	AllowListService                 *allowlist.Service
-	CustomTemplateService            *customtemplate.Service
-	DatabaseConnectionService        *databaseconnection.Service
-	PlatformProjectService           *platformproject.Service
-	PlatformEnvironmentService       *platformenvironment.Service
-	PlatformApplicationService       *platformapplication.Service
-	PlatformServiceDefinitionService *platformservicedefinition.Service
-	PlatformServiceDeploymentService *platformservicedeployment.Service
-	PlatformConfigSetService         *platformconfigset.Service
-	PlatformArtifactService          *platformartifact.Service
-	PlatformArtifactStorageService   *platformartifactstorage.Service
-	PlatformReleaseService           *platformrelease.Service
-	PlatformReleaseLockService       *platformreleaselock.Service
-	PlatformAuditLogService          *platformauditlog.Service
-	DockerHubService                 *dockerhub.Service
-	EdgeGroupService                 *edgegroup.Service
-	EdgeJobService                   *edgejob.Service
-	EdgeStackService                 *edgestack.Service
-	EdgeStackStatusService           *edgestackstatus.Service
-	EndpointGroupService             *endpointgroup.Service
-	EndpointService                  *endpoint.Service
-	EndpointRelationService          *endpointrelation.Service
-	ExtensionService                 *extension.Service
-	HelmUserRepositoryService        *helmuserrepository.Service
-	RegistryService                  *registry.Service
-	ResourceControlService           *resourcecontrol.Service
-	RoleService                      *role.Service
-	APIKeyRepositoryService          *apikeyrepository.Service
-	ScheduleService                  *schedule.Service
-	SettingsService                  *settings.Service
-	SnapshotService                  *snapshot.Service
-	SourceService                    *source.Service
-	SSLSettingsService               *ssl.Service
-	StackService                     *stack.Service
-	TagService                       *tag.Service
-	TeamMembershipService            *teammembership.Service
-	TeamService                      *team.Service
-	TunnelServerService              *tunnelserver.Service
-	UserService                      *user.Service
-	UserActivityLogService           *useractivity.ActivityLogService
-	UserAuthenticationLogService     *useractivity.AuthenticationLogService
-	VersionService                   *version.Service
-	WebhookService                   *webhook.Service
-	WorkflowService                  *workflow.Service
-	PendingActionsService            *pendingactions.Service
+	fileService                           portainer.FileService
+	AllowListService                      *allowlist.Service
+	CustomTemplateService                 *customtemplate.Service
+	DatabaseConnectionService             *databaseconnection.Service
+	PlatformProjectService                *platformproject.Service
+	PlatformEnvironmentService            *platformenvironment.Service
+	PlatformApplicationService            *platformapplication.Service
+	PlatformServiceDefinitionService      *platformservicedefinition.Service
+	PlatformServiceDeploymentService      *platformservicedeployment.Service
+	PlatformConfigSetService              *platformconfigset.Service
+	PlatformArtifactService               *platformartifact.Service
+	PlatformArtifactStorageService        *platformartifactstorage.Service
+	PlatformHostGroupService              *platformhostgroup.Service
+	PlatformDatabaseResourceService       *platformdatabaseresource.Service
+	PlatformServiceDatabaseBindingService *platformservicedatabasebinding.Service
+	PlatformObservabilityConfigService    *platformobservabilityconfig.Service
+	PlatformCanaryPolicyService           *platformcanarypolicy.Service
+	PlatformGatewayService                *platformgateway.Service
+	PlatformGatewayRouteService           *platformgatewayroute.Service
+	PlatformGatewayCertificateService     *platformgatewaycertificate.Service
+	PlatformGatewayConfigVersionService   *platformgatewayconfigversion.Service
+	PlatformReleaseService                *platformrelease.Service
+	PlatformReleaseLockService            *platformreleaselock.Service
+	PlatformAuditLogService               *platformauditlog.Service
+	DockerHubService                      *dockerhub.Service
+	EdgeGroupService                      *edgegroup.Service
+	EdgeJobService                        *edgejob.Service
+	EdgeStackService                      *edgestack.Service
+	EdgeStackStatusService                *edgestackstatus.Service
+	EndpointGroupService                  *endpointgroup.Service
+	EndpointService                       *endpoint.Service
+	EndpointRelationService               *endpointrelation.Service
+	ExtensionService                      *extension.Service
+	HelmUserRepositoryService             *helmuserrepository.Service
+	RegistryService                       *registry.Service
+	ResourceControlService                *resourcecontrol.Service
+	RoleService                           *role.Service
+	APIKeyRepositoryService               *apikeyrepository.Service
+	ScheduleService                       *schedule.Service
+	SettingsService                       *settings.Service
+	SnapshotService                       *snapshot.Service
+	SourceService                         *source.Service
+	SSLSettingsService                    *ssl.Service
+	StackService                          *stack.Service
+	TagService                            *tag.Service
+	TeamMembershipService                 *teammembership.Service
+	TeamService                           *team.Service
+	TunnelServerService                   *tunnelserver.Service
+	UserService                           *user.Service
+	UserActivityLogService                *useractivity.ActivityLogService
+	UserAuthenticationLogService          *useractivity.AuthenticationLogService
+	VersionService                        *version.Service
+	WebhookService                        *webhook.Service
+	WorkflowService                       *workflow.Service
+	PendingActionsService                 *pendingactions.Service
 }
 
 func (store *Store) initServices() error {
@@ -184,6 +202,60 @@ func (store *Store) initServices() error {
 		return err
 	}
 	store.PlatformArtifactStorageService = platformArtifactStorageService
+
+	platformHostGroupService, err := platformhostgroup.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformHostGroupService = platformHostGroupService
+
+	platformDatabaseResourceService, err := platformdatabaseresource.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformDatabaseResourceService = platformDatabaseResourceService
+
+	platformServiceDatabaseBindingService, err := platformservicedatabasebinding.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformServiceDatabaseBindingService = platformServiceDatabaseBindingService
+
+	platformObservabilityConfigService, err := platformobservabilityconfig.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformObservabilityConfigService = platformObservabilityConfigService
+
+	platformCanaryPolicyService, err := platformcanarypolicy.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformCanaryPolicyService = platformCanaryPolicyService
+
+	platformGatewayService, err := platformgateway.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformGatewayService = platformGatewayService
+
+	platformGatewayRouteService, err := platformgatewayroute.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformGatewayRouteService = platformGatewayRouteService
+
+	platformGatewayCertificateService, err := platformgatewaycertificate.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformGatewayCertificateService = platformGatewayCertificateService
+
+	platformGatewayConfigVersionService, err := platformgatewayconfigversion.NewService(store.connection)
+	if err != nil {
+		return err
+	}
+	store.PlatformGatewayConfigVersionService = platformGatewayConfigVersionService
 
 	platformReleaseService, err := platformrelease.NewService(store.connection)
 	if err != nil {
@@ -449,6 +521,50 @@ func (store *Store) PlatformArtifactStorage() dataservices.PlatformArtifactStora
 	return store.PlatformArtifactStorageService
 }
 
+// PlatformHostGroup gives access to platform-owned multi-host membership metadata.
+func (store *Store) PlatformHostGroup() dataservices.PlatformHostGroupService {
+	return store.PlatformHostGroupService
+}
+
+// PlatformDatabaseResource gives access to encrypted project database metadata.
+func (store *Store) PlatformDatabaseResource() dataservices.PlatformDatabaseResourceService {
+	return store.PlatformDatabaseResourceService
+}
+
+// PlatformServiceDatabaseBinding gives access to secret-free deployment database references.
+func (store *Store) PlatformServiceDatabaseBinding() dataservices.PlatformServiceDatabaseBindingService {
+	return store.PlatformServiceDatabaseBindingService
+}
+
+// PlatformObservabilityConfig gives access to encrypted external observability integration metadata.
+func (store *Store) PlatformObservabilityConfig() dataservices.PlatformObservabilityConfigService {
+	return store.PlatformObservabilityConfigService
+}
+
+func (store *Store) PlatformCanaryPolicy() dataservices.PlatformCanaryPolicyService {
+	return store.PlatformCanaryPolicyService
+}
+
+// PlatformGateway gives access to environment-scoped gateway control-plane metadata.
+func (store *Store) PlatformGateway() dataservices.PlatformGatewayService {
+	return store.PlatformGatewayService
+}
+
+// PlatformGatewayRoute gives access to validated domain/path route declarations.
+func (store *Store) PlatformGatewayRoute() dataservices.PlatformGatewayRouteService {
+	return store.PlatformGatewayRouteService
+}
+
+// PlatformGatewayCertificate gives access to certificate metadata and opaque material references.
+func (store *Store) PlatformGatewayCertificate() dataservices.PlatformGatewayCertificateService {
+	return store.PlatformGatewayCertificateService
+}
+
+// PlatformGatewayConfigVersion gives access to immutable gateway configuration version facts.
+func (store *Store) PlatformGatewayConfigVersion() dataservices.PlatformGatewayConfigVersionService {
+	return store.PlatformGatewayConfigVersionService
+}
+
 // PlatformRelease gives access to the platform release data management layer
 func (store *Store) PlatformRelease() dataservices.PlatformReleaseService {
 	return store.PlatformReleaseService
@@ -596,44 +712,53 @@ func (store *Store) Workflow() dataservices.WorkflowService {
 }
 
 type storeExport struct {
-	CustomTemplate            []portainer.CustomTemplate            `json:"customtemplates,omitempty"`
-	EdgeGroup                 []portainer.EdgeGroup                 `json:"edgegroups,omitempty"`
-	EdgeJob                   []portainer.EdgeJob                   `json:"edgejobs,omitempty"`
-	EdgeStack                 []portainer.EdgeStack                 `json:"edge_stack,omitempty"`
-	Endpoint                  []portainer.Endpoint                  `json:"endpoints,omitempty"`
-	EndpointGroup             []portainer.EndpointGroup             `json:"endpoint_groups,omitempty"`
-	EndpointRelation          []portainer.EndpointRelation          `json:"endpoint_relations,omitempty"`
-	Extensions                []portainer.Extension                 `json:"extension,omitempty"`
-	HelmUserRepository        []portainer.HelmUserRepository        `json:"helm_user_repository,omitempty"`
-	Registry                  []portainer.Registry                  `json:"registries,omitempty"`
-	ResourceControl           []portainer.ResourceControl           `json:"resource_control,omitempty"`
-	Role                      []portainer.Role                      `json:"roles,omitempty"`
-	Schedules                 []portainer.Schedule                  `json:"schedules,omitempty"`
-	Settings                  portainer.Settings                    `json:"settings,omitzero"`
-	Snapshot                  []portainer.Snapshot                  `json:"snapshots,omitempty"`
-	SSLSettings               portainer.SSLSettings                 `json:"ssl,omitzero"`
-	Source                    []portainer.Source                    `json:"sources,omitempty"`
-	Stack                     []portainer.Stack                     `json:"stacks,omitempty"`
-	Tag                       []portainer.Tag                       `json:"tags,omitempty"`
-	TeamMembership            []portainer.TeamMembership            `json:"team_membership,omitempty"`
-	Team                      []portainer.Team                      `json:"teams,omitempty"`
-	TunnelServer              portainer.TunnelServerInfo            `json:"tunnel_server,omitzero"`
-	User                      []portainer.User                      `json:"users,omitempty"`
-	Version                   models.Version                        `json:"version,omitzero"`
-	Webhook                   []portainer.Webhook                   `json:"webhooks,omitempty"`
-	Workflow                  []portainer.Workflow                  `json:"workflows,omitempty"`
-	PlatformProject           []portainer.PlatformProject           `json:"platform_projects,omitempty"`
-	PlatformEnvironment       []portainer.PlatformEnvironment       `json:"platform_environments,omitempty"`
-	PlatformApplication       []portainer.PlatformApplication       `json:"platform_applications,omitempty"`
-	PlatformServiceDefinition []portainer.PlatformServiceDefinition `json:"platform_service_definitions,omitempty"`
-	PlatformServiceDeployment []portainer.PlatformServiceDeployment `json:"platform_service_deployments,omitempty"`
-	PlatformConfigSet         []portainer.PlatformConfigSet         `json:"platform_config_sets,omitempty"`
-	PlatformArtifact          []portainer.PlatformArtifact          `json:"platform_artifacts,omitempty"`
-	PlatformArtifactStorage   []portainer.PlatformArtifactStorage   `json:"platform_artifact_storages,omitempty"`
-	PlatformRelease           []portainer.PlatformRelease           `json:"platform_releases,omitempty"`
-	PlatformReleaseLock       []portainer.PlatformReleaseLock       `json:"platform_release_locks,omitempty"`
-	PlatformAuditLog          []portainer.PlatformAuditLog          `json:"platform_audit_logs,omitempty"`
-	Metadata                  map[string]any                        `json:"metadata,omitempty"`
+	CustomTemplate                 []portainer.CustomTemplate                 `json:"customtemplates,omitempty"`
+	EdgeGroup                      []portainer.EdgeGroup                      `json:"edgegroups,omitempty"`
+	EdgeJob                        []portainer.EdgeJob                        `json:"edgejobs,omitempty"`
+	EdgeStack                      []portainer.EdgeStack                      `json:"edge_stack,omitempty"`
+	Endpoint                       []portainer.Endpoint                       `json:"endpoints,omitempty"`
+	EndpointGroup                  []portainer.EndpointGroup                  `json:"endpoint_groups,omitempty"`
+	EndpointRelation               []portainer.EndpointRelation               `json:"endpoint_relations,omitempty"`
+	Extensions                     []portainer.Extension                      `json:"extension,omitempty"`
+	HelmUserRepository             []portainer.HelmUserRepository             `json:"helm_user_repository,omitempty"`
+	Registry                       []portainer.Registry                       `json:"registries,omitempty"`
+	ResourceControl                []portainer.ResourceControl                `json:"resource_control,omitempty"`
+	Role                           []portainer.Role                           `json:"roles,omitempty"`
+	Schedules                      []portainer.Schedule                       `json:"schedules,omitempty"`
+	Settings                       portainer.Settings                         `json:"settings,omitzero"`
+	Snapshot                       []portainer.Snapshot                       `json:"snapshots,omitempty"`
+	SSLSettings                    portainer.SSLSettings                      `json:"ssl,omitzero"`
+	Source                         []portainer.Source                         `json:"sources,omitempty"`
+	Stack                          []portainer.Stack                          `json:"stacks,omitempty"`
+	Tag                            []portainer.Tag                            `json:"tags,omitempty"`
+	TeamMembership                 []portainer.TeamMembership                 `json:"team_membership,omitempty"`
+	Team                           []portainer.Team                           `json:"teams,omitempty"`
+	TunnelServer                   portainer.TunnelServerInfo                 `json:"tunnel_server,omitzero"`
+	User                           []portainer.User                           `json:"users,omitempty"`
+	Version                        models.Version                             `json:"version,omitzero"`
+	Webhook                        []portainer.Webhook                        `json:"webhooks,omitempty"`
+	Workflow                       []portainer.Workflow                       `json:"workflows,omitempty"`
+	PlatformProject                []portainer.PlatformProject                `json:"platform_projects,omitempty"`
+	PlatformEnvironment            []portainer.PlatformEnvironment            `json:"platform_environments,omitempty"`
+	PlatformApplication            []portainer.PlatformApplication            `json:"platform_applications,omitempty"`
+	PlatformServiceDefinition      []portainer.PlatformServiceDefinition      `json:"platform_service_definitions,omitempty"`
+	PlatformServiceDeployment      []portainer.PlatformServiceDeployment      `json:"platform_service_deployments,omitempty"`
+	PlatformConfigSet              []portainer.PlatformConfigSet              `json:"platform_config_sets,omitempty"`
+	PlatformArtifact               []portainer.PlatformArtifact               `json:"platform_artifacts,omitempty"`
+	PlatformArtifactStorage        []portainer.PlatformArtifactStorage        `json:"platform_artifact_storages,omitempty"`
+	PlatformHostGroup              []portainer.PlatformHostGroup              `json:"platform_host_groups,omitempty"`
+	PlatformDatabaseResource       []portainer.PlatformDatabaseResource       `json:"platform_database_resources,omitempty"`
+	PlatformServiceDatabaseBinding []portainer.PlatformServiceDatabaseBinding `json:"platform_service_database_bindings,omitempty"`
+	PlatformObservabilityConfig    []portainer.PlatformObservabilityConfig    `json:"platform_observability_configs,omitempty"`
+	PlatformCanaryPolicy           []portainer.PlatformCanaryPolicy           `json:"platform_canary_policies,omitempty"`
+	PlatformGateway                []portainer.PlatformGateway                `json:"platform_gateways,omitempty"`
+	PlatformGatewayRoute           []portainer.PlatformGatewayRoute           `json:"platform_gateway_routes,omitempty"`
+	PlatformGatewayCertificate     []portainer.PlatformGatewayCertificate     `json:"platform_gateway_certificates,omitempty"`
+	PlatformGatewayConfigVersion   []portainer.PlatformGatewayConfigVersion   `json:"platform_gateway_config_versions,omitempty"`
+	PlatformRelease                []portainer.PlatformRelease                `json:"platform_releases,omitempty"`
+	PlatformReleaseLock            []portainer.PlatformReleaseLock            `json:"platform_release_locks,omitempty"`
+	PlatformAuditLog               []portainer.PlatformAuditLog               `json:"platform_audit_logs,omitempty"`
+	Metadata                       map[string]any                             `json:"metadata,omitempty"`
 }
 
 func (store *Store) Export(filename string) (err error) {
@@ -911,6 +1036,97 @@ func (store *Store) Export(filename string) (err error) {
 		backup.PlatformArtifactStorage = s
 	}
 
+	if groups, err := store.PlatformHostGroup().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Host Groups")
+		}
+	} else {
+		backup.PlatformHostGroup = groups
+	}
+
+	if resources, err := store.PlatformDatabaseResource().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Database Resources")
+		}
+	} else {
+		// 导出包可能离开当前加密域；数据库密码及其密文都不能随备份扩散，恢复后必须重新填写。
+		for i := range resources {
+			resources[i].PasswordCipherText = ""
+			resources[i].CredentialEncryptionVersion = ""
+			resources[i].CredentialHash = ""
+			resources[i].HasPassword = false
+		}
+		backup.PlatformDatabaseResource = resources
+	}
+
+	if bindings, err := store.PlatformServiceDatabaseBinding().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Service Database Bindings")
+		}
+	} else {
+		backup.PlatformServiceDatabaseBinding = bindings
+	}
+
+	if configs, err := store.PlatformObservabilityConfig().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Observability Configurations")
+		}
+	} else {
+		// 备份文件可能离开当前加密域，保留服务地址以便恢复接入，但绝不携带令牌或其元数据。
+		for i := range configs {
+			configs[i].BearerTokenCipherText = ""
+			configs[i].CredentialEncryptionVersion = ""
+			configs[i].CredentialHash = ""
+			configs[i].HasCredentials = false
+		}
+		backup.PlatformObservabilityConfig = configs
+	}
+
+	if policies, err := store.PlatformCanaryPolicy().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Canary Policies")
+		}
+	} else {
+		backup.PlatformCanaryPolicy = policies
+	}
+
+	if g, err := store.PlatformGateway().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Gateways")
+		}
+	} else {
+		backup.PlatformGateway = g
+	}
+
+	if r, err := store.PlatformGatewayRoute().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Gateway Routes")
+		}
+	} else {
+		backup.PlatformGatewayRoute = r
+	}
+
+	if c, err := store.PlatformGatewayCertificate().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Gateway Certificates")
+		}
+	} else {
+		// 证书材料只存在于受控运行环境。备份仅保留可审计元数据，恢复后管理员必须重新上传材料。
+		for i := range c {
+			c[i].MaterialRef = ""
+			c[i].HasPrivateKey = false
+		}
+		backup.PlatformGatewayCertificate = c
+	}
+
+	if v, err := store.PlatformGatewayConfigVersion().ReadAll(); err != nil {
+		if !store.IsErrObjectNotFound(err) {
+			log.Error().Err(err).Msg("exporting Platform Gateway Config Versions")
+		}
+	} else {
+		backup.PlatformGatewayConfigVersion = v
+	}
+
 	if r, err := store.PlatformRelease().ReadAll(); err != nil {
 		if !store.IsErrObjectNotFound(err) {
 			log.Error().Err(err).Msg("exporting Platform Releases")
@@ -1150,6 +1366,60 @@ func (store *Store) Import(filename string) (err error) {
 	for _, v := range backup.PlatformArtifactStorage {
 		if err := store.PlatformArtifactStorage().Update(v.ID, &v); err != nil {
 			log.Warn().Err(err).Msg("failed to update the platform artifact storage in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformHostGroup {
+		if err := store.PlatformHostGroup().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform host group in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformDatabaseResource {
+		if err := store.PlatformDatabaseResource().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform database resource metadata in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformServiceDatabaseBinding {
+		if err := store.PlatformServiceDatabaseBinding().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform service database binding in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformObservabilityConfig {
+		if err := store.PlatformObservabilityConfig().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform observability configuration in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformCanaryPolicy {
+		if err := store.PlatformCanaryPolicy().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform canary policy in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformGateway {
+		if err := store.PlatformGateway().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform gateway in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformGatewayRoute {
+		if err := store.PlatformGatewayRoute().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform gateway route in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformGatewayCertificate {
+		if err := store.PlatformGatewayCertificate().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform gateway certificate metadata in the database")
+		}
+	}
+
+	for _, v := range backup.PlatformGatewayConfigVersion {
+		if err := store.PlatformGatewayConfigVersion().Update(v.ID, &v); err != nil {
+			log.Warn().Err(err).Msg("failed to update the platform gateway config version in the database")
 		}
 	}
 

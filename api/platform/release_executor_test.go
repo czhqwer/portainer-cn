@@ -119,6 +119,84 @@ func TestSingleTargetExecutorSucceeds(t *testing.T) {
 	require.Equal(t, []string{"pull", "start-candidate", "validate-candidate", "delete-candidate", "switch", "validate-current"}, driver.calls)
 }
 
+func TestMultiTargetExecutorRecordsEachWorkloadResult(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	request := sampleReleaseExecutionRequest()
+	request.Environment.TargetMode = portainer.PlatformTargetModeMulti
+	request.Environment.Targets = []portainer.PlatformDeploymentTarget{
+		{EndpointID: 2, NodeName: "worker-b", HostAddress: "10.0.0.12", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 1, NodeName: "worker-a", HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 3, NodeName: "gateway", Role: portainer.PlatformDeploymentTargetRoleGateway, Enabled: true},
+	}
+
+	result, err := NewMultiTargetExecutor(driver).Execute(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusSucceeded, result.Release.Status)
+	require.Len(t, result.Release.TargetResults, 2)
+	require.Equal(t, portainer.EndpointID(1), result.Release.TargetResults[0].EndpointID)
+	require.Equal(t, portainer.PlatformReleaseTargetStatusSucceeded, result.Release.TargetResults[0].Status)
+	require.Equal(t, 0, result.Release.TargetResults[0].BatchIndex)
+	require.Equal(t, portainer.EndpointID(2), result.Release.TargetResults[1].EndpointID)
+	require.Equal(t, 1, result.Release.TargetResults[1].BatchIndex)
+	require.Equal(t, portainer.PlatformTargetModeMulti, result.Release.TargetSnapshot.TargetMode)
+	require.Len(t, result.Release.TargetSnapshots, 2)
+	require.Len(t, result.Release.BatchSnapshots, 2)
+	require.NotNil(t, result.Deployment)
+	require.Len(t, result.Deployment.CurrentTargetRuntimeRefs, 2)
+}
+
+func TestMultiTargetExecutorSkipsRemainingTargetsAfterFailure(t *testing.T) {
+	driver := &fakeRuntimeDriver{candidateHealthErr: errors.New("candidate failed")}
+	request := sampleReleaseExecutionRequest()
+	request.Environment.TargetMode = portainer.PlatformTargetModeMulti
+	request.Environment.Targets = []portainer.PlatformDeploymentTarget{
+		{EndpointID: 1, NodeName: "worker-a", HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 2, NodeName: "worker-b", HostAddress: "10.0.0.12", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true},
+	}
+
+	result, err := NewMultiTargetExecutor(driver).Execute(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.Len(t, result.Release.TargetResults, 2)
+	require.Equal(t, portainer.PlatformReleaseTargetStatusFailed, result.Release.TargetResults[0].Status)
+	require.Equal(t, portainer.PlatformReleaseTargetStatusSkipped, result.Release.TargetResults[1].Status)
+	require.Equal(t, "BATCH_PAUSED_AFTER_TARGET_FAILURE", result.Release.TargetResults[1].Reason)
+}
+
+func TestMultiTargetExecutorAppliesGatewayAfterAllTargetsSucceed(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	request := sampleReleaseExecutionRequest()
+	request.Environment.TargetMode = portainer.PlatformTargetModeMulti
+	request.Environment.Targets = []portainer.PlatformDeploymentTarget{{EndpointID: 1, HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true}}
+
+	result, err := NewMultiTargetExecutor(driver).WithGatewayCutover(fakeGatewayCutover{}).Execute(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusSucceeded, result.Release.Status)
+	require.Equal(t, "abc", result.Release.GatewaySnapshot.ConfigHash)
+}
+
+func TestSingleTargetExecutorRecoversPreviousWhenGatewayCutoverFails(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	executor := NewSingleTargetExecutor(driver).WithGatewayCutover(fakeGatewayCutover{err: errors.New("gateway reload failed")})
+
+	result, err := executor.Execute(context.Background(), sampleReleaseExecutionRequest())
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.Equal(t, ReleaseFailureReasonGatewayCutoverFailed, result.Release.FailureReason)
+	require.Nil(t, result.Deployment)
+	require.Contains(t, driver.calls, "recover")
+	require.Equal(t, "apply-gateway", result.Release.Steps[len(result.Release.Steps)-2].Name)
+}
+
+type fakeGatewayCutover struct{ err error }
+
+func (cutover fakeGatewayCutover) Cutover(context.Context, ReleaseExecutionRequest, portainer.PlatformRelease) (portainer.PlatformGatewaySnapshot, error) {
+	if cutover.err != nil {
+		return portainer.PlatformGatewaySnapshot{}, cutover.err
+	}
+	return portainer.PlatformGatewaySnapshot{ConfigHash: "abc"}, nil
+}
+
 func TestSingleTargetExecutorReportsStructuredProgress(t *testing.T) {
 	driver := &fakeRuntimeDriver{}
 	executor := NewSingleTargetExecutor(driver)

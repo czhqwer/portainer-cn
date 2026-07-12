@@ -233,10 +233,12 @@ func (server *Server) Start(ctx context.Context) error {
 		platformHandler.JavaImageBuilder = platform.NewDockerJavaImageBuilder(server.DataStore, server.DockerClientFactory)
 		platformHandler.StaticImageBuilder = platform.NewDockerJavaImageBuilder(server.DataStore, server.DockerClientFactory)
 		platformHandler.RegistryImagePusher = platform.NewDockerRegistryImagePusher(server.DataStore, server.DockerClientFactory)
-		releaseExecutor := platform.NewSingleTargetExecutor(dockerRuntimeDriver)
+		gatewayRuntime := platform.NewDockerGatewayRuntime(server.DataStore, server.DockerClientFactory)
+		releaseExecutor := platform.NewAdaptiveReleaseExecutor(dockerRuntimeDriver).WithGatewayCutover(platform.NewGatewayReleaseCutover(server.DataStore, server.FileService.GetDatastorePath(), gatewayRuntime))
 		platformHandler.ReleaseExecutor = releaseExecutor
 		platformHandler.ReleaseRecoveryExecutor = releaseExecutor
 		platformHandler.RuntimeInspector = dockerRuntimeDriver
+		platformHandler.GatewayRuntime = gatewayRuntime
 	}
 
 	var registryHandler = registries.NewHandler(requestBouncer)

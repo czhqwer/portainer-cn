@@ -135,9 +135,12 @@ func (handler *Handler) releaseValidate(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			return err
 		}
-		_, err = effectiveConfigForDeployment(tx, *deployment)
+		effectiveConfig, err := effectiveConfigForDeployment(tx, *deployment)
 		if err != nil {
 			return validationFailedError(err.Error())
+		}
+		if _, err = databaseBindingSnapshotsForDeployment(tx, *deployment, effectiveConfig); err != nil {
+			return err
 		}
 		_, err = secretSnapshotsForDeployment(tx, *deployment)
 		if err != nil {
@@ -147,6 +150,9 @@ func (handler *Handler) releaseValidate(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		return handler.convertError(err)
+	}
+	if reason := handler.preflightServiceDatabaseBindings(r.Context(), payload.ServiceDeploymentID); reason != "" {
+		return response.JSON(w, releaseValidateResponse{Valid: false, Executable: false, Code: errPlatformValidationFailed, Reason: reason, Message: "Database binding preflight failed.", ServiceDeploymentID: payload.ServiceDeploymentID, ArtifactID: payload.ArtifactID, ExpectedSpecRevision: payload.ExpectedSpecRevision})
 	}
 
 	if handler.ReleaseExecutor == nil {
@@ -199,6 +205,9 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 			platformservice.ReleaseFailureReasonExecutorUnavailable,
 			nil,
 		)
+	}
+	if reason := handler.preflightServiceDatabaseBindings(r.Context(), payload.ServiceDeploymentID); reason != "" {
+		return writePlatformError(w, http.StatusBadRequest, errPlatformValidationFailed, "Database binding preflight failed.", reason, nil)
 	}
 
 	payloadHash, err := releasePayloadHash(payload)
@@ -282,8 +291,12 @@ func (handler *Handler) releaseCreate(w http.ResponseWriter, r *http.Request) *h
 		if err != nil {
 			return validationFailedError(err.Error())
 		}
+		databaseBindings, err := databaseBindingSnapshotsForDeployment(tx, *refs.deployment, effectiveConfig)
+		if err != nil {
+			return err
+		}
 
-		release = newQueuedRelease(payload, refs.deployment, refs.artifact, effectiveConfig, secretSnapshots, userID, idempotencyKeyHash, payloadHash, now)
+		release = newQueuedRelease(payload, refs.deployment, refs.artifact, effectiveConfig, secretSnapshots, databaseBindings, userID, idempotencyKeyHash, payloadHash, now)
 
 		if err := tx.PlatformRelease().Create(release); err != nil {
 			return err
@@ -479,7 +492,7 @@ func findIdempotentRelease(tx dataservices.DataStoreTx, serviceDeploymentID port
 	return &releases[0], nil
 }
 
-func newQueuedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, effectiveConfig portainer.PlatformEffectiveConfigSnapshot, secretSnapshots []portainer.PlatformSecretSnapshot, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
+func newQueuedRelease(payload createReleasePayload, deployment *portainer.PlatformServiceDeployment, artifact *portainer.PlatformArtifact, effectiveConfig portainer.PlatformEffectiveConfigSnapshot, secretSnapshots []portainer.PlatformSecretSnapshot, databaseBindings []portainer.PlatformDatabaseBindingSnapshot, userID portainer.UserID, idempotencyKeyHash string, payloadHash string, now int64) *portainer.PlatformRelease {
 	return &portainer.PlatformRelease{
 		ProjectID:            payload.ProjectID,
 		EnvironmentID:        payload.EnvironmentID,
@@ -504,6 +517,7 @@ func newQueuedRelease(payload createReleasePayload, deployment *portainer.Platfo
 			DesiredSpecSnapshot:     deployment.DesiredSpec,
 			EffectiveConfigSnapshot: effectiveConfig,
 			SecretSnapshots:         secretSnapshots,
+			DatabaseBindings:        databaseBindings,
 			ConfigHash:              effectiveConfig.Hash,
 		},
 		TargetSnapshot:    targetSnapshotFromDeployment(deployment),

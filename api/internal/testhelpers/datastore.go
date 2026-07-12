@@ -13,49 +13,58 @@ import (
 var _ dataservices.DataStore = &testDatastore{}
 
 type testDatastore struct {
-	allowList                 dataservices.AllowListService
-	customTemplate            dataservices.CustomTemplateService
-	databaseConnection        dataservices.DatabaseConnectionService
-	platformProject           dataservices.PlatformProjectService
-	platformEnvironment       dataservices.PlatformEnvironmentService
-	platformApplication       dataservices.PlatformApplicationService
-	platformServiceDefinition dataservices.PlatformServiceDefinitionService
-	platformServiceDeployment dataservices.PlatformServiceDeploymentService
-	platformConfigSet         dataservices.PlatformConfigSetService
-	platformArtifact          dataservices.PlatformArtifactService
-	platformArtifactStorage   dataservices.PlatformArtifactStorageService
-	platformRelease           dataservices.PlatformReleaseService
-	platformReleaseLock       dataservices.PlatformReleaseLockService
-	platformAuditLog          dataservices.PlatformAuditLogService
-	edgeGroup                 dataservices.EdgeGroupService
-	edgeJob                   dataservices.EdgeJobService
-	edgeStack                 dataservices.EdgeStackService
-	edgeStackStatus           dataservices.EdgeStackStatusService
-	endpoint                  dataservices.EndpointService
-	endpointGroup             dataservices.EndpointGroupService
-	endpointRelation          dataservices.EndpointRelationService
-	helmUserRepository        dataservices.HelmUserRepositoryService
-	registry                  dataservices.RegistryService
-	resourceControl           dataservices.ResourceControlService
-	source                    dataservices.SourceService
-	apiKeyRepositoryService   dataservices.APIKeyRepository
-	role                      dataservices.RoleService
-	sslSettings               dataservices.SSLSettingsService
-	settings                  dataservices.SettingsService
-	snapshot                  dataservices.SnapshotService
-	stack                     dataservices.StackService
-	tag                       dataservices.TagService
-	teamMembership            dataservices.TeamMembershipService
-	team                      dataservices.TeamService
-	tunnelServer              dataservices.TunnelServerService
-	user                      dataservices.UserService
-	userActivityLog           dataservices.UserActivityLogService
-	userAuthenticationLog     dataservices.UserAuthenticationLogService
-	version                   dataservices.VersionService
-	webhook                   dataservices.WebhookService
-	pendingActionsService     dataservices.PendingActionsService
-	workflow                  dataservices.WorkflowService
-	connection                portainer.Connection
+	allowList                      dataservices.AllowListService
+	customTemplate                 dataservices.CustomTemplateService
+	databaseConnection             dataservices.DatabaseConnectionService
+	platformProject                dataservices.PlatformProjectService
+	platformEnvironment            dataservices.PlatformEnvironmentService
+	platformApplication            dataservices.PlatformApplicationService
+	platformServiceDefinition      dataservices.PlatformServiceDefinitionService
+	platformServiceDeployment      dataservices.PlatformServiceDeploymentService
+	platformConfigSet              dataservices.PlatformConfigSetService
+	platformArtifact               dataservices.PlatformArtifactService
+	platformArtifactStorage        dataservices.PlatformArtifactStorageService
+	platformHostGroup              dataservices.PlatformHostGroupService
+	platformDatabaseResource       dataservices.PlatformDatabaseResourceService
+	platformServiceDatabaseBinding dataservices.PlatformServiceDatabaseBindingService
+	platformObservabilityConfig    dataservices.PlatformObservabilityConfigService
+	platformCanaryPolicy           dataservices.PlatformCanaryPolicyService
+	platformGateway                dataservices.PlatformGatewayService
+	platformGatewayRoute           dataservices.PlatformGatewayRouteService
+	platformGatewayCertificate     dataservices.PlatformGatewayCertificateService
+	platformGatewayConfigVersion   dataservices.PlatformGatewayConfigVersionService
+	platformRelease                dataservices.PlatformReleaseService
+	platformReleaseLock            dataservices.PlatformReleaseLockService
+	platformAuditLog               dataservices.PlatformAuditLogService
+	edgeGroup                      dataservices.EdgeGroupService
+	edgeJob                        dataservices.EdgeJobService
+	edgeStack                      dataservices.EdgeStackService
+	edgeStackStatus                dataservices.EdgeStackStatusService
+	endpoint                       dataservices.EndpointService
+	endpointGroup                  dataservices.EndpointGroupService
+	endpointRelation               dataservices.EndpointRelationService
+	helmUserRepository             dataservices.HelmUserRepositoryService
+	registry                       dataservices.RegistryService
+	resourceControl                dataservices.ResourceControlService
+	source                         dataservices.SourceService
+	apiKeyRepositoryService        dataservices.APIKeyRepository
+	role                           dataservices.RoleService
+	sslSettings                    dataservices.SSLSettingsService
+	settings                       dataservices.SettingsService
+	snapshot                       dataservices.SnapshotService
+	stack                          dataservices.StackService
+	tag                            dataservices.TagService
+	teamMembership                 dataservices.TeamMembershipService
+	team                           dataservices.TeamService
+	tunnelServer                   dataservices.TunnelServerService
+	user                           dataservices.UserService
+	userActivityLog                dataservices.UserActivityLogService
+	userAuthenticationLog          dataservices.UserAuthenticationLogService
+	version                        dataservices.VersionService
+	webhook                        dataservices.WebhookService
+	pendingActionsService          dataservices.PendingActionsService
+	workflow                       dataservices.WorkflowService
+	connection                     portainer.Connection
 }
 
 func (d *testDatastore) Backup(path string) (string, error)                  { return "", nil }
@@ -96,6 +105,33 @@ func (d *testDatastore) PlatformArtifact() dataservices.PlatformArtifactService 
 }
 func (d *testDatastore) PlatformArtifactStorage() dataservices.PlatformArtifactStorageService {
 	return d.platformArtifactStorage
+}
+func (d *testDatastore) PlatformHostGroup() dataservices.PlatformHostGroupService {
+	return d.platformHostGroup
+}
+func (d *testDatastore) PlatformDatabaseResource() dataservices.PlatformDatabaseResourceService {
+	return d.platformDatabaseResource
+}
+func (d *testDatastore) PlatformServiceDatabaseBinding() dataservices.PlatformServiceDatabaseBindingService {
+	return d.platformServiceDatabaseBinding
+}
+func (d *testDatastore) PlatformObservabilityConfig() dataservices.PlatformObservabilityConfigService {
+	return d.platformObservabilityConfig
+}
+func (d *testDatastore) PlatformCanaryPolicy() dataservices.PlatformCanaryPolicyService {
+	return d.platformCanaryPolicy
+}
+func (d *testDatastore) PlatformGateway() dataservices.PlatformGatewayService {
+	return d.platformGateway
+}
+func (d *testDatastore) PlatformGatewayRoute() dataservices.PlatformGatewayRouteService {
+	return d.platformGatewayRoute
+}
+func (d *testDatastore) PlatformGatewayCertificate() dataservices.PlatformGatewayCertificateService {
+	return d.platformGatewayCertificate
+}
+func (d *testDatastore) PlatformGatewayConfigVersion() dataservices.PlatformGatewayConfigVersionService {
+	return d.platformGatewayConfigVersion
 }
 func (d *testDatastore) PlatformRelease() dataservices.PlatformReleaseService {
 	return d.platformRelease

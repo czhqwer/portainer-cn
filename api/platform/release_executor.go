@@ -9,21 +9,24 @@ import (
 )
 
 const (
-	ReleaseFailureReasonExecutorUnavailable        = "EXECUTOR_UNAVAILABLE"
-	ReleaseFailureReasonTargetNotConfigured        = "TARGET_NOT_CONFIGURED"
-	ReleaseFailureReasonTargetModeUnsupported      = "TARGET_MODE_UNSUPPORTED"
-	ReleaseFailureReasonRuntimeCleanupFailed       = "RUNTIME_CLEANUP_FAILED"
-	ReleaseFailureReasonProductionRequiresVerify   = "PRODUCTION_REQUIRES_VERIFIED"
-	ReleaseFailureReasonImagePullFailed            = "IMAGE_PULL_FAILED"
-	ReleaseFailureReasonCandidateStartFailed       = "CANDIDATE_START_FAILED"
-	ReleaseFailureReasonCandidateHealthFailed      = "CANDIDATE_HEALTH_FAILED"
-	ReleaseFailureReasonCandidateCleanupFailed     = "CANDIDATE_CLEANUP_FAILED"
-	ReleaseFailureReasonSwitchFailed               = "SWITCH_FAILED"
-	ReleaseFailureReasonFinalHealthFailed          = "FINAL_HEALTH_FAILED"
-	ReleaseFailureReasonRecoveryFailed             = "RECOVERY_FAILED"
-	ReleaseFailureReasonHealthcheckFailed          = "HEALTHCHECK_FAILED"
-	ReleaseFailureReasonHealthcheckHostUnreachable = "HEALTHCHECK_HOST_UNREACHABLE"
-	ReleaseFailureReasonRuntimeOperationFailed     = "RUNTIME_OPERATION_FAILED"
+	ReleaseFailureReasonExecutorUnavailable           = "EXECUTOR_UNAVAILABLE"
+	ReleaseFailureReasonTargetNotConfigured           = "TARGET_NOT_CONFIGURED"
+	ReleaseFailureReasonTargetModeUnsupported         = "TARGET_MODE_UNSUPPORTED"
+	ReleaseFailureReasonRuntimeCleanupFailed          = "RUNTIME_CLEANUP_FAILED"
+	ReleaseFailureReasonProductionRequiresVerify      = "PRODUCTION_REQUIRES_VERIFIED"
+	ReleaseFailureReasonImagePullFailed               = "IMAGE_PULL_FAILED"
+	ReleaseFailureReasonCandidateStartFailed          = "CANDIDATE_START_FAILED"
+	ReleaseFailureReasonCandidateHealthFailed         = "CANDIDATE_HEALTH_FAILED"
+	ReleaseFailureReasonCandidateCleanupFailed        = "CANDIDATE_CLEANUP_FAILED"
+	ReleaseFailureReasonSwitchFailed                  = "SWITCH_FAILED"
+	ReleaseFailureReasonFinalHealthFailed             = "FINAL_HEALTH_FAILED"
+	ReleaseFailureReasonRecoveryFailed                = "RECOVERY_FAILED"
+	ReleaseFailureReasonHealthcheckFailed             = "HEALTHCHECK_FAILED"
+	ReleaseFailureReasonHealthcheckHostUnreachable    = "HEALTHCHECK_HOST_UNREACHABLE"
+	ReleaseFailureReasonRuntimeOperationFailed        = "RUNTIME_OPERATION_FAILED"
+	ReleaseFailureReasonGatewayCutoverFailed          = "GATEWAY_CUTOVER_FAILED"
+	ReleaseFailureReasonDatabaseBindingUnavailable    = "DATABASE_BINDING_UNAVAILABLE"
+	ReleaseFailureReasonDatabaseCredentialUnavailable = "DATABASE_CREDENTIAL_UNAVAILABLE"
 )
 
 // ReleaseExecutor owns the runtime side of a platform release. The HTTP layer
@@ -47,6 +50,12 @@ type ReleaseExecutionRequest struct {
 	Artifact          portainer.PlatformArtifact
 	Release           portainer.PlatformRelease
 	Progress          ReleaseProgressReporter
+}
+
+// GatewayCutover 在新运行时最终健康检查通过后、Release 提交成功前更新中心网关。
+// 它返回的是不可变摘要；真实配置文件和私钥仍保留在受控目录中，不能进入 Release JSON。
+type GatewayCutover interface {
+	Cutover(ctx context.Context, request ReleaseExecutionRequest, release portainer.PlatformRelease) (portainer.PlatformGatewaySnapshot, error)
 }
 
 // ReleaseProgressReporter 让控制面在每个 Docker 操作间持久化结构化发布事实；
@@ -93,8 +102,14 @@ type RuntimeSwitchResult struct {
 }
 
 type SingleTargetExecutor struct {
-	driver RuntimeDriver
-	now    func() time.Time
+	driver         RuntimeDriver
+	gatewayCutover GatewayCutover
+	now            func() time.Time
+}
+
+func (executor *SingleTargetExecutor) WithGatewayCutover(cutover GatewayCutover) *SingleTargetExecutor {
+	executor.gatewayCutover = cutover
+	return executor
 }
 
 func reportReleaseProgress(request ReleaseExecutionRequest, release portainer.PlatformRelease) {
@@ -247,6 +262,20 @@ func (executor *SingleTargetExecutor) Execute(ctx context.Context, request Relea
 		return executor.recover(ctx, request, target, release, deployment, reason, errors.New(message))
 	}
 	appendStep(&release, "check-current", portainer.PlatformReleaseStepStatusSucceeded, "", "Formal container health check passed.", stepStart, executor.unixNow(), switchResult.CurrentRuntimeRef)
+
+	if executor.gatewayCutover != nil {
+		stepStart = executor.unixNow()
+		gatewaySnapshot, err := executor.gatewayCutover.Cutover(ctx, request, release)
+		if err != nil {
+			message := safeReleaseFailureMessage(ReleaseFailureReasonGatewayCutoverFailed)
+			appendStep(&release, "apply-gateway", portainer.PlatformReleaseStepStatusFailed, ReleaseFailureReasonGatewayCutoverFailed, message, stepStart, executor.unixNow(), switchResult.CurrentRuntimeRef)
+			return executor.recover(ctx, request, target, release, deployment, ReleaseFailureReasonGatewayCutoverFailed, errors.New(message))
+		}
+		release.GatewaySnapshot = gatewaySnapshot
+		if gatewaySnapshot.ConfigHash != "" {
+			appendStep(&release, "apply-gateway", portainer.PlatformReleaseStepStatusSucceeded, "", "Gateway configuration applied.", stepStart, executor.unixNow(), switchResult.CurrentRuntimeRef)
+		}
+	}
 
 	now = executor.unixNow()
 	release.Status = portainer.PlatformReleaseStatusSucceeded
@@ -500,6 +529,8 @@ func safeReleaseFailureMessage(reason string) string {
 		return "The formal runtime health check did not pass."
 	case ReleaseFailureReasonRecoveryFailed:
 		return "The previous runtime could not be recovered automatically."
+	case ReleaseFailureReasonGatewayCutoverFailed:
+		return "The gateway configuration could not be applied; the previous runtime was restored."
 	default:
 		return "The runtime operation did not complete."
 	}

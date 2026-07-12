@@ -196,3 +196,90 @@ func TestPlatformArtifactNormalizationAndValidation(t *testing.T) {
 	archive.StoragePath = "../../escape"
 	require.Error(t, ValidatePlatformArtifact(archive))
 }
+
+func TestPlatformGatewayModelsNormalizeAndRejectUnsafeInputs(t *testing.T) {
+	gateway := NewPlatformGateway()
+	gateway.ProjectID = 1
+	gateway.EnvironmentID = 2
+	gateway.EndpointID = 3
+	gateway.Name = "  production-gateway "
+	require.NoError(t, ValidatePlatformGateway(gateway))
+	NormalizePlatformGateway(&gateway)
+	require.Equal(t, "production-gateway", gateway.Name)
+
+	route := NewPlatformGatewayRoute()
+	route.GatewayID = 1
+	route.ProjectID = 1
+	route.EnvironmentID = 2
+	route.ServiceDeploymentID = 4
+	route.Domain = "API.Example.COM."
+	route.Path = "/api"
+	route.TargetPort = 8080
+	require.NoError(t, ValidatePlatformGatewayRoute(route))
+	NormalizePlatformGatewayRoute(&route)
+	require.Equal(t, "api.example.com", route.Domain)
+	require.Equal(t, 60, route.ProxyTimeoutSeconds)
+
+	route.Path = "/api\nproxy_pass http://untrusted"
+	require.Error(t, ValidatePlatformGatewayRoute(route))
+
+	route = NewPlatformGatewayRoute()
+	route.GatewayID = 1
+	route.ProjectID = 1
+	route.EnvironmentID = 2
+	route.ServiceDeploymentID = 4
+	route.Domain = "api.example.com"
+	route.TargetPort = 8080
+	route.ForceHTTPS = true
+	require.Error(t, ValidatePlatformGatewayRoute(route))
+}
+
+func TestPlatformGatewayCertificateAndConfigVersionValidation(t *testing.T) {
+	certificate := NewPlatformGatewayCertificate()
+	certificate.ProjectID = 1
+	certificate.Name = "example.com"
+	certificate.Domains = []string{"WWW.EXAMPLE.COM.", "example.com"}
+	require.NoError(t, ValidatePlatformGatewayCertificate(certificate))
+	NormalizePlatformGatewayCertificate(&certificate)
+	require.Equal(t, []string{"example.com", "www.example.com"}, certificate.Domains)
+
+	certificate.HasPrivateKey = true
+	require.Error(t, ValidatePlatformGatewayCertificate(certificate))
+
+	version := PlatformGatewayConfigVersion{
+		GatewayID:  1,
+		Revision:   1,
+		Status:     PlatformGatewayConfigStatusCandidate,
+		ConfigHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		RouteIDs:   []PlatformGatewayRouteID{2, 1},
+	}
+	require.NoError(t, ValidatePlatformGatewayConfigVersion(version))
+	NormalizePlatformGatewayConfigVersion(&version)
+	require.Equal(t, []PlatformGatewayRouteID{1, 2}, version.RouteIDs)
+
+	version.RouteIDs = []PlatformGatewayRouteID{1, 1}
+	require.Error(t, ValidatePlatformGatewayConfigVersion(version))
+}
+
+func TestPlatformHostGroupAndBatchPolicyValidation(t *testing.T) {
+	group := NewPlatformHostGroup()
+	group.ProjectID = 1
+	group.EnvironmentID = 2
+	group.Name = "  production-a "
+	group.Targets = []PlatformDeploymentTarget{
+		{EndpointID: 2, NodeName: "node-b", HostAddress: "10.0.0.12", Role: PlatformDeploymentTargetRoleWorkload, Enabled: true},
+		{EndpointID: 1, NodeName: "node-a", HostAddress: "10.0.0.11", Role: PlatformDeploymentTargetRoleWorkload, Enabled: true},
+	}
+	require.NoError(t, ValidatePlatformHostGroup(group))
+	NormalizePlatformHostGroup(&group)
+	require.Equal(t, "production-a", group.Name)
+	require.Equal(t, EndpointID(1), group.Targets[0].EndpointID)
+
+	group.Targets[1] = group.Targets[0]
+	require.Error(t, ValidatePlatformHostGroup(group))
+
+	policy := NewPlatformBatchPolicy()
+	require.NoError(t, ValidatePlatformBatchPolicy(policy))
+	policy.BatchSize = 0
+	require.Error(t, ValidatePlatformBatchPolicy(policy))
+}

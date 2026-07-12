@@ -24,6 +24,9 @@ type Handler struct {
 	ReleaseExecutor         platformservice.ReleaseExecutor
 	ReleaseRecoveryExecutor platformservice.ReleaseRecoveryExecutor
 	RuntimeInspector        platformservice.RuntimeInspector
+	GatewayRuntime          platformservice.GatewayRuntime
+	DatabaseResourceProbe   platformservice.DatabaseResourceProbe
+	ObservabilityAdapter    platformservice.ObservabilityAdapter
 }
 
 // NewHandler 注册阶段 2 平台接口。路由层只完成认证和受限上下文注入，
@@ -32,7 +35,26 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 	h := &Handler{
 		Router:                 mux.NewRouter(),
 		ArtifactStorageAdapter: platformservice.NewS3CompatibleArtifactStorageAdapter(),
+		DatabaseResourceProbe:  platformservice.NewDirectDatabaseResourceProbe(),
+		ObservabilityAdapter:   platformservice.NewHTTPObservabilityAdapter(nil),
 	}
+
+	h.Handle("/platform/observability-config",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityConfigInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/observability-config",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityConfigUpsert))).Methods(http.MethodPut)
+	h.Handle("/platform/projects/{projectId}/observability",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.observabilityQuery))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/canary-policies",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/canary-policies",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/canary-policies/{canaryPolicyId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/canary-policies/{canaryPolicyId}/weights",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyWeightChange))).Methods(http.MethodPost)
+	h.Handle("/platform/canary-policies/{canaryPolicyId}/rollback",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.canaryPolicyRollback))).Methods(http.MethodPost)
 
 	h.Handle("/platform/projects",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectList))).Methods(http.MethodGet)
@@ -49,12 +71,62 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentList))).Methods(http.MethodGet)
 	h.Handle("/platform/projects/{projectId}/environments",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/gateways",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/gateways",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/gateway-certificates",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/gateway-certificates",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/host-groups",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/host-groups",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/database-resources",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceList))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/database-resources",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/projects/{projectId}/capacity-summary",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectCapacitySummary))).Methods(http.MethodGet)
+	h.Handle("/platform/projects/{projectId}/failure-diagnostics",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.projectFailureDiagnostics))).Methods(http.MethodGet)
+	h.Handle("/platform/host-groups/{hostGroupId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/host-groups/{hostGroupId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/host-groups/{hostGroupId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.hostGroupArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/database-resources/{databaseResourceId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/database-resources/{databaseResourceId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/database-resources/{databaseResourceId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/database-resources/{databaseResourceId}/test",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.databaseResourceTest))).Methods(http.MethodPost)
+	h.Handle("/platform/gateway-certificates/{certificateId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayCertificateArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/gateways/{gatewayId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayInspect))).Methods(http.MethodGet)
+	h.Handle("/platform/gateways/{gatewayId}/routes",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteList))).Methods(http.MethodGet)
+	h.Handle("/platform/gateways/{gatewayId}/routes",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/gateway-routes/{routeId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/gateway-routes/{routeId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayRouteArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/gateways/{gatewayId}/config/apply",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.gatewayConfigApply))).Methods(http.MethodPost)
 	h.Handle("/platform/environments/{environmentId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentInspect))).Methods(http.MethodGet)
 	h.Handle("/platform/environments/{environmentId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentUpdate))).Methods(http.MethodPut)
 	h.Handle("/platform/environments/{environmentId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/environments/{environmentId}/targets/preflight",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.environmentTargetPreflight))).Methods(http.MethodPost)
 
 	h.Handle("/platform/projects/{projectId}/applications",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.applicationList))).Methods(http.MethodGet)
@@ -90,10 +162,20 @@ func NewHandler(bouncer security.BouncerService) *Handler {
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDeploymentLogs))).Methods(http.MethodGet)
 	h.Handle("/platform/service-deployments/{deploymentId}/effective-config",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDeploymentEffectiveConfig))).Methods(http.MethodGet)
+	h.Handle("/platform/service-deployments/{deploymentId}/database-bindings",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDatabaseBindingList))).Methods(http.MethodGet)
+	h.Handle("/platform/service-deployments/{deploymentId}/database-bindings",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDatabaseBindingCreate))).Methods(http.MethodPost)
+	h.Handle("/platform/service-deployments/{deploymentId}/database-workbench-context",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDatabaseWorkbenchContext))).Methods(http.MethodGet)
 	h.Handle("/platform/service-deployments/{deploymentId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDeploymentUpdate))).Methods(http.MethodPut)
 	h.Handle("/platform/service-deployments/{deploymentId}",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDeploymentArchive))).Methods(http.MethodDelete)
+	h.Handle("/platform/database-bindings/{databaseBindingId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDatabaseBindingUpdate))).Methods(http.MethodPut)
+	h.Handle("/platform/database-bindings/{databaseBindingId}",
+		bouncer.RestrictedAccess(httperror.LoggerHandler(h.serviceDatabaseBindingArchive))).Methods(http.MethodDelete)
 
 	h.Handle("/platform/artifacts",
 		bouncer.RestrictedAccess(httperror.LoggerHandler(h.artifactList))).Methods(http.MethodGet)

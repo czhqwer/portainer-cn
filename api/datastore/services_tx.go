@@ -58,6 +58,42 @@ func (tx *StoreTx) PlatformArtifactStorage() dataservices.PlatformArtifactStorag
 	return tx.store.PlatformArtifactStorageService.Tx(tx.tx)
 }
 
+func (tx *StoreTx) PlatformHostGroup() dataservices.PlatformHostGroupService {
+	return tx.store.PlatformHostGroupService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformDatabaseResource() dataservices.PlatformDatabaseResourceService {
+	return tx.store.PlatformDatabaseResourceService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformServiceDatabaseBinding() dataservices.PlatformServiceDatabaseBindingService {
+	return tx.store.PlatformServiceDatabaseBindingService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformObservabilityConfig() dataservices.PlatformObservabilityConfigService {
+	return tx.store.PlatformObservabilityConfigService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformCanaryPolicy() dataservices.PlatformCanaryPolicyService {
+	return tx.store.PlatformCanaryPolicyService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformGateway() dataservices.PlatformGatewayService {
+	return tx.store.PlatformGatewayService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformGatewayRoute() dataservices.PlatformGatewayRouteService {
+	return tx.store.PlatformGatewayRouteService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformGatewayCertificate() dataservices.PlatformGatewayCertificateService {
+	return tx.store.PlatformGatewayCertificateService.Tx(tx.tx)
+}
+
+func (tx *StoreTx) PlatformGatewayConfigVersion() dataservices.PlatformGatewayConfigVersionService {
+	return tx.store.PlatformGatewayConfigVersionService.Tx(tx.tx)
+}
+
 func (tx *StoreTx) PlatformRelease() dataservices.PlatformReleaseService {
 	return tx.store.PlatformReleaseService.Tx(tx.tx)
 }

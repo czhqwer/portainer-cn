@@ -92,6 +92,78 @@ func TestPlatformDataServicesCRUDAndArchive(t *testing.T) {
 	storage.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
 	require.NoError(t, store.PlatformArtifactStorage().Update(storage.ID, storage))
 
+	hostGroup := portainer.NewPlatformHostGroup()
+	hostGroup.ProjectID = project.ID
+	hostGroup.EnvironmentID = environment.ID
+	hostGroup.Name = "production-a"
+	hostGroup.Targets = []portainer.PlatformDeploymentTarget{{EndpointID: 1, NodeName: "node-a", HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true}}
+	require.NoError(t, store.PlatformHostGroup().Create(&hostGroup))
+	gotHostGroup, err := store.PlatformHostGroup().Read(hostGroup.ID)
+	require.NoError(t, err)
+	require.Equal(t, hostGroup.Name, gotHostGroup.Name)
+	hostGroup.LifecycleStatus = portainer.PlatformLifecycleStatusArchived
+	require.NoError(t, store.PlatformHostGroup().Update(hostGroup.ID, &hostGroup))
+
+	databaseResource := samplePlatformDatabaseResource(project.ID, environment.ID)
+	require.NoError(t, store.PlatformDatabaseResource().Create(databaseResource))
+	gotDatabaseResource, err := store.PlatformDatabaseResource().Read(databaseResource.ID)
+	require.NoError(t, err)
+	require.True(t, gotDatabaseResource.HasPassword)
+	require.NotEmpty(t, gotDatabaseResource.PasswordCipherText)
+	databaseResource.Host = "orders-db-v2.internal"
+	require.NoError(t, store.PlatformDatabaseResource().Update(databaseResource.ID, databaseResource))
+	gotDatabaseResource, err = store.PlatformDatabaseResource().Read(databaseResource.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, gotDatabaseResource.Revision)
+
+	databaseBinding := portainer.NewPlatformServiceDatabaseBinding()
+	databaseBinding.ProjectID = project.ID
+	databaseBinding.EnvironmentID = environment.ID
+	databaseBinding.ServiceDeploymentID = deployment.ID
+	databaseBinding.DatabaseResourceID = databaseResource.ID
+	require.NoError(t, store.PlatformServiceDatabaseBinding().Create(&databaseBinding))
+	gotDatabaseBinding, err := store.PlatformServiceDatabaseBinding().Read(databaseBinding.ID)
+	require.NoError(t, err)
+	require.Equal(t, databaseResource.ID, gotDatabaseBinding.DatabaseResourceID)
+
+	gateway := portainer.NewPlatformGateway()
+	gateway.ProjectID = project.ID
+	gateway.EnvironmentID = environment.ID
+	gateway.EndpointID = 1
+	gateway.Name = "demo-gateway"
+	require.NoError(t, store.PlatformGateway().Create(&gateway))
+
+	route := portainer.NewPlatformGatewayRoute()
+	route.GatewayID = gateway.ID
+	route.ProjectID = project.ID
+	route.EnvironmentID = environment.ID
+	route.ServiceDeploymentID = deployment.ID
+	route.Domain = "api.example.test"
+	route.Path = "/api"
+	route.TargetPort = 8080
+	require.NoError(t, store.PlatformGatewayRoute().Create(&route))
+
+	certificate := portainer.NewPlatformGatewayCertificate()
+	certificate.ProjectID = project.ID
+	certificate.Name = "example-test"
+	certificate.Domains = []string{"api.example.test"}
+	require.NoError(t, store.PlatformGatewayCertificate().Create(&certificate))
+
+	configVersion := portainer.PlatformGatewayConfigVersion{
+		GatewayID:  gateway.ID,
+		Revision:   1,
+		Status:     portainer.PlatformGatewayConfigStatusCandidate,
+		ConfigHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		RouteIDs:   []portainer.PlatformGatewayRouteID{route.ID},
+	}
+	require.NoError(t, store.PlatformGatewayConfigVersion().Create(&configVersion))
+	gotGateway, err := store.PlatformGateway().Read(gateway.ID)
+	require.NoError(t, err)
+	require.Equal(t, gateway.Name, gotGateway.Name)
+	gotConfigVersion, err := store.PlatformGatewayConfigVersion().Read(configVersion.ID)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformGatewayConfigStatusCandidate, gotConfigVersion.Status)
+
 	release := samplePlatformRelease(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID)
 	require.NoError(t, store.PlatformRelease().Create(release))
 	gotRelease, err := store.PlatformRelease().Read(release.ID)
@@ -187,6 +259,43 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	require.NoError(t, store.PlatformArtifact().Create(artifact))
 	storage := samplePlatformArtifactStorage()
 	require.NoError(t, store.PlatformArtifactStorage().Create(storage))
+	databaseResource := samplePlatformDatabaseResource(project.ID, environment.ID)
+	require.NoError(t, store.PlatformDatabaseResource().Create(databaseResource))
+	databaseBinding := portainer.NewPlatformServiceDatabaseBinding()
+	databaseBinding.ProjectID = project.ID
+	databaseBinding.EnvironmentID = environment.ID
+	databaseBinding.ServiceDeploymentID = deployment.ID
+	databaseBinding.DatabaseResourceID = databaseResource.ID
+	require.NoError(t, store.PlatformServiceDatabaseBinding().Create(&databaseBinding))
+	gateway := portainer.NewPlatformGateway()
+	gateway.ProjectID = project.ID
+	gateway.EnvironmentID = environment.ID
+	gateway.EndpointID = 1
+	gateway.Name = "export-gateway"
+	require.NoError(t, store.PlatformGateway().Create(&gateway))
+	route := portainer.NewPlatformGatewayRoute()
+	route.GatewayID = gateway.ID
+	route.ProjectID = project.ID
+	route.EnvironmentID = environment.ID
+	route.ServiceDeploymentID = deployment.ID
+	route.Domain = "export.example.test"
+	route.TargetPort = 8080
+	require.NoError(t, store.PlatformGatewayRoute().Create(&route))
+	certificate := portainer.NewPlatformGatewayCertificate()
+	certificate.ProjectID = project.ID
+	certificate.Name = "export-certificate"
+	certificate.Domains = []string{"export.example.test"}
+	certificate.MaterialRef = "gateway-certificates/export-certificate"
+	certificate.HasPrivateKey = true
+	require.NoError(t, store.PlatformGatewayCertificate().Create(&certificate))
+	configVersion := portainer.PlatformGatewayConfigVersion{
+		GatewayID:  gateway.ID,
+		Revision:   1,
+		Status:     portainer.PlatformGatewayConfigStatusActive,
+		ConfigHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		RouteIDs:   []portainer.PlatformGatewayRouteID{route.ID},
+	}
+	require.NoError(t, store.PlatformGatewayConfigVersion().Create(&configVersion))
 	release := samplePlatformRelease(project.ID, environment.ID, application.ID, definition.ID, deployment.ID, artifact.ID)
 	require.NoError(t, store.PlatformRelease().Create(release))
 	lock := &portainer.PlatformReleaseLock{
@@ -229,6 +338,31 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	require.Empty(t, importedStorage.CredentialEncryptionVersion)
 	require.Empty(t, importedStorage.CredentialHash)
 
+	importedDatabaseResource, err := importedStore.PlatformDatabaseResource().Read(databaseResource.ID)
+	require.NoError(t, err)
+	require.Equal(t, databaseResource.Host, importedDatabaseResource.Host)
+	require.False(t, importedDatabaseResource.HasPassword)
+	require.Empty(t, importedDatabaseResource.PasswordCipherText)
+	require.Empty(t, importedDatabaseResource.CredentialEncryptionVersion)
+	require.Empty(t, importedDatabaseResource.CredentialHash)
+	importedDatabaseBinding, err := importedStore.PlatformServiceDatabaseBinding().Read(databaseBinding.ID)
+	require.NoError(t, err)
+	require.Equal(t, databaseResource.ID, importedDatabaseBinding.DatabaseResourceID)
+
+	importedGateway, err := importedStore.PlatformGateway().Read(gateway.ID)
+	require.NoError(t, err)
+	require.Equal(t, gateway.Name, importedGateway.Name)
+	importedRoute, err := importedStore.PlatformGatewayRoute().Read(route.ID)
+	require.NoError(t, err)
+	require.Equal(t, route.Domain, importedRoute.Domain)
+	importedCertificate, err := importedStore.PlatformGatewayCertificate().Read(certificate.ID)
+	require.NoError(t, err)
+	require.Empty(t, importedCertificate.MaterialRef)
+	require.False(t, importedCertificate.HasPrivateKey)
+	importedConfigVersion, err := importedStore.PlatformGatewayConfigVersion().Read(configVersion.ID)
+	require.NoError(t, err)
+	require.Equal(t, configVersion.ConfigHash, importedConfigVersion.ConfigHash)
+
 	importedLock, err := importedStore.PlatformReleaseLock().Read(lock.ID)
 	require.NoError(t, err)
 	require.Equal(t, release.ID, importedLock.ReleaseID)
@@ -236,6 +370,46 @@ func TestPlatformDataServicesExportImport(t *testing.T) {
 	importedAudit, err := importedStore.PlatformAuditLog().Read(audit.ID)
 	require.NoError(t, err)
 	require.Equal(t, release.ID, importedAudit.ReleaseID)
+}
+
+func TestPlatformObservabilityConfigExportStripsCredentials(t *testing.T) {
+	t.Parallel()
+	_, store := MustNewTestStore(t, true, false)
+
+	config := portainer.NewPlatformObservabilityConfig()
+	config.PrometheusURL = "https://prometheus.example.test"
+	config.BearerTokenCipherText = "cipher"
+	config.CredentialEncryptionVersion = portainer.PlatformObservabilityCredentialEncryptionVersion
+	config.CredentialHash = "hash"
+	config.HasCredentials = true
+	require.NoError(t, store.PlatformObservabilityConfig().Create(&config))
+
+	backupFile := filepath.Join(t.TempDir(), "backup.json")
+	require.NoError(t, store.Export(backupFile))
+	_, importedStore := MustNewTestStore(t, true, false)
+	require.NoError(t, importedStore.Import(backupFile))
+
+	imported, err := importedStore.PlatformObservabilityConfig().Read(config.ID)
+	require.NoError(t, err)
+	require.False(t, imported.HasCredentials)
+	require.Empty(t, imported.BearerTokenCipherText)
+}
+
+func TestPlatformCanaryPolicyCRUD(t *testing.T) {
+	t.Parallel()
+	_, store := MustNewTestStore(t, true, false)
+
+	policy := portainer.NewPlatformCanaryPolicy()
+	policy.ProjectID = 1
+	policy.EnvironmentID = 1
+	policy.GatewayRouteID = 1
+	policy.StableReleaseID = 1
+	policy.CanaryReleaseID = 2
+	require.NoError(t, store.PlatformCanaryPolicy().Create(&policy))
+
+	stored, err := store.PlatformCanaryPolicy().Read(policy.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, stored.CurrentWeight)
 }
 
 func samplePlatformProject() *portainer.PlatformProject {
@@ -364,6 +538,24 @@ func samplePlatformArtifactStorage() *portainer.PlatformArtifactStorage {
 	storage.CredentialEncryptionVersion = portainer.PlatformArtifactStorageCredentialEncryptionVersion
 	storage.CredentialHash = "credential-hash"
 	return &storage
+}
+
+func samplePlatformDatabaseResource(projectID portainer.PlatformProjectID, environmentID portainer.PlatformEnvironmentID) *portainer.PlatformDatabaseResource {
+	resource := portainer.NewPlatformDatabaseResource()
+	resource.ProjectID = projectID
+	resource.EnvironmentID = environmentID
+	resource.EndpointID = 1
+	resource.Name = "orders-db"
+	resource.Type = portainer.PlatformDatabaseTypePostgres
+	resource.Host = "orders-db.internal"
+	resource.Port = 5432
+	resource.Database = "orders"
+	resource.Username = "orders_app"
+	resource.PasswordCipherText = "encrypted-password"
+	resource.CredentialEncryptionVersion = portainer.PlatformDatabaseCredentialEncryptionVersion
+	resource.CredentialHash = "password-hash"
+	resource.HasPassword = true
+	return &resource
 }
 
 func samplePlatformRelease(

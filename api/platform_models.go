@@ -10,16 +10,25 @@ import (
 )
 
 type (
-	PlatformProjectID           int
-	PlatformEnvironmentID       int
-	PlatformApplicationID       int
-	PlatformServiceDefinitionID int
-	PlatformServiceDeploymentID int
-	PlatformConfigSetID         int
-	PlatformArtifactID          int
-	PlatformArtifactStorageID   int
-	PlatformReleaseID           int
-	PlatformAuditLogID          int
+	PlatformProjectID                int
+	PlatformEnvironmentID            int
+	PlatformApplicationID            int
+	PlatformServiceDefinitionID      int
+	PlatformServiceDeploymentID      int
+	PlatformConfigSetID              int
+	PlatformArtifactID               int
+	PlatformArtifactStorageID        int
+	PlatformHostGroupID              int
+	PlatformDatabaseResourceID       int
+	PlatformServiceDatabaseBindingID int
+	PlatformObservabilityConfigID    int
+	PlatformCanaryPolicyID           int
+	PlatformGatewayID                int
+	PlatformGatewayRouteID           int
+	PlatformGatewayCertificateID     int
+	PlatformGatewayConfigVersionID   int
+	PlatformReleaseID                int
+	PlatformAuditLogID               int
 
 	PlatformProjectRole             string
 	PlatformLifecycleStatus         string
@@ -58,6 +67,8 @@ type (
 	PlatformDeploymentDriftStatus   string
 	PlatformAuditAction             string
 	PlatformAuditResult             string
+	PlatformGatewayConfigStatus     string
+	PlatformDatabaseType            string
 )
 
 const (
@@ -125,6 +136,13 @@ const (
 	PlatformArtifactStatusFailed    PlatformArtifactStatus = "failed"
 
 	PlatformArtifactStorageCredentialEncryptionVersion = "boltdb-v1"
+	PlatformDatabaseCredentialEncryptionVersion        = "boltdb-v1"
+	PlatformObservabilityCredentialEncryptionVersion   = "boltdb-v1"
+
+	PlatformDatabaseTypeMySQL    PlatformDatabaseType = "mysql"
+	PlatformDatabaseTypeMariaDB  PlatformDatabaseType = "mariadb"
+	PlatformDatabaseTypePostgres PlatformDatabaseType = "postgres"
+	PlatformDatabaseTypeRedis    PlatformDatabaseType = "redis"
 
 	PlatformImagePullPolicyAlways       PlatformImagePullPolicy = "always"
 	PlatformImagePullPolicyIfNotPresent PlatformImagePullPolicy = "if-not-present"
@@ -216,59 +234,87 @@ const (
 	PlatformReleaseResolutionMarkHandled     PlatformReleaseResolution = "mark-handled"
 	PlatformReleaseResolutionReleaseLockOnly PlatformReleaseResolution = "release-lock-only"
 
-	PlatformReleaseTargetStatusPending   PlatformReleaseTargetStatus = "pending"
-	PlatformReleaseTargetStatusRunning   PlatformReleaseTargetStatus = "running"
-	PlatformReleaseTargetStatusSucceeded PlatformReleaseTargetStatus = "succeeded"
-	PlatformReleaseTargetStatusFailed    PlatformReleaseTargetStatus = "failed"
-	PlatformReleaseTargetStatusSkipped   PlatformReleaseTargetStatus = "skipped"
+	PlatformReleaseTargetStatusPending        PlatformReleaseTargetStatus = "pending"
+	PlatformReleaseTargetStatusRunning        PlatformReleaseTargetStatus = "running"
+	PlatformReleaseTargetStatusSucceeded      PlatformReleaseTargetStatus = "succeeded"
+	PlatformReleaseTargetStatusFailed         PlatformReleaseTargetStatus = "failed"
+	PlatformReleaseTargetStatusSkipped        PlatformReleaseTargetStatus = "skipped"
+	PlatformReleaseTargetStatusRecovered      PlatformReleaseTargetStatus = "recovered"
+	PlatformReleaseTargetStatusRecoveryFailed PlatformReleaseTargetStatus = "recovery-failed"
 
 	PlatformExecutorModeSingle PlatformExecutorMode = "single"
 	PlatformExecutorModeMulti  PlatformExecutorMode = "multi"
 	PlatformExecutorModeBatch  PlatformExecutorMode = "batch"
+
+	PlatformGatewayConfigStatusCandidate PlatformGatewayConfigStatus = "candidate"
+	PlatformGatewayConfigStatusActive    PlatformGatewayConfigStatus = "active"
+	PlatformGatewayConfigStatusFailed    PlatformGatewayConfigStatus = "failed"
 
 	PlatformDeploymentDriftNone           PlatformDeploymentDriftStatus = "none"
 	PlatformDeploymentDriftConfigChanged  PlatformDeploymentDriftStatus = "config-changed"
 	PlatformDeploymentDriftRuntimeMissing PlatformDeploymentDriftStatus = "runtime-missing"
 	PlatformDeploymentDriftRuntimeDrifted PlatformDeploymentDriftStatus = "runtime-drifted"
 
-	PlatformAuditActionReleaseCreated            PlatformAuditAction = "release.created"
-	PlatformAuditActionReleaseSucceeded          PlatformAuditAction = "release.succeeded"
-	PlatformAuditActionReleaseFailed             PlatformAuditAction = "release.failed"
-	PlatformAuditActionReleaseRecoveryFailed     PlatformAuditAction = "release.recovery_failed"
-	PlatformAuditActionReleaseCanceled           PlatformAuditAction = "release.canceled"
-	PlatformAuditActionReleaseResolved           PlatformAuditAction = "release.resolved"
-	PlatformAuditActionReleaseRetryRecovery      PlatformAuditAction = "release.retry_recovery"
-	PlatformAuditActionReleaseCleanupRuntime     PlatformAuditAction = "release.cleanup_runtime"
-	PlatformAuditActionReleaseDenied             PlatformAuditAction = "release.denied"
-	PlatformAuditActionConfigSetCreated          PlatformAuditAction = "config_set.created"
-	PlatformAuditActionConfigSetUpdated          PlatformAuditAction = "config_set.updated"
-	PlatformAuditActionConfigSetArchived         PlatformAuditAction = "config_set.archived"
-	PlatformAuditActionSecretCreated             PlatformAuditAction = "secret.created"
-	PlatformAuditActionSecretUpdated             PlatformAuditAction = "secret.updated"
-	PlatformAuditActionSecretDeleted             PlatformAuditAction = "secret.deleted"
-	PlatformAuditActionSecretRevealed            PlatformAuditAction = "secret.revealed"
-	PlatformAuditActionSecretCopied              PlatformAuditAction = "secret.copied"
-	PlatformAuditActionProjectPermissionsUpdated PlatformAuditAction = "project.permissions_updated"
-	PlatformAuditActionArtifactUploaded          PlatformAuditAction = "artifact.uploaded"
-	PlatformAuditActionArtifactUploadFailed      PlatformAuditAction = "artifact.upload_failed"
-	PlatformAuditActionArtifactFetched           PlatformAuditAction = "artifact.fetched"
-	PlatformAuditActionArtifactFetchFailed       PlatformAuditAction = "artifact.fetch_failed"
-	PlatformAuditActionArtifactImported          PlatformAuditAction = "artifact.imported"
-	PlatformAuditActionArtifactImportFailed      PlatformAuditAction = "artifact.import_failed"
-	PlatformAuditActionArtifactStaticBuilt       PlatformAuditAction = "artifact.static_built"
-	PlatformAuditActionArtifactStaticBuildFailed PlatformAuditAction = "artifact.static_build_failed"
-	PlatformAuditActionArtifactPushed            PlatformAuditAction = "artifact.pushed"
-	PlatformAuditActionArtifactPushFailed        PlatformAuditAction = "artifact.push_failed"
-	PlatformAuditActionArtifactCleaned           PlatformAuditAction = "artifact.cleaned"
-	PlatformAuditActionArtifactCleanupBlocked    PlatformAuditAction = "artifact.cleanup_blocked"
-	PlatformAuditActionArtifactCleanupFailed     PlatformAuditAction = "artifact.cleanup_failed"
-	PlatformAuditActionArtifactStorageCreated    PlatformAuditAction = "artifact_storage.created"
-	PlatformAuditActionArtifactStorageUpdated    PlatformAuditAction = "artifact_storage.updated"
-	PlatformAuditActionArtifactStorageTested     PlatformAuditAction = "artifact_storage.tested"
-	PlatformAuditActionAccessDenied              PlatformAuditAction = "platform.access_denied"
-	PlatformAuditActionRollbackCreated           PlatformAuditAction = "rollback.created"
-	PlatformAuditActionRollbackSucceeded         PlatformAuditAction = "rollback.succeeded"
-	PlatformAuditActionRollbackFailed            PlatformAuditAction = "rollback.failed"
+	PlatformAuditActionReleaseCreated             PlatformAuditAction = "release.created"
+	PlatformAuditActionReleaseSucceeded           PlatformAuditAction = "release.succeeded"
+	PlatformAuditActionReleaseFailed              PlatformAuditAction = "release.failed"
+	PlatformAuditActionReleaseRecoveryFailed      PlatformAuditAction = "release.recovery_failed"
+	PlatformAuditActionReleaseCanceled            PlatformAuditAction = "release.canceled"
+	PlatformAuditActionReleaseResolved            PlatformAuditAction = "release.resolved"
+	PlatformAuditActionReleaseRetryRecovery       PlatformAuditAction = "release.retry_recovery"
+	PlatformAuditActionReleaseCleanupRuntime      PlatformAuditAction = "release.cleanup_runtime"
+	PlatformAuditActionReleaseDenied              PlatformAuditAction = "release.denied"
+	PlatformAuditActionConfigSetCreated           PlatformAuditAction = "config_set.created"
+	PlatformAuditActionConfigSetUpdated           PlatformAuditAction = "config_set.updated"
+	PlatformAuditActionConfigSetArchived          PlatformAuditAction = "config_set.archived"
+	PlatformAuditActionSecretCreated              PlatformAuditAction = "secret.created"
+	PlatformAuditActionSecretUpdated              PlatformAuditAction = "secret.updated"
+	PlatformAuditActionSecretDeleted              PlatformAuditAction = "secret.deleted"
+	PlatformAuditActionSecretRevealed             PlatformAuditAction = "secret.revealed"
+	PlatformAuditActionSecretCopied               PlatformAuditAction = "secret.copied"
+	PlatformAuditActionProjectPermissionsUpdated  PlatformAuditAction = "project.permissions_updated"
+	PlatformAuditActionArtifactUploaded           PlatformAuditAction = "artifact.uploaded"
+	PlatformAuditActionArtifactUploadFailed       PlatformAuditAction = "artifact.upload_failed"
+	PlatformAuditActionArtifactFetched            PlatformAuditAction = "artifact.fetched"
+	PlatformAuditActionArtifactFetchFailed        PlatformAuditAction = "artifact.fetch_failed"
+	PlatformAuditActionArtifactImported           PlatformAuditAction = "artifact.imported"
+	PlatformAuditActionArtifactImportFailed       PlatformAuditAction = "artifact.import_failed"
+	PlatformAuditActionArtifactStaticBuilt        PlatformAuditAction = "artifact.static_built"
+	PlatformAuditActionArtifactStaticBuildFailed  PlatformAuditAction = "artifact.static_build_failed"
+	PlatformAuditActionArtifactPushed             PlatformAuditAction = "artifact.pushed"
+	PlatformAuditActionArtifactPushFailed         PlatformAuditAction = "artifact.push_failed"
+	PlatformAuditActionArtifactCleaned            PlatformAuditAction = "artifact.cleaned"
+	PlatformAuditActionArtifactCleanupBlocked     PlatformAuditAction = "artifact.cleanup_blocked"
+	PlatformAuditActionArtifactCleanupFailed      PlatformAuditAction = "artifact.cleanup_failed"
+	PlatformAuditActionArtifactStorageCreated     PlatformAuditAction = "artifact_storage.created"
+	PlatformAuditActionArtifactStorageUpdated     PlatformAuditAction = "artifact_storage.updated"
+	PlatformAuditActionArtifactStorageTested      PlatformAuditAction = "artifact_storage.tested"
+	PlatformAuditActionAccessDenied               PlatformAuditAction = "platform.access_denied"
+	PlatformAuditActionRollbackCreated            PlatformAuditAction = "rollback.created"
+	PlatformAuditActionRollbackSucceeded          PlatformAuditAction = "rollback.succeeded"
+	PlatformAuditActionRollbackFailed             PlatformAuditAction = "rollback.failed"
+	PlatformAuditActionGatewayCreated             PlatformAuditAction = "gateway.created"
+	PlatformAuditActionGatewayRouteCreated        PlatformAuditAction = "gateway_route.created"
+	PlatformAuditActionGatewayRouteUpdated        PlatformAuditAction = "gateway_route.updated"
+	PlatformAuditActionGatewayRouteArchived       PlatformAuditAction = "gateway_route.archived"
+	PlatformAuditActionGatewayCertificateCreated  PlatformAuditAction = "gateway_certificate.created"
+	PlatformAuditActionGatewayCertificateArchived PlatformAuditAction = "gateway_certificate.archived"
+	PlatformAuditActionGatewayConfigApplied       PlatformAuditAction = "gateway_config.applied"
+	PlatformAuditActionGatewayConfigFailed        PlatformAuditAction = "gateway_config.failed"
+	PlatformAuditActionHostGroupCreated           PlatformAuditAction = "host_group.created"
+	PlatformAuditActionHostGroupUpdated           PlatformAuditAction = "host_group.updated"
+	PlatformAuditActionHostGroupArchived          PlatformAuditAction = "host_group.archived"
+	PlatformAuditActionDatabaseResourceCreated    PlatformAuditAction = "database_resource.created"
+	PlatformAuditActionDatabaseResourceUpdated    PlatformAuditAction = "database_resource.updated"
+	PlatformAuditActionDatabaseResourceArchived   PlatformAuditAction = "database_resource.archived"
+	PlatformAuditActionDatabaseBindingCreated     PlatformAuditAction = "database_binding.created"
+	PlatformAuditActionDatabaseBindingUpdated     PlatformAuditAction = "database_binding.updated"
+	PlatformAuditActionDatabaseBindingArchived    PlatformAuditAction = "database_binding.archived"
+	PlatformAuditActionObservabilityConfigured    PlatformAuditAction = "observability.configured"
+	PlatformAuditActionObservabilityQueried       PlatformAuditAction = "observability.queried"
+	PlatformAuditActionCanaryCreated              PlatformAuditAction = "canary.created"
+	PlatformAuditActionCanaryWeightChanged        PlatformAuditAction = "canary.weight_changed"
+	PlatformAuditActionCanaryHealthFailed         PlatformAuditAction = "canary.health_failed"
 
 	PlatformAuditResultSuccess PlatformAuditResult = "success"
 	PlatformAuditResultFailed  PlatformAuditResult = "failed"
@@ -308,6 +354,8 @@ type PlatformEnvironment struct {
 	DefaultRegistryID RegistryID                 `json:"DefaultRegistryId" example:"1"`
 	HealthCheckHost   string                     `json:"HealthCheckHost,omitempty" example:"127.0.0.1"`
 	ReleasePolicy     PlatformReleasePolicy      `json:"ReleasePolicy"`
+	HostGroupID       PlatformHostGroupID        `json:"HostGroupId,omitempty"`
+	BatchPolicy       PlatformBatchPolicy        `json:"BatchPolicy"`
 	PlatformLifecycle
 }
 
@@ -317,6 +365,25 @@ type PlatformDeploymentTarget struct {
 	Role        PlatformDeploymentTargetRole `json:"Role" example:"workload"`
 	HostAddress string                       `json:"HostAddress,omitempty" example:"127.0.0.1"`
 	Enabled     bool                         `json:"Enabled" example:"true"`
+}
+
+// PlatformHostGroup 保存多主机发布的可变配置；Release 只保存创建时的不可变快照。
+// 这避免后来调整组成员或排序时重写历史发布及其恢复语义。
+type PlatformHostGroup struct {
+	ID            PlatformHostGroupID        `json:"Id" example:"1"`
+	ProjectID     PlatformProjectID          `json:"ProjectId" example:"1"`
+	EnvironmentID PlatformEnvironmentID      `json:"EnvironmentId" example:"1"`
+	Name          string                     `json:"Name" example:"production-a"`
+	Targets       []PlatformDeploymentTarget `json:"Targets"`
+	PlatformLifecycle
+}
+
+// PlatformBatchPolicy 仅定义顺序发布与失败补偿，不引入权重灰度或自动扩缩容。
+type PlatformBatchPolicy struct {
+	BatchSize                int  `json:"BatchSize" example:"1"`
+	IntervalSeconds          int  `json:"IntervalSeconds" example:"30"`
+	PauseOnFailure           bool `json:"PauseOnFailure" example:"true"`
+	RollbackSucceededTargets bool `json:"RollbackSucceededTargets" example:"true"`
 }
 
 type PlatformReleasePolicy struct {
@@ -357,6 +424,7 @@ type PlatformServiceDeployment struct {
 	CurrentServingReleaseID  PlatformReleaseID             `json:"CurrentServingReleaseId" example:"0"`
 	CurrentArtifactID        PlatformArtifactID            `json:"CurrentArtifactId" example:"0"`
 	CurrentRuntimeRef        RuntimeRef                    `json:"CurrentRuntimeRef"`
+	CurrentTargetRuntimeRefs []PlatformReleaseTargetResult `json:"CurrentTargetRuntimeRefs,omitempty"`
 	CurrentImage             string                        `json:"CurrentImage,omitempty"`
 	DriftStatus              PlatformDeploymentDriftStatus `json:"DriftStatus" example:"none"`
 	LastObservedAt           int64                         `json:"LastObservedAt" example:"0"`
@@ -450,6 +518,71 @@ type PlatformConfigSet struct {
 	PlatformLifecycle
 }
 
+// PlatformDatabaseResource 是项目部署可引用的环境级数据库连接。它与个人工作台
+// DatabaseConnection 分离，避免把某个用户的私有密码隐式共享给项目成员。
+type PlatformDatabaseResource struct {
+	ID                          PlatformDatabaseResourceID `json:"Id" example:"1"`
+	ProjectID                   PlatformProjectID          `json:"ProjectId" example:"1"`
+	EnvironmentID               PlatformEnvironmentID      `json:"EnvironmentId" example:"1"`
+	EndpointID                  EndpointID                 `json:"EndpointId" example:"1"`
+	Name                        string                     `json:"Name" example:"orders-db"`
+	Type                        PlatformDatabaseType       `json:"Type" example:"postgres"`
+	Host                        string                     `json:"Host" example:"db.internal"`
+	Port                        int                        `json:"Port" example:"5432"`
+	Database                    string                     `json:"Database,omitempty" example:"orders"`
+	Username                    string                     `json:"Username,omitempty" example:"orders_app"`
+	PasswordCipherText          string                     `json:"PasswordCipherText,omitempty" swaggerignore:"true"`
+	CredentialEncryptionVersion string                     `json:"CredentialEncryptionVersion,omitempty"`
+	CredentialHash              string                     `json:"CredentialHash,omitempty"`
+	HasPassword                 bool                       `json:"HasPassword" example:"true"`
+	ConnectionTimeoutSeconds    int                        `json:"ConnectionTimeoutSeconds" example:"5"`
+	Revision                    int                        `json:"Revision" example:"1"`
+	PlatformLifecycle
+}
+
+// PlatformServiceDatabaseBinding 只保存部署与平台资源的引用。固定变量名由运行期
+// 解析器生成，避免绑定层允许任意变量名而绕过敏感配置与审计边界。
+type PlatformServiceDatabaseBinding struct {
+	ID                  PlatformServiceDatabaseBindingID `json:"Id" example:"1"`
+	ProjectID           PlatformProjectID                `json:"ProjectId" example:"1"`
+	EnvironmentID       PlatformEnvironmentID            `json:"EnvironmentId" example:"1"`
+	ServiceDeploymentID PlatformServiceDeploymentID      `json:"ServiceDeploymentId" example:"1"`
+	DatabaseResourceID  PlatformDatabaseResourceID       `json:"DatabaseResourceId" example:"1"`
+	Revision            int                              `json:"Revision" example:"1"`
+	PlatformLifecycle
+}
+
+// PlatformObservabilityConfig 只保存既有观测系统的受控连接信息。查询模板由后端固定，
+// 因此不能把任意 PromQL、LogQL 或 Grafana 地址作为可编辑字段持久化。
+type PlatformObservabilityConfig struct {
+	ID                          PlatformObservabilityConfigID `json:"Id" example:"1"`
+	PrometheusURL               string                        `json:"PrometheusUrl,omitempty" example:"https://prometheus.example.com"`
+	LokiURL                     string                        `json:"LokiUrl,omitempty" example:"https://loki.example.com"`
+	GrafanaURL                  string                        `json:"GrafanaUrl,omitempty" example:"https://grafana.example.com"`
+	BearerTokenCipherText       string                        `json:"BearerTokenCipherText,omitempty" swaggerignore:"true"`
+	CredentialEncryptionVersion string                        `json:"CredentialEncryptionVersion,omitempty"`
+	CredentialHash              string                        `json:"CredentialHash,omitempty"`
+	HasCredentials              bool                          `json:"HasCredentials" example:"true"`
+	Enabled                     bool                          `json:"Enabled" example:"true"`
+	Revision                    int                           `json:"Revision" example:"1"`
+	PlatformLifecycle
+}
+
+// PlatformCanaryPolicy 只关联两个已经成功的 Release；Nginx upstream 始终由 Release 快照解析，
+// 不允许策略保存任意地址或配置文本，从而避免灰度接口绕过网关控制面边界。
+type PlatformCanaryPolicy struct {
+	ID                PlatformCanaryPolicyID `json:"Id" example:"1"`
+	ProjectID         PlatformProjectID      `json:"ProjectId" example:"1"`
+	EnvironmentID     PlatformEnvironmentID  `json:"EnvironmentId" example:"1"`
+	GatewayRouteID    PlatformGatewayRouteID `json:"GatewayRouteId" example:"1"`
+	StableReleaseID   PlatformReleaseID      `json:"StableReleaseId" example:"1"`
+	CanaryReleaseID   PlatformReleaseID      `json:"CanaryReleaseId" example:"2"`
+	CurrentWeight     int                    `json:"CurrentWeight" example:"0"`
+	ResourceVersion   int                    `json:"ResourceVersion" example:"1"`
+	LastFailureReason string                 `json:"LastFailureReason,omitempty"`
+	PlatformLifecycle
+}
+
 type PlatformConfigEntry struct {
 	Key               string                    `json:"Key" example:"APP_ENV"`
 	ValueType         PlatformConfigValueType   `json:"ValueType" example:"plain"`
@@ -487,6 +620,17 @@ type PlatformSecretSnapshot struct {
 	EncryptionVersion string `json:"EncryptionVersion,omitempty"`
 	Hash              string `json:"Hash,omitempty"`
 	HasValue          bool   `json:"HasValue,omitempty"`
+}
+
+// PlatformDatabaseBindingSnapshot 是 Release 的可追溯事实，不携带数据库密码、完整
+// URL 或密文。运行期会根据资源与版本重新受控解密，普通 Release 读取无法恢复凭据。
+type PlatformDatabaseBindingSnapshot struct {
+	BindingID          PlatformServiceDatabaseBindingID `json:"BindingId" example:"1"`
+	BindingRevision    int                              `json:"BindingRevision" example:"1"`
+	DatabaseResourceID PlatformDatabaseResourceID       `json:"DatabaseResourceId" example:"1"`
+	ResourceRevision   int                              `json:"ResourceRevision" example:"1"`
+	Type               PlatformDatabaseType             `json:"Type" example:"postgres"`
+	VariableHash       string                           `json:"VariableHash,omitempty"`
 }
 
 // PlatformArtifactTaskEvent 只记录平台定义的阶段、结果和原因码，用于让用户追踪耗时制品操作。
@@ -553,48 +697,116 @@ type PlatformArtifactStorage struct {
 	PlatformLifecycle
 }
 
+// PlatformGateway 表示一个环境受控的中心 Nginx 实例；它只保存定位和活动配置事实，
+// 绝不接受用户提供的容器 ID、主机路径或任意 Nginx 指令，以免网关管理变成越权 Docker 操作入口。
+type PlatformGateway struct {
+	ID                    PlatformGatewayID              `json:"Id" example:"1"`
+	ProjectID             PlatformProjectID              `json:"ProjectId" example:"1"`
+	EnvironmentID         PlatformEnvironmentID          `json:"EnvironmentId" example:"1"`
+	EndpointID            EndpointID                     `json:"EndpointId" example:"1"`
+	NodeName              string                         `json:"NodeName,omitempty"`
+	Name                  string                         `json:"Name" example:"production-gateway"`
+	ManagedContainerID    string                         `json:"ManagedContainerId,omitempty" swaggerignore:"true"`
+	ActiveConfigVersionID PlatformGatewayConfigVersionID `json:"ActiveConfigVersionId,omitempty"`
+	ActiveConfigHash      string                         `json:"ActiveConfigHash,omitempty"`
+	PlatformLifecycle
+}
+
+// PlatformGatewayRoute 是服务到受控 upstream 的声明。upstream 本身由发布运行时生成，
+// 不持久化用户可编辑地址，避免通过域名路由把流量代理到任意内网目标。
+type PlatformGatewayRoute struct {
+	ID                  PlatformGatewayRouteID       `json:"Id" example:"1"`
+	GatewayID           PlatformGatewayID            `json:"GatewayId" example:"1"`
+	ProjectID           PlatformProjectID            `json:"ProjectId" example:"1"`
+	EnvironmentID       PlatformEnvironmentID        `json:"EnvironmentId" example:"1"`
+	ServiceDeploymentID PlatformServiceDeploymentID  `json:"ServiceDeploymentId" example:"1"`
+	Domain              string                       `json:"Domain" example:"api.example.com"`
+	Path                string                       `json:"Path" example:"/api"`
+	TargetPort          int                          `json:"TargetPort" example:"8080"`
+	EnableTLS           bool                         `json:"EnableTls" example:"true"`
+	ForceHTTPS          bool                         `json:"ForceHttps" example:"true"`
+	WebSocket           bool                         `json:"WebSocket" example:"false"`
+	ProxyTimeoutSeconds int                          `json:"ProxyTimeoutSeconds,omitempty" example:"60"`
+	MaxRequestBodyBytes int64                        `json:"MaxRequestBodyBytes,omitempty" example:"10485760"`
+	CertificateID       PlatformGatewayCertificateID `json:"CertificateId,omitempty"`
+	PlatformLifecycle
+}
+
+// PlatformGatewayCertificate 只保存证书公开元数据和受控材料引用。
+// 私钥的具体存储由后续安全存储实现负责，不能作为普通 JSON 字段、备份字段或审计摘要落库。
+type PlatformGatewayCertificate struct {
+	ID            PlatformGatewayCertificateID `json:"Id" example:"1"`
+	ProjectID     PlatformProjectID            `json:"ProjectId" example:"1"`
+	Name          string                       `json:"Name" example:"example.com-2026"`
+	Domains       []string                     `json:"Domains"`
+	Serial        string                       `json:"Serial,omitempty"`
+	NotBefore     int64                        `json:"NotBefore,omitempty"`
+	NotAfter      int64                        `json:"NotAfter,omitempty"`
+	SHA256        string                       `json:"SHA256,omitempty"`
+	MaterialRef   string                       `json:"MaterialRef,omitempty" swaggerignore:"true"`
+	HasPrivateKey bool                         `json:"HasPrivateKey"`
+	PlatformLifecycle
+}
+
+// PlatformGatewayConfigVersion 保存经过渲染和校验的配置版本事实，而不是 Nginx 原文。
+// 这样 Release 可以不可变地引用 hash/路由集合，同时避免配置文本和证书路径从控制面泄漏。
+type PlatformGatewayConfigVersion struct {
+	ID              PlatformGatewayConfigVersionID `json:"Id" example:"1"`
+	GatewayID       PlatformGatewayID              `json:"GatewayId" example:"1"`
+	Revision        int                            `json:"Revision" example:"1"`
+	Status          PlatformGatewayConfigStatus    `json:"Status" example:"active"`
+	ConfigHash      string                         `json:"ConfigHash"`
+	RouteIDs        []PlatformGatewayRouteID       `json:"RouteIds"`
+	CreatedAt       int64                          `json:"CreatedAt" example:"1783740000"`
+	CreatedByUserID UserID                         `json:"CreatedByUserId,omitempty"`
+	FailureReason   string                         `json:"FailureReason,omitempty"`
+}
+
 type PlatformRelease struct {
-	ID                      PlatformReleaseID             `json:"Id" example:"1"`
-	ProjectID               PlatformProjectID             `json:"ProjectId" example:"1"`
-	EnvironmentID           PlatformEnvironmentID         `json:"EnvironmentId" example:"1"`
-	ApplicationID           PlatformApplicationID         `json:"ApplicationId" example:"1"`
-	ServiceDefinitionID     PlatformServiceDefinitionID   `json:"ServiceDefinitionId" example:"1"`
-	ServiceDeploymentID     PlatformServiceDeploymentID   `json:"ServiceDeploymentId" example:"1"`
-	ArtifactID              PlatformArtifactID            `json:"ArtifactId" example:"1"`
-	Version                 string                        `json:"Version" example:"20260711-001"`
-	TriggerType             PlatformReleaseTriggerType    `json:"TriggerType" example:"deploy"`
-	Strategy                PlatformReleaseStrategy       `json:"Strategy"`
-	Status                  PlatformReleaseStatus         `json:"Status" example:"queued"`
-	OperatorUserID          UserID                        `json:"OperatorUserId" example:"1"`
-	IdempotencyKeyHash      string                        `json:"IdempotencyKeyHash,omitempty"`
-	PayloadHash             string                        `json:"PayloadHash,omitempty"`
-	ExpectedSpecRevision    int                           `json:"ExpectedSpecRevision" example:"1"`
-	Image                   string                        `json:"Image,omitempty"`
-	ImageDigest             string                        `json:"ImageDigest,omitempty"`
-	Traceability            PlatformTraceability          `json:"Traceability" example:"weak"`
-	ArtifactSnapshot        PlatformArtifactSnapshot      `json:"ArtifactSnapshot"`
-	ConfigSnapshot          PlatformServiceConfigSnapshot `json:"ConfigSnapshot"`
-	TargetSnapshot          PlatformTargetSnapshot        `json:"TargetSnapshot"`
-	RuntimeSnapshot         PlatformRuntimeSnapshot       `json:"RuntimeSnapshot"`
-	GatewaySnapshot         PlatformGatewaySnapshot       `json:"GatewaySnapshot"`
-	HealthCheckResult       PlatformHealthCheckResult     `json:"HealthCheckResult"`
-	Steps                   []PlatformReleaseStep         `json:"Steps,omitempty"`
-	TargetResults           []PlatformReleaseTargetResult `json:"TargetResults,omitempty"`
-	PreviousReleaseID       PlatformReleaseID             `json:"PreviousReleaseId" example:"0"`
-	RollbackSourceReleaseID PlatformReleaseID             `json:"RollbackSourceReleaseId" example:"0"`
-	CanRollback             bool                          `json:"CanRollback" example:"false"`
-	FailureReason           string                        `json:"FailureReason,omitempty"`
-	ManualActionRequired    bool                          `json:"ManualActionRequired" example:"false"`
-	ResolutionAction        PlatformReleaseResolution     `json:"ResolutionAction" example:"none"`
-	ResolvedByUserID        UserID                        `json:"ResolvedByUserId" example:"0"`
-	ResolvedAt              int64                         `json:"ResolvedAt" example:"0"`
-	ResolutionComment       string                        `json:"ResolutionComment,omitempty"`
-	LeaseOwner              string                        `json:"LeaseOwner,omitempty"`
-	LeaseExpiresAt          int64                         `json:"LeaseExpiresAt" example:"0"`
-	StartedAt               int64                         `json:"StartedAt" example:"0"`
-	FinishedAt              int64                         `json:"FinishedAt" example:"0"`
-	CreatedAt               int64                         `json:"CreatedAt" example:"1783740000"`
-	QueueExpiresAt          int64                         `json:"QueueExpiresAt" example:"1783740600"`
+	ID                      PlatformReleaseID              `json:"Id" example:"1"`
+	ProjectID               PlatformProjectID              `json:"ProjectId" example:"1"`
+	EnvironmentID           PlatformEnvironmentID          `json:"EnvironmentId" example:"1"`
+	ApplicationID           PlatformApplicationID          `json:"ApplicationId" example:"1"`
+	ServiceDefinitionID     PlatformServiceDefinitionID    `json:"ServiceDefinitionId" example:"1"`
+	ServiceDeploymentID     PlatformServiceDeploymentID    `json:"ServiceDeploymentId" example:"1"`
+	ArtifactID              PlatformArtifactID             `json:"ArtifactId" example:"1"`
+	Version                 string                         `json:"Version" example:"20260711-001"`
+	TriggerType             PlatformReleaseTriggerType     `json:"TriggerType" example:"deploy"`
+	Strategy                PlatformReleaseStrategy        `json:"Strategy"`
+	Status                  PlatformReleaseStatus          `json:"Status" example:"queued"`
+	OperatorUserID          UserID                         `json:"OperatorUserId" example:"1"`
+	IdempotencyKeyHash      string                         `json:"IdempotencyKeyHash,omitempty"`
+	PayloadHash             string                         `json:"PayloadHash,omitempty"`
+	ExpectedSpecRevision    int                            `json:"ExpectedSpecRevision" example:"1"`
+	Image                   string                         `json:"Image,omitempty"`
+	ImageDigest             string                         `json:"ImageDigest,omitempty"`
+	Traceability            PlatformTraceability           `json:"Traceability" example:"weak"`
+	ArtifactSnapshot        PlatformArtifactSnapshot       `json:"ArtifactSnapshot"`
+	ConfigSnapshot          PlatformServiceConfigSnapshot  `json:"ConfigSnapshot"`
+	TargetSnapshot          PlatformTargetSnapshot         `json:"TargetSnapshot"`
+	TargetSnapshots         []PlatformTargetSnapshot       `json:"TargetSnapshots,omitempty"`
+	BatchPolicySnapshot     PlatformBatchPolicy            `json:"BatchPolicySnapshot"`
+	BatchSnapshots          []PlatformReleaseBatchSnapshot `json:"BatchSnapshots,omitempty"`
+	RuntimeSnapshot         PlatformRuntimeSnapshot        `json:"RuntimeSnapshot"`
+	GatewaySnapshot         PlatformGatewaySnapshot        `json:"GatewaySnapshot"`
+	HealthCheckResult       PlatformHealthCheckResult      `json:"HealthCheckResult"`
+	Steps                   []PlatformReleaseStep          `json:"Steps,omitempty"`
+	TargetResults           []PlatformReleaseTargetResult  `json:"TargetResults,omitempty"`
+	PreviousReleaseID       PlatformReleaseID              `json:"PreviousReleaseId" example:"0"`
+	RollbackSourceReleaseID PlatformReleaseID              `json:"RollbackSourceReleaseId" example:"0"`
+	CanRollback             bool                           `json:"CanRollback" example:"false"`
+	FailureReason           string                         `json:"FailureReason,omitempty"`
+	ManualActionRequired    bool                           `json:"ManualActionRequired" example:"false"`
+	ResolutionAction        PlatformReleaseResolution      `json:"ResolutionAction" example:"none"`
+	ResolvedByUserID        UserID                         `json:"ResolvedByUserId" example:"0"`
+	ResolvedAt              int64                          `json:"ResolvedAt" example:"0"`
+	ResolutionComment       string                         `json:"ResolutionComment,omitempty"`
+	LeaseOwner              string                         `json:"LeaseOwner,omitempty"`
+	LeaseExpiresAt          int64                          `json:"LeaseExpiresAt" example:"0"`
+	StartedAt               int64                          `json:"StartedAt" example:"0"`
+	FinishedAt              int64                          `json:"FinishedAt" example:"0"`
+	CreatedAt               int64                          `json:"CreatedAt" example:"1783740000"`
+	QueueExpiresAt          int64                          `json:"QueueExpiresAt" example:"1783740600"`
 }
 
 type PlatformReleaseStrategy struct {
@@ -623,11 +835,12 @@ type PlatformArtifactSnapshot struct {
 }
 
 type PlatformServiceConfigSnapshot struct {
-	SpecRevision            int                             `json:"SpecRevision" example:"1"`
-	DesiredSpecSnapshot     PlatformDeploymentDesiredSpec   `json:"DesiredSpecSnapshot"`
-	EffectiveConfigSnapshot PlatformEffectiveConfigSnapshot `json:"EffectiveConfigSnapshot"`
-	SecretSnapshots         []PlatformSecretSnapshot        `json:"SecretSnapshots,omitempty"`
-	ConfigHash              string                          `json:"ConfigHash,omitempty"`
+	SpecRevision            int                               `json:"SpecRevision" example:"1"`
+	DesiredSpecSnapshot     PlatformDeploymentDesiredSpec     `json:"DesiredSpecSnapshot"`
+	EffectiveConfigSnapshot PlatformEffectiveConfigSnapshot   `json:"EffectiveConfigSnapshot"`
+	SecretSnapshots         []PlatformSecretSnapshot          `json:"SecretSnapshots,omitempty"`
+	DatabaseBindings        []PlatformDatabaseBindingSnapshot `json:"DatabaseBindings,omitempty"`
+	ConfigHash              string                            `json:"ConfigHash,omitempty"`
 }
 
 type PlatformTargetSnapshot struct {
@@ -684,10 +897,18 @@ type PlatformReleaseStep struct {
 type PlatformReleaseTargetResult struct {
 	EndpointID     EndpointID                  `json:"EndpointId" example:"1"`
 	NodeName       string                      `json:"NodeName,omitempty"`
+	HostAddress    string                      `json:"HostAddress,omitempty"`
+	BatchIndex     int                         `json:"BatchIndex" example:"0"`
 	RuntimeRef     RuntimeRef                  `json:"RuntimeRef"`
 	PublishedPorts []PlatformPublishedPort     `json:"PublishedPorts,omitempty"`
 	Status         PlatformReleaseTargetStatus `json:"Status" example:"pending"`
 	Reason         string                      `json:"Reason,omitempty"`
+}
+
+// PlatformReleaseBatchSnapshot 记录每批精确 target 身份，恢复时不得读取当前 HostGroup。
+type PlatformReleaseBatchSnapshot struct {
+	Index         int   `json:"Index" example:"0"`
+	TargetIndices []int `json:"TargetIndices"`
 }
 
 type PlatformPublishedPort struct {
@@ -751,6 +972,383 @@ func NewPlatformLifecycle() PlatformLifecycle {
 
 var platformConfigEntryKeyPattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 var platformArtifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var platformGatewayDomainPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
+
+func NewPlatformGateway() PlatformGateway {
+	return PlatformGateway{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformGatewayRoute() PlatformGatewayRoute {
+	return PlatformGatewayRoute{
+		Path:                "/",
+		ProxyTimeoutSeconds: 60,
+		PlatformLifecycle:   NewPlatformLifecycle(),
+	}
+}
+
+func NewPlatformGatewayCertificate() PlatformGatewayCertificate {
+	return PlatformGatewayCertificate{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformHostGroup() PlatformHostGroup {
+	return PlatformHostGroup{PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformDatabaseResource() PlatformDatabaseResource {
+	return PlatformDatabaseResource{
+		ConnectionTimeoutSeconds: 5,
+		Revision:                 1,
+		PlatformLifecycle:        NewPlatformLifecycle(),
+	}
+}
+
+func NewPlatformServiceDatabaseBinding() PlatformServiceDatabaseBinding {
+	return PlatformServiceDatabaseBinding{Revision: 1, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformObservabilityConfig() PlatformObservabilityConfig {
+	return PlatformObservabilityConfig{Revision: 1, Enabled: true, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func NewPlatformCanaryPolicy() PlatformCanaryPolicy {
+	return PlatformCanaryPolicy{CurrentWeight: 0, PlatformLifecycle: NewPlatformLifecycle()}
+}
+
+func ValidatePlatformCanaryWeight(weight int) error {
+	switch weight {
+	case 0, 5, 25, 50, 100:
+		return nil
+	default:
+		return fmt.Errorf("canary weight is invalid")
+	}
+}
+
+func NormalizePlatformCanaryPolicy(policy *PlatformCanaryPolicy) {
+	if policy == nil {
+		return
+	}
+	policy.LastFailureReason = strings.TrimSpace(policy.LastFailureReason)
+	if policy.ResourceVersion == 0 {
+		policy.ResourceVersion = 1
+	}
+}
+
+func ValidatePlatformCanaryPolicy(policy PlatformCanaryPolicy) error {
+	NormalizePlatformCanaryPolicy(&policy)
+	if policy.ProjectID <= 0 || policy.EnvironmentID <= 0 || policy.GatewayRouteID <= 0 || policy.StableReleaseID <= 0 || policy.CanaryReleaseID <= 0 || policy.StableReleaseID == policy.CanaryReleaseID {
+		return fmt.Errorf("canary policy ownership and two releases are required")
+	}
+	return ValidatePlatformCanaryWeight(policy.CurrentWeight)
+}
+
+// NormalizePlatformObservabilityConfig 统一观测服务地址与凭据元数据，避免后续 adapter
+// 因空白或不成对的安全字段访问到未受控的外部服务。
+func NormalizePlatformObservabilityConfig(config *PlatformObservabilityConfig) {
+	if config == nil {
+		return
+	}
+	config.PrometheusURL = strings.TrimSpace(config.PrometheusURL)
+	config.LokiURL = strings.TrimSpace(config.LokiURL)
+	config.GrafanaURL = strings.TrimSpace(config.GrafanaURL)
+	config.CredentialEncryptionVersion = strings.TrimSpace(config.CredentialEncryptionVersion)
+	config.CredentialHash = strings.TrimSpace(config.CredentialHash)
+	if config.Revision == 0 {
+		config.Revision = 1
+	}
+}
+
+func ValidatePlatformObservabilityConfig(config PlatformObservabilityConfig) error {
+	NormalizePlatformObservabilityConfig(&config)
+	if config.PrometheusURL == "" && config.LokiURL == "" && config.GrafanaURL == "" {
+		return fmt.Errorf("at least one observability endpoint is required")
+	}
+	for _, endpoint := range []string{config.PrometheusURL, config.LokiURL, config.GrafanaURL} {
+		if endpoint == "" {
+			continue
+		}
+		parsed, err := url.ParseRequestURI(endpoint)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("observability endpoint is invalid")
+		}
+	}
+	if config.HasCredentials && (config.BearerTokenCipherText == "" || config.CredentialEncryptionVersion != PlatformObservabilityCredentialEncryptionVersion || config.CredentialHash == "") {
+		return fmt.Errorf("observability credentials must use encrypted storage")
+	}
+	if !config.HasCredentials && (config.BearerTokenCipherText != "" || config.CredentialEncryptionVersion != "" || config.CredentialHash != "") {
+		return fmt.Errorf("observability credential state is invalid")
+	}
+	return nil
+}
+
+// NormalizePlatformDatabaseResource 固定连接元数据的存储形式。密码必须已由 handler
+// 加密并清空明文后才能调用 datastore，避免直连调用意外把密码写入 BoltDB。
+func NormalizePlatformDatabaseResource(resource *PlatformDatabaseResource) {
+	if resource == nil {
+		return
+	}
+	resource.Name = strings.TrimSpace(resource.Name)
+	resource.Host = strings.TrimSpace(resource.Host)
+	resource.Database = strings.TrimSpace(resource.Database)
+	resource.Username = strings.TrimSpace(resource.Username)
+	if resource.ConnectionTimeoutSeconds == 0 {
+		resource.ConnectionTimeoutSeconds = 5
+	}
+	if resource.Revision == 0 {
+		resource.Revision = 1
+	}
+}
+
+func ValidatePlatformDatabaseResource(resource PlatformDatabaseResource) error {
+	NormalizePlatformDatabaseResource(&resource)
+	if resource.ProjectID <= 0 || resource.EnvironmentID <= 0 || resource.EndpointID <= 0 || resource.Name == "" || resource.Host == "" {
+		return fmt.Errorf("database resource ownership and connection metadata are required")
+	}
+	if resource.Type != PlatformDatabaseTypeMySQL && resource.Type != PlatformDatabaseTypeMariaDB && resource.Type != PlatformDatabaseTypePostgres && resource.Type != PlatformDatabaseTypeRedis {
+		return fmt.Errorf("database resource type is invalid")
+	}
+	if resource.Port <= 0 || resource.Port > 65535 || resource.ConnectionTimeoutSeconds < 1 || resource.ConnectionTimeoutSeconds > 30 {
+		return fmt.Errorf("database resource network settings are invalid")
+	}
+	if strings.ContainsAny(resource.Host, "\r\n\x00/@\\") || strings.ContainsAny(resource.Database, "\r\n\x00") || strings.ContainsAny(resource.Username, "\r\n\x00") {
+		return fmt.Errorf("database resource connection metadata is invalid")
+	}
+	if resource.HasPassword && (resource.PasswordCipherText == "" || resource.CredentialEncryptionVersion != PlatformDatabaseCredentialEncryptionVersion || resource.CredentialHash == "") {
+		return fmt.Errorf("database resource password must use encrypted storage")
+	}
+	if !resource.HasPassword && (resource.PasswordCipherText != "" || resource.CredentialEncryptionVersion != "" || resource.CredentialHash != "") {
+		return fmt.Errorf("database resource credential state is invalid")
+	}
+	return nil
+}
+
+func NormalizePlatformServiceDatabaseBinding(binding *PlatformServiceDatabaseBinding) {
+	if binding == nil {
+		return
+	}
+	if binding.Revision == 0 {
+		binding.Revision = 1
+	}
+}
+
+func ValidatePlatformServiceDatabaseBinding(binding PlatformServiceDatabaseBinding) error {
+	NormalizePlatformServiceDatabaseBinding(&binding)
+	if binding.ProjectID <= 0 || binding.EnvironmentID <= 0 || binding.ServiceDeploymentID <= 0 || binding.DatabaseResourceID <= 0 {
+		return fmt.Errorf("database binding ownership is required")
+	}
+	return nil
+}
+
+// NormalizePlatformBatchPolicy 固定安全默认值，避免缺省 multi 发布被意外并发放大。
+func NormalizePlatformBatchPolicy(policy *PlatformBatchPolicy) {
+	if policy == nil {
+		return
+	}
+	if policy.BatchSize == 0 {
+		policy.BatchSize = 1
+	}
+	if !policy.PauseOnFailure {
+		// false 是显式业务选择时才允许写入；缺省值由调用方的 NewPlatformBatchPolicy 提供。
+		policy.PauseOnFailure = true
+	}
+	if !policy.RollbackSucceededTargets {
+		policy.RollbackSucceededTargets = true
+	}
+}
+
+func NewPlatformBatchPolicy() PlatformBatchPolicy {
+	return PlatformBatchPolicy{BatchSize: 1, PauseOnFailure: true, RollbackSucceededTargets: true}
+}
+
+func ValidatePlatformBatchPolicy(policy PlatformBatchPolicy) error {
+	if policy.BatchSize < 1 || policy.BatchSize > 100 {
+		return fmt.Errorf("batch size is invalid")
+	}
+	if policy.IntervalSeconds < 0 || policy.IntervalSeconds > 3600 {
+		return fmt.Errorf("batch interval is invalid")
+	}
+	if !policy.PauseOnFailure || !policy.RollbackSucceededTargets {
+		return fmt.Errorf("multi target policy must pause and rollback on failure")
+	}
+	return nil
+}
+
+func NormalizePlatformHostGroup(group *PlatformHostGroup) {
+	if group == nil {
+		return
+	}
+	group.Name = strings.TrimSpace(group.Name)
+	group.Targets = append([]PlatformDeploymentTarget(nil), group.Targets...)
+	for i := range group.Targets {
+		group.Targets[i].NodeName = strings.TrimSpace(group.Targets[i].NodeName)
+		group.Targets[i].HostAddress = strings.TrimSpace(group.Targets[i].HostAddress)
+	}
+	sort.Slice(group.Targets, func(i, j int) bool {
+		if group.Targets[i].EndpointID != group.Targets[j].EndpointID {
+			return group.Targets[i].EndpointID < group.Targets[j].EndpointID
+		}
+		if group.Targets[i].NodeName != group.Targets[j].NodeName {
+			return group.Targets[i].NodeName < group.Targets[j].NodeName
+		}
+		return group.Targets[i].HostAddress < group.Targets[j].HostAddress
+	})
+}
+
+func ValidatePlatformHostGroup(group PlatformHostGroup) error {
+	NormalizePlatformHostGroup(&group)
+	if group.ProjectID <= 0 || group.EnvironmentID <= 0 || group.Name == "" || len(group.Targets) == 0 {
+		return fmt.Errorf("host group ownership and targets are required")
+	}
+	for i, target := range group.Targets {
+		if target.EndpointID <= 0 || !target.Enabled || target.Role != PlatformDeploymentTargetRoleWorkload || target.HostAddress == "" || strings.ContainsAny(target.HostAddress, "\r\n\x00/\\@") {
+			return fmt.Errorf("host group target is invalid")
+		}
+		if i > 0 && group.Targets[i-1].EndpointID == target.EndpointID && group.Targets[i-1].NodeName == target.NodeName && group.Targets[i-1].HostAddress == target.HostAddress {
+			return fmt.Errorf("host group targets are duplicated")
+		}
+	}
+	return nil
+}
+
+// NormalizePlatformGateway 统一控制面定位字段，避免后续 Docker adapter 根据未规范化名称
+// 推导容器或配置路径；真实运行时资源只能由平台标签和 Endpoint 配置决定。
+func NormalizePlatformGateway(gateway *PlatformGateway) {
+	if gateway == nil {
+		return
+	}
+
+	gateway.Name = strings.TrimSpace(gateway.Name)
+	gateway.NodeName = strings.TrimSpace(gateway.NodeName)
+	gateway.ManagedContainerID = strings.TrimSpace(gateway.ManagedContainerID)
+	gateway.ActiveConfigHash = strings.TrimSpace(gateway.ActiveConfigHash)
+}
+
+func ValidatePlatformGateway(gateway PlatformGateway) error {
+	NormalizePlatformGateway(&gateway)
+	if gateway.ProjectID <= 0 || gateway.EnvironmentID <= 0 || gateway.EndpointID <= 0 || gateway.Name == "" {
+		return fmt.Errorf("gateway project, environment, endpoint and name are required")
+	}
+	if gateway.ActiveConfigHash != "" && !platformArtifactSHA256Pattern.MatchString(gateway.ActiveConfigHash) {
+		return fmt.Errorf("gateway active config hash is invalid")
+	}
+	return nil
+}
+
+// NormalizePlatformGatewayRoute 只接受可以安全渲染的域名和 URI 路径片段。
+// 规范化在 dataservice 与 handler 两侧复用，避免备份恢复绕过 API 校验后产生不同配置。
+func NormalizePlatformGatewayRoute(route *PlatformGatewayRoute) {
+	if route == nil {
+		return
+	}
+
+	route.Domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(route.Domain), "."))
+	route.Path = strings.TrimSpace(route.Path)
+	if route.Path == "" {
+		route.Path = "/"
+	}
+	if route.ProxyTimeoutSeconds == 0 {
+		route.ProxyTimeoutSeconds = 60
+	}
+}
+
+func ValidatePlatformGatewayRoute(route PlatformGatewayRoute) error {
+	NormalizePlatformGatewayRoute(&route)
+	if route.GatewayID <= 0 || route.ProjectID <= 0 || route.EnvironmentID <= 0 || route.ServiceDeploymentID <= 0 {
+		return fmt.Errorf("gateway route ownership is required")
+	}
+	if !platformGatewayDomainPattern.MatchString(route.Domain) || len(route.Domain) > 253 {
+		return fmt.Errorf("gateway route domain is invalid")
+	}
+	if !strings.HasPrefix(route.Path, "/") || strings.ContainsAny(route.Path, "?#\\n\\r\\x00") || path.Clean(route.Path) != route.Path {
+		return fmt.Errorf("gateway route path is invalid")
+	}
+	if route.TargetPort < 1 || route.TargetPort > 65535 {
+		return fmt.Errorf("gateway route target port is invalid")
+	}
+	if route.ForceHTTPS && !route.EnableTLS {
+		return fmt.Errorf("gateway route force HTTPS requires TLS")
+	}
+	if route.EnableTLS && route.CertificateID <= 0 {
+		return fmt.Errorf("gateway route TLS requires a certificate")
+	}
+	if !route.EnableTLS && route.CertificateID != 0 {
+		return fmt.Errorf("gateway route certificate requires TLS")
+	}
+	if route.ProxyTimeoutSeconds < 1 || route.ProxyTimeoutSeconds > 600 {
+		return fmt.Errorf("gateway route proxy timeout is invalid")
+	}
+	if route.MaxRequestBodyBytes < 0 || route.MaxRequestBodyBytes > 2*1024*1024*1024 {
+		return fmt.Errorf("gateway route max request body is invalid")
+	}
+	return nil
+}
+
+func NormalizePlatformGatewayCertificate(certificate *PlatformGatewayCertificate) {
+	if certificate == nil {
+		return
+	}
+
+	certificate.Name = strings.TrimSpace(certificate.Name)
+	certificate.Serial = strings.TrimSpace(certificate.Serial)
+	certificate.SHA256 = strings.TrimSpace(certificate.SHA256)
+	certificate.MaterialRef = strings.TrimSpace(certificate.MaterialRef)
+	certificate.Domains = append([]string(nil), certificate.Domains...)
+	for i := range certificate.Domains {
+		certificate.Domains[i] = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(certificate.Domains[i]), "."))
+	}
+	sort.Strings(certificate.Domains)
+}
+
+func ValidatePlatformGatewayCertificate(certificate PlatformGatewayCertificate) error {
+	NormalizePlatformGatewayCertificate(&certificate)
+	if certificate.ProjectID <= 0 || certificate.Name == "" || len(certificate.Domains) == 0 {
+		return fmt.Errorf("gateway certificate project, name and domains are required")
+	}
+	for i, domain := range certificate.Domains {
+		if !platformGatewayDomainPattern.MatchString(domain) || (i > 0 && certificate.Domains[i-1] == domain) {
+			return fmt.Errorf("gateway certificate domains are invalid")
+		}
+	}
+	if certificate.NotBefore < 0 || certificate.NotAfter < 0 || (certificate.NotAfter != 0 && certificate.NotBefore >= certificate.NotAfter) {
+		return fmt.Errorf("gateway certificate validity is invalid")
+	}
+	if certificate.SHA256 != "" && !platformArtifactSHA256Pattern.MatchString(certificate.SHA256) {
+		return fmt.Errorf("gateway certificate hash is invalid")
+	}
+	if certificate.HasPrivateKey != (certificate.MaterialRef != "") {
+		return fmt.Errorf("gateway certificate material reference is invalid")
+	}
+	return nil
+}
+
+func NormalizePlatformGatewayConfigVersion(version *PlatformGatewayConfigVersion) {
+	if version == nil {
+		return
+	}
+
+	version.ConfigHash = strings.TrimSpace(version.ConfigHash)
+	version.FailureReason = strings.TrimSpace(version.FailureReason)
+	version.RouteIDs = append([]PlatformGatewayRouteID(nil), version.RouteIDs...)
+	sort.Slice(version.RouteIDs, func(i, j int) bool { return version.RouteIDs[i] < version.RouteIDs[j] })
+}
+
+func ValidatePlatformGatewayConfigVersion(version PlatformGatewayConfigVersion) error {
+	NormalizePlatformGatewayConfigVersion(&version)
+	if version.GatewayID <= 0 || version.Revision <= 0 || !platformArtifactSHA256Pattern.MatchString(version.ConfigHash) {
+		return fmt.Errorf("gateway config version fields are invalid")
+	}
+	if version.Status != PlatformGatewayConfigStatusCandidate && version.Status != PlatformGatewayConfigStatusActive && version.Status != PlatformGatewayConfigStatusFailed {
+		return fmt.Errorf("gateway config version status is invalid")
+	}
+	if len(version.RouteIDs) == 0 {
+		return fmt.Errorf("gateway config version requires routes")
+	}
+	for i, routeID := range version.RouteIDs {
+		if routeID <= 0 || (i > 0 && version.RouteIDs[i-1] == routeID) {
+			return fmt.Errorf("gateway config version routes are invalid")
+		}
+	}
+	return nil
+}
 
 // NewPlatformConfigSet creates the safe metadata-only baseline for a configuration set.
 // 敏感值的加密保存将在阶段 2 批次 4 接入；这里先固定默认配置集和版本，避免

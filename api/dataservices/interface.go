@@ -19,6 +19,15 @@ type (
 		PlatformConfigSet() PlatformConfigSetService
 		PlatformArtifact() PlatformArtifactService
 		PlatformArtifactStorage() PlatformArtifactStorageService
+		PlatformHostGroup() PlatformHostGroupService
+		PlatformDatabaseResource() PlatformDatabaseResourceService
+		PlatformServiceDatabaseBinding() PlatformServiceDatabaseBindingService
+		PlatformObservabilityConfig() PlatformObservabilityConfigService
+		PlatformCanaryPolicy() PlatformCanaryPolicyService
+		PlatformGateway() PlatformGatewayService
+		PlatformGatewayRoute() PlatformGatewayRouteService
+		PlatformGatewayCertificate() PlatformGatewayCertificateService
+		PlatformGatewayConfigVersion() PlatformGatewayConfigVersionService
 		PlatformRelease() PlatformReleaseService
 		PlatformReleaseLock() PlatformReleaseLockService
 		PlatformAuditLog() PlatformAuditLogService
@@ -137,6 +146,60 @@ type (
 	// Callers must encrypt credentials before persistence; the service never returns or transforms plaintext credentials.
 	PlatformArtifactStorageService interface {
 		BaseCRUD[portainer.PlatformArtifactStorage, portainer.PlatformArtifactStorageID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformHostGroupService stores project-scoped workload membership for future multi-target releases.
+	PlatformHostGroupService interface {
+		BaseCRUD[portainer.PlatformHostGroup, portainer.PlatformHostGroupID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformDatabaseResourceService stores project-owned encrypted database connection metadata.
+	PlatformDatabaseResourceService interface {
+		BaseCRUD[portainer.PlatformDatabaseResource, portainer.PlatformDatabaseResourceID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformServiceDatabaseBindingService stores secret-free deployment-to-resource references.
+	PlatformServiceDatabaseBindingService interface {
+		BaseCRUD[portainer.PlatformServiceDatabaseBinding, portainer.PlatformServiceDatabaseBindingID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformObservabilityConfigService stores the encrypted global integration configuration.
+	PlatformObservabilityConfigService interface {
+		BaseCRUD[portainer.PlatformObservabilityConfig, portainer.PlatformObservabilityConfigID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformCanaryPolicyService stores the constrained two-release traffic policy.
+	PlatformCanaryPolicyService interface {
+		BaseCRUD[portainer.PlatformCanaryPolicy, portainer.PlatformCanaryPolicyID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayService manages the environment-scoped Nginx control-plane record.
+	PlatformGatewayService interface {
+		BaseCRUD[portainer.PlatformGateway, portainer.PlatformGatewayID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayRouteService manages validated domain/path declarations.
+	PlatformGatewayRouteService interface {
+		BaseCRUD[portainer.PlatformGatewayRoute, portainer.PlatformGatewayRouteID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayCertificateService stores certificate metadata and an opaque material reference only.
+	PlatformGatewayCertificateService interface {
+		BaseCRUD[portainer.PlatformGatewayCertificate, portainer.PlatformGatewayCertificateID]
+		GetNextIdentifier() int
+	}
+
+	// PlatformGatewayConfigVersionService records immutable rendered-config facts without persisting Nginx text.
+	PlatformGatewayConfigVersionService interface {
+		BaseCRUD[portainer.PlatformGatewayConfigVersion, portainer.PlatformGatewayConfigVersionID]
 		GetNextIdentifier() int
 	}
 

@@ -236,6 +236,9 @@ func (handler *Handler) validateRollbackReferences(tx dataservices.DataStoreTx, 
 	if err := handler.validateRollbackSecretSnapshots(source.ConfigSnapshot.SecretSnapshots); err != nil {
 		return nil, err
 	}
+	if err := validateDatabaseBindingSnapshots(tx, source.ConfigSnapshot.DatabaseBindings); err != nil {
+		return nil, err
+	}
 
 	project, err := readActiveProject(tx, source.ProjectID)
 	if err != nil {
