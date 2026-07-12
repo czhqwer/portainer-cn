@@ -12,8 +12,14 @@ import (
 // MultiTargetExecutor 在阶段 5.4 将现有单目标受控动作复用于每台 workload 主机。
 // 每次调用仍只把一个 target 交给 Docker driver，避免共享全局 RuntimeRef 导致不同主机互相切换容器。
 type MultiTargetExecutor struct {
-	driver RuntimeDriver
-	now    func() time.Time
+	driver         RuntimeDriver
+	now            func() time.Time
+	gatewayCutover GatewayCutover
+}
+
+func (executor *MultiTargetExecutor) WithGatewayCutover(cutover GatewayCutover) *MultiTargetExecutor {
+	executor.gatewayCutover = cutover
+	return executor
 }
 
 func NewMultiTargetExecutor(driver RuntimeDriver) *MultiTargetExecutor {
@@ -97,6 +103,14 @@ func (executor *MultiTargetExecutor) Execute(ctx context.Context, request Releas
 		}
 	}
 
+	if executor.gatewayCutover != nil {
+		snapshot, err := executor.gatewayCutover.Cutover(ctx, request, release)
+		if err != nil {
+			release.TargetResults = results
+			return executor.failAndRecover(ctx, request, release, results)
+		}
+		release.GatewaySnapshot = snapshot
+	}
 	now := executor.now().Unix()
 	release.Status = portainer.PlatformReleaseStatusSucceeded
 	release.FailureReason = ""

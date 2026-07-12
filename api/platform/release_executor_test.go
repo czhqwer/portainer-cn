@@ -163,6 +163,18 @@ func TestMultiTargetExecutorSkipsRemainingTargetsAfterFailure(t *testing.T) {
 	require.Equal(t, "BATCH_PAUSED_AFTER_TARGET_FAILURE", result.Release.TargetResults[1].Reason)
 }
 
+func TestMultiTargetExecutorAppliesGatewayAfterAllTargetsSucceed(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	request := sampleReleaseExecutionRequest()
+	request.Environment.TargetMode = portainer.PlatformTargetModeMulti
+	request.Environment.Targets = []portainer.PlatformDeploymentTarget{{EndpointID: 1, HostAddress: "10.0.0.11", Role: portainer.PlatformDeploymentTargetRoleWorkload, Enabled: true}}
+
+	result, err := NewMultiTargetExecutor(driver).WithGatewayCutover(fakeGatewayCutover{}).Execute(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusSucceeded, result.Release.Status)
+	require.Equal(t, "abc", result.Release.GatewaySnapshot.ConfigHash)
+}
+
 func TestSingleTargetExecutorRecoversPreviousWhenGatewayCutoverFails(t *testing.T) {
 	driver := &fakeRuntimeDriver{}
 	executor := NewSingleTargetExecutor(driver).WithGatewayCutover(fakeGatewayCutover{err: errors.New("gateway reload failed")})

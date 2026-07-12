@@ -18,6 +18,7 @@ func NewAdaptiveReleaseExecutor(driver RuntimeDriver) *AdaptiveReleaseExecutor {
 
 func (executor *AdaptiveReleaseExecutor) WithGatewayCutover(cutover GatewayCutover) *AdaptiveReleaseExecutor {
 	executor.single.WithGatewayCutover(cutover)
+	executor.multi.WithGatewayCutover(cutover)
 	return executor
 }
 
