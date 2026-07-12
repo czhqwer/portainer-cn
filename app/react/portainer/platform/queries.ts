@@ -7,6 +7,7 @@ import {
   CreateImageReferenceArtifactPayload,
 	UploadPlatformArtifactPayload,
 	BuildJavaArtifactPayload,
+	BuildStaticArtifactPayload,
   CreatePlatformApplicationPayload,
   CreatePlatformConfigSetPayload,
   CreatePlatformEnvironmentPayload,
@@ -311,6 +312,11 @@ async function buildJavaArtifact({ artifactId, payload }: { artifactId: number; 
 	return response.data;
 }
 
+async function buildStaticArtifact({ artifactId, payload }: { artifactId: number; payload: BuildStaticArtifactPayload }) {
+	const response = await axios.post<PlatformArtifact>(`/platform/artifacts/${artifactId}/build-static`, payload);
+	return response.data;
+}
+
 async function getReleases() {
   const response = await axios.get<PlatformRelease[]>('/platform/releases');
   return response.data;
@@ -506,6 +512,11 @@ export function useUploadPlatformArtifactMutation() {
 export function useBuildJavaArtifactMutation() {
 	const queryClient = useQueryClient();
 	return useMutation({ mutationFn: buildJavaArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging Java artifact') });
+}
+
+export function useBuildStaticArtifactMutation() {
+	const queryClient = useQueryClient();
+	return useMutation({ mutationFn: buildStaticArtifact, onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.all }), ...withError('Failed packaging static artifact') });
 }
 
 export function usePlatformConfigSets({

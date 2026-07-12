@@ -4533,6 +4533,7 @@
       "createService": "创建服务",
       "createArtifact": "登记镜像制品",
       "packageJava": "包装 Java 8 制品",
+      "packageStatic": "包装前端 dist 制品",
       "validateRelease": "校验发布",
       "createRelease": "创建发布",
       "createConfigSet": "创建配置集",
@@ -4574,22 +4575,35 @@
       "artifactSource": "制品来源",
       "artifactType": "制品类型",
       "artifactFile": "制品文件",
-      "expectedSHA256": "期望 SHA256（可选）"
-      ,"javaArtifact": "Java 制品",
+      "expectedSHA256": "期望 SHA256（可选）",
+      "javaArtifact": "Java 制品",
       "javaPort": "容器端口",
       "jvmArgs": "JVM 参数（以空格分隔）",
-      "appArgs": "应用参数（以空格分隔）"
+      "appArgs": "应用参数（以空格分隔）",
+      "staticArtifact": "前端 dist 制品",
+      "staticMode": "站点模式",
+      "staticCachePolicy": "静态缓存策略",
+      "staticNotFoundPage": "dist 内可选 404 页面"
     },
     "formTitles": {
       "project": "创建项目",
       "environment": "创建环境",
       "application": "创建应用",
       "service": "创建服务",
-      "artifact": "登记镜像制品"
-      ,"javaBuild": "包装 Java 8 制品"
+      "artifact": "登记镜像制品",
+      "javaBuild": "包装 Java 8 制品",
+      "staticBuild": "包装前端 dist 制品"
     },
     "javaBuild": {
       "restriction": "仅使用平台维护的 Java 8 模板；不接受 Dockerfile、Shell 命令或自定义基础镜像。"
+    },
+    "staticBuild": {
+      "spa": "SPA 单页应用",
+      "mpa": "MPA / 纯静态站点",
+      "cacheDefault": "平台默认",
+      "cacheNoStore": "不缓存",
+      "cacheImmutable": "静态资源长期不可变缓存",
+      "restriction": "SPA 必须包含 index.html。平台会校验 ZIP 条目并使用固定 Nginx 镜像；不接受自定义 Nginx 配置、Node 或 SSR。"
     },
     "environmentTypes": {
       "dev": "开发",

@@ -51,6 +51,7 @@ import {
   useUpdatePlatformServiceDeploymentMutation,
 	useUploadPlatformArtifactMutation,
 	useBuildJavaArtifactMutation,
+	useBuildStaticArtifactMutation,
   useValidatePlatformReleaseMutation,
 } from './queries';
 import {
@@ -429,6 +430,15 @@ export function PlatformArtifactsView() {
   );
   const [isArtifactFormOpen, setIsArtifactFormOpen] = useState(false);
   const [isJavaBuildFormOpen, setIsJavaBuildFormOpen] = useState(false);
+	const [isStaticBuildFormOpen, setIsStaticBuildFormOpen] = useState(false);
+	const buildableStaticArtifacts = artifacts.filter(
+		(artifact) =>
+			artifact.Type === 'frontend-dist' &&
+			projects.some(
+				(project) =>
+					project.Id === artifact.ProjectId && project.Permissions?.CanDeploy
+			)
+	);
 
   return (
     <PlatformPage
@@ -448,10 +458,27 @@ export function PlatformArtifactsView() {
             defaultValue: 'Register image artifact',
           })}
         </Button>
-      </ActionBar>
-		<Button color="light" disabled={!artifacts.some((artifact) => artifact.Type === 'java-jar')} onClick={() => setIsJavaBuildFormOpen((value) => !value)} data-cy="platform-java-build-open">
-			{t('platform.actions.packageJava', { defaultValue: 'Package Java 8 artifact' })}
+		<Button
+			color="light"
+			disabled={!artifacts.some((artifact) => artifact.Type === 'java-jar')}
+			onClick={() => setIsJavaBuildFormOpen((value) => !value)}
+			data-cy="platform-java-build-open"
+		>
+			{t('platform.actions.packageJava', {
+				defaultValue: 'Package Java 8 artifact',
+			})}
 		</Button>
+		<Button
+			color="light"
+			disabled={buildableStaticArtifacts.length === 0}
+			onClick={() => setIsStaticBuildFormOpen((value) => !value)}
+			data-cy="platform-static-build-open"
+		>
+			{t('platform.actions.packageStatic', {
+				defaultValue: 'Package frontend dist',
+			})}
+		</Button>
+		</ActionBar>
       {isArtifactFormOpen && (
         <CreateArtifactPanel
           projects={artifactProjects}
@@ -459,6 +486,12 @@ export function PlatformArtifactsView() {
         />
       )}
 		{isJavaBuildFormOpen && <JavaBuildPanel artifacts={artifacts} onDone={() => setIsJavaBuildFormOpen(false)} />}
+		{isStaticBuildFormOpen && (
+			<StaticBuildPanel
+				artifacts={buildableStaticArtifacts}
+				onDone={() => setIsStaticBuildFormOpen(false)}
+			/>
+		)}
       <DataSection
         title={t('platform.artifacts.tableTitle', {
           defaultValue: 'Artifacts',
@@ -2453,6 +2486,146 @@ function JavaBuildPanel({ artifacts, onDone }: { artifacts: PlatformArtifact[]; 
   </form></ActionPanel>;
 }
 
+function StaticBuildPanel({
+  artifacts,
+  onDone,
+}: {
+  artifacts: PlatformArtifact[];
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const mutation = useBuildStaticArtifactMutation();
+  const [artifactId, setArtifactId] = useState<number | undefined>(
+    artifacts[0]?.Id
+  );
+  const [endpointId, setEndpointId] = useState('');
+  const [mode, setMode] = useState<'spa' | 'mpa'>('spa');
+  const [cachePolicy, setCachePolicy] = useState<
+    '' | 'no-cache' | 'immutable'
+  >('');
+  const [notFoundPage, setNotFoundPage] = useState('');
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!artifactId || !Number(endpointId)) {
+      return;
+    }
+    await mutation.mutateAsync({
+      artifactId,
+      payload: {
+        EndpointId: Number(endpointId),
+        Mode: mode,
+        CachePolicy: cachePolicy,
+        NotFoundPage: notFoundPage.trim() || undefined,
+      },
+    });
+    onDone();
+  }
+
+  return (
+    <ActionPanel
+      title={t('platform.formTitles.staticBuild', {
+        defaultValue: 'Package frontend dist',
+      })}
+    >
+      <form className="grid gap-3 md:grid-cols-3" onSubmit={submit}>
+        <label className="form-control-label">
+          {t('platform.forms.staticArtifact', {
+            defaultValue: 'Frontend dist artifact',
+          })}
+          <select
+            className="form-control mt-1"
+            value={artifactId}
+            onChange={(event) => setArtifactId(Number(event.target.value))}
+          >
+            {artifacts.map((artifact) => (
+              <option key={artifact.Id} value={artifact.Id}>
+                {artifact.Name} · {artifact.Version}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextInputField
+          label={t('platform.forms.endpointId', {
+            defaultValue: 'Docker endpoint ID',
+          })}
+          value={endpointId}
+          required
+          onChange={setEndpointId}
+        />
+        <label className="form-control-label">
+          {t('platform.forms.staticMode', { defaultValue: 'Site mode' })}
+          <select
+            className="form-control mt-1"
+            value={mode}
+            onChange={(event) => setMode(event.target.value as 'spa' | 'mpa')}
+          >
+            <option value="spa">
+              {t('platform.staticBuild.spa', { defaultValue: 'SPA' })}
+            </option>
+            <option value="mpa">
+              {t('platform.staticBuild.mpa', {
+                defaultValue: 'MPA / static files',
+              })}
+            </option>
+          </select>
+        </label>
+        <label className="form-control-label">
+          {t('platform.forms.staticCachePolicy', {
+            defaultValue: 'Static cache policy',
+          })}
+          <select
+            className="form-control mt-1"
+            value={cachePolicy}
+            onChange={(event) =>
+              setCachePolicy(
+                event.target.value as '' | 'no-cache' | 'immutable'
+              )
+            }
+          >
+            <option value="">
+              {t('platform.staticBuild.cacheDefault', {
+                defaultValue: 'Platform default',
+              })}
+            </option>
+            <option value="no-cache">
+              {t('platform.staticBuild.cacheNoStore', {
+                defaultValue: 'No-store',
+              })}
+            </option>
+            <option value="immutable">
+              {t('platform.staticBuild.cacheImmutable', {
+                defaultValue: 'Immutable static assets',
+              })}
+            </option>
+          </select>
+        </label>
+        <TextInputField
+          label={t('platform.forms.staticNotFoundPage', {
+            defaultValue: 'Optional 404 page in dist',
+          })}
+          value={notFoundPage}
+          onChange={setNotFoundPage}
+        />
+        <div className="text-muted self-end text-sm">
+          {t('platform.staticBuild.restriction', {
+            defaultValue:
+              'SPA requires index.html. The platform validates ZIP entries and uses a fixed Nginx image; custom Nginx configuration, Node, and SSR are not accepted.',
+          })}
+        </div>
+        <FormActions
+          isSubmitting={mutation.isLoading}
+          submitLabel={t('platform.actions.packageStatic', {
+            defaultValue: 'Package frontend dist',
+          })}
+          submitDisabled={!artifactId || !endpointId}
+          onCancel={onDone}
+        />
+      </form>
+    </ActionPanel>
+  );
+}
+
 function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
   const { t } = useTranslation();
   return (
@@ -2460,18 +2633,24 @@ function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
       columns={[
         t('platform.columns.name', { defaultValue: 'Name' }),
         t('platform.columns.version', { defaultValue: 'Version' }),
+		t('platform.columns.type', { defaultValue: 'Type' }),
         t('platform.columns.source', { defaultValue: 'Source' }),
+		t('platform.columns.status', { defaultValue: 'Status' }),
         t('platform.columns.image', { defaultValue: 'Image' }),
         t('platform.columns.sha256', { defaultValue: 'SHA256' }),
+		t('platform.columns.failureReason', { defaultValue: 'Failure reason' }),
       ]}
       rows={artifacts.map((artifact) => ({
         key: String(artifact.Id),
         cells: [
           artifact.Name,
           artifact.Version,
+			artifact.Type,
           artifact.SourceType,
-          artifact.ImageRef ?? '',
+			<StatusPill key="status" value={artifact.Status ?? ''} />,
+          artifact.CandidateImageRef ?? artifact.ImageRef ?? '',
           artifact.SHA256 ?? artifact.ImageDigest ?? '',
+			artifact.FailureReason ?? '',
         ],
       }))}
     />

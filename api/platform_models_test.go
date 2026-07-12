@@ -149,6 +149,8 @@ func TestPlatformArtifactStorageDefaultsAndValidation(t *testing.T) {
 
 	require.Equal(t, PlatformArtifactStorageProviderS3Compatible, storage.Provider)
 	require.True(t, storage.UseTLS)
+	// 归一化发生在 dataservice 持久化边界；校验函数接收值类型，不能隐式修改调用方的授权项目顺序。
+	NormalizePlatformArtifactStorage(&storage)
 	require.NoError(t, ValidatePlatformArtifactStorage(storage))
 	require.Equal(t, []PlatformProjectID{1, 2}, storage.AuthorizedProjectIDs)
 

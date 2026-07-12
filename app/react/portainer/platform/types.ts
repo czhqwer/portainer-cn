@@ -227,6 +227,7 @@ export interface PlatformArtifact extends PlatformLifecycle {
 	CandidateImageRef?: string;
 	CandidateImageId?: string;
 	BuildTemplate?: string;
+	FailureReason?: string;
 }
 
 export interface BuildJavaArtifactPayload {
@@ -234,6 +235,13 @@ export interface BuildJavaArtifactPayload {
   JvmArgs?: string[];
   AppArgs?: string[];
   Port: number;
+}
+
+export interface BuildStaticArtifactPayload {
+  EndpointId: number;
+  Mode: 'spa' | 'mpa';
+  CachePolicy?: '' | 'no-cache' | 'immutable';
+  NotFoundPage?: string;
 }
 
 export interface PlatformReleaseStep {
