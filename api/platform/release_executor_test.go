@@ -119,6 +119,28 @@ func TestSingleTargetExecutorSucceeds(t *testing.T) {
 	require.Equal(t, []string{"pull", "start-candidate", "validate-candidate", "delete-candidate", "switch", "validate-current"}, driver.calls)
 }
 
+func TestSingleTargetExecutorRecoversPreviousWhenGatewayCutoverFails(t *testing.T) {
+	driver := &fakeRuntimeDriver{}
+	executor := NewSingleTargetExecutor(driver).WithGatewayCutover(fakeGatewayCutover{err: errors.New("gateway reload failed")})
+
+	result, err := executor.Execute(context.Background(), sampleReleaseExecutionRequest())
+	require.NoError(t, err)
+	require.Equal(t, portainer.PlatformReleaseStatusFailed, result.Release.Status)
+	require.Equal(t, ReleaseFailureReasonGatewayCutoverFailed, result.Release.FailureReason)
+	require.Nil(t, result.Deployment)
+	require.Contains(t, driver.calls, "recover")
+	require.Equal(t, "apply-gateway", result.Release.Steps[len(result.Release.Steps)-2].Name)
+}
+
+type fakeGatewayCutover struct{ err error }
+
+func (cutover fakeGatewayCutover) Cutover(context.Context, ReleaseExecutionRequest, portainer.PlatformRelease) (portainer.PlatformGatewaySnapshot, error) {
+	if cutover.err != nil {
+		return portainer.PlatformGatewaySnapshot{}, cutover.err
+	}
+	return portainer.PlatformGatewaySnapshot{ConfigHash: "abc"}, nil
+}
+
 func TestSingleTargetExecutorReportsStructuredProgress(t *testing.T) {
 	driver := &fakeRuntimeDriver{}
 	executor := NewSingleTargetExecutor(driver)
