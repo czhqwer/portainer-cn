@@ -28,10 +28,12 @@ func (store *GatewayCertificateStore) Store(certificateID portainer.PlatformGate
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", err
 	}
-	if err := replacePrivateFile(filepath.Join(directory, "cert.pem"), certificatePEM); err != nil {
+	certificatePath := filepath.Join(directory, "cert.pem")
+	if err := replacePrivateFile(certificatePath, certificatePEM); err != nil {
 		return "", err
 	}
 	if err := replacePrivateFile(filepath.Join(directory, "key.pem"), privateKeyPEM); err != nil {
+		_ = os.Remove(certificatePath)
 		return "", err
 	}
 	return directory, nil
