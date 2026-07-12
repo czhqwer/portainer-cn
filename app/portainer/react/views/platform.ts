@@ -5,6 +5,7 @@ import {
   PlatformArtifactsView,
   PlatformConfigView,
   PlatformDeployView,
+  PlatformHomeView,
   PlatformProjectsView,
   PlatformReleasesView,
 } from '@/react/portainer/platform/PlatformViews';
@@ -15,6 +16,10 @@ import { withUIRouter } from '@/react-tools/withUIRouter';
 
 export const platformViewsModule = angular
   .module('portainer.app.react.views.platform', [])
+  .component(
+    'platformHomeView',
+    r2a(withUIRouter(withReactQuery(withCurrentUser(PlatformHomeView))), [])
+  )
   .component(
     'platformProjectsView',
     r2a(withUIRouter(withReactQuery(withCurrentUser(PlatformProjectsView))), [])

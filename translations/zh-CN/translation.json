@@ -4365,7 +4365,8 @@
   },
   "platform": {
     "navigation": {
-      "section": "应用交付",
+      "section": "交付工作台",
+      "home": "交付概览",
       "projects": "项目",
       "applications": "应用与服务",
       "deploy": "部署向导",
@@ -4376,6 +4377,7 @@
       "gitopsSources": "GitOps 来源"
     },
     "pages": {
+      "home": { "title": "交付概览" },
       "projects": { "title": "项目" },
       "applications": { "title": "应用与服务" },
       "deploy": { "title": "部署服务" },
@@ -4409,6 +4411,11 @@
       "projects": "项目",
       "active": "启用",
       "archived": "已归档",
+      "readyArtifacts": "已就绪制品",
+      "needsAttention": "需关注",
+      "artifacts": "制品",
+      "needsPush": "待推送",
+      "cleanable": "可清理",
       "releases": "发布",
       "failed": "失败",
       "blocked": "已阻断",
@@ -4420,6 +4427,18 @@
     "services": { "tableTitle": "服务" },
     "artifacts": {
       "tableTitle": "制品",
+      "workflowTitle": "制品交付流程",
+      "workflowBody": "按每行状态继续操作：先校验或受控包装来源制品，再推送候选镜像到已有 registry，最后在部署向导选择已就绪制品。",
+      "nextAction": "下一步",
+      "nextActions": {
+        "push": "推送候选镜像",
+        "deploy": "发布服务",
+        "reviewFailure": "查看失败原因并重试",
+        "clean": "可清理原始制品",
+        "packageJava": "使用 Java 8 模板包装",
+        "packageStatic": "使用静态站点模板包装",
+        "inspect": "查看制品详情"
+      },
       "sourceImage": "已有镜像地址",
       "sourceUpload": "上传 Jar、dist ZIP 或镜像归档",
       "types": {
@@ -4435,6 +4454,30 @@
       }
     },
     "releases": { "tableTitle": "发布记录" },
+    "home": {
+      "title": "交付工作台",
+      "description": "集中查看真实的制品、发布与清理状态，无需离开应用交付流程。",
+      "queueTitle": "待处理事项",
+      "queueEmpty": "当前没有需要关注的制品或发布事项。",
+      "safetyTitle": "发布安全",
+      "recentReleases": "最近发布",
+      "columns": { "createdAt": "创建时间" },
+      "actions": {
+        "viewReleases": "查看发布记录",
+        "viewArtifacts": "查看制品库",
+        "deployService": "发布服务"
+      },
+      "queue": {
+        "releaseAttention": "发布需要关注",
+        "releaseAttentionDetail": "失败、恢复失败、已中断或需要人工处理的发布。",
+        "pushArtifacts": "候选镜像待推送",
+        "pushArtifactsDetail": "候选镜像尚未记录最终 registry tag 和 digest。",
+        "readyArtifacts": "已就绪制品可发布",
+        "readyArtifactsDetail": "制品已具有最终镜像，可从部署向导选择。",
+        "cleanableArtifacts": "原始制品可清理",
+        "cleanableArtifactsDetail": "清理只删除平台保留的原始副本，发布事实仍会保留。"
+      }
+    },
     "config": {
       "scopeTitle": "选择配置作用域",
       "scope": "作用域",
@@ -4655,13 +4698,11 @@
     },
     "deploy": {
       "steps": {
-        "basic": "基础信息",
-        "image": "制品",
-        "registry": "最终镜像",
-        "health": "端口与健康检查",
-        "env": "环境变量",
-        "strategy": "发布策略",
-        "validate": "校验结果",
+        "basic": "目标服务",
+        "image": "选择制品",
+        "health": "运行与健康检查",
+        "configuration": "配置与执行计划",
+        "validate": "发布前校验",
         "confirm": "确认"
       },
       "summary": {
@@ -4689,12 +4730,8 @@
         "body": "登记制品前先选择项目、环境、应用和服务。"
       },
       "image": {
-        "title": "已就绪制品或已有镜像",
-        "body": "请选择与服务类型匹配的已就绪制品，或登记已有镜像引用。源码构建、Git 和内置 registry 仍不在范围内。"
-      },
-      "registry": {
-        "title": "最终镜像与追溯信息",
-        "body": "已就绪制品会携带最终 registry tag 和 digest。手工镜像引用在提供 digest 前仍以 weak 追溯。"
+        "title": "选择可发布制品",
+        "body": "优先选择与服务类型匹配的已就绪制品；它会携带最终 tag 和 digest。也可登记已有镜像引用，但在提供 digest 前仅为 weak 追溯。源码构建、Git 和内置 registry 不在范围内。"
       },
       "health": {
         "title": "端口与健康检查",
@@ -4706,7 +4743,11 @@
       },
       "strategy": {
         "title": "替换策略",
-        "body": "V0.1 使用 docker-container 运行时、单副本、unless-stopped 重启策略和 replace 发布策略。"
+        "body": "V0.5 使用 docker-container 运行时、单副本、unless-stopped 重启策略和 replace 发布策略。"
+      },
+      "configuration": {
+        "title": "配置与执行计划",
+        "body": "记录本次发布的环境变量，并确认单机 Docker 的固定运行时与替换策略。敏感变量仍由配置中心脱敏管理。"
       },
       "validate": {
         "title": "校验结果",
@@ -4719,7 +4760,7 @@
         "ready": "检查摘要后即可创建发布。"
       },
       "confirmRelease": "现在创建这个发布？",
-      "confirmProductionRelease": "当前是生产环境。V0.1 replace 策略可能造成短暂停机，确认继续创建发布？",
+      "confirmProductionRelease": "当前是生产环境。V0.5 replace 策略可能造成短暂停机，确认继续创建发布？",
       "productionWarningTitle": "生产环境提示",
       "productionWarningBody": "V0.5 replace 策略可能造成服务短暂停止，请确认窗口可接受后再继续。",
       "releaseCreated": "发布已创建",

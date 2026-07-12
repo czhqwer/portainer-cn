@@ -4306,7 +4306,8 @@
   },
   "platform": {
     "navigation": {
-      "section": "App Delivery",
+      "section": "Delivery workspace",
+      "home": "Delivery overview",
       "projects": "Projects",
       "applications": "Applications",
       "deploy": "Deploy",
@@ -4317,6 +4318,7 @@
       "gitopsSources": "GitOps Sources"
     },
     "pages": {
+      "home": { "title": "Delivery overview" },
       "projects": { "title": "Projects" },
       "applications": { "title": "Applications and services" },
       "deploy": { "title": "Deploy service" },
@@ -4350,6 +4352,11 @@
       "projects": "Projects",
       "active": "Active",
       "archived": "Archived",
+      "readyArtifacts": "Ready artifacts",
+      "needsAttention": "Needs attention",
+      "artifacts": "Artifacts",
+      "needsPush": "Awaiting push",
+      "cleanable": "Cleanable originals",
       "releases": "Releases",
       "failed": "Failed",
       "blocked": "Blocked",
@@ -4361,6 +4368,18 @@
     "services": { "tableTitle": "Services" },
     "artifacts": {
       "tableTitle": "Artifacts",
+      "workflowTitle": "Artifact delivery workflow",
+      "workflowBody": "Follow the status in each row: validate or package the source, push the candidate to an existing registry, then select the ready artifact in the deployment wizard.",
+      "nextAction": "Next action",
+      "nextActions": {
+        "push": "Push candidate image",
+        "deploy": "Deploy service",
+        "reviewFailure": "Review failure and retry",
+        "clean": "Original artifact can be cleaned",
+        "packageJava": "Package with Java 8 template",
+        "packageStatic": "Package with static-site template",
+        "inspect": "Inspect artifact details"
+      },
       "sourceImage": "Existing image reference",
       "sourceUpload": "Upload Jar, dist ZIP, or image archive",
       "types": {
@@ -4376,6 +4395,30 @@
       }
     },
     "releases": { "tableTitle": "Release records" },
+    "home": {
+      "title": "Delivery workspace",
+      "description": "Track real artifact, release, and cleanup states without leaving the application-delivery workflow.",
+      "queueTitle": "Pending actions",
+      "queueEmpty": "No artifact or release action currently needs attention.",
+      "safetyTitle": "Release safety",
+      "recentReleases": "Recent releases",
+      "columns": { "createdAt": "Created at" },
+      "actions": {
+        "viewReleases": "View releases",
+        "viewArtifacts": "View artifacts",
+        "deployService": "Deploy service"
+      },
+      "queue": {
+        "releaseAttention": "Releases need attention",
+        "releaseAttentionDetail": "Failed, recovery-failed, interrupted, or manually handled releases.",
+        "pushArtifacts": "Candidate images await push",
+        "pushArtifactsDetail": "Candidate images do not yet have a final registry tag and digest.",
+        "readyArtifacts": "Ready artifacts can be deployed",
+        "readyArtifactsDetail": "These artifacts have a final image and can be selected in the deployment wizard.",
+        "cleanableArtifacts": "Original artifacts can be cleaned",
+        "cleanableArtifactsDetail": "Cleanup removes only the platform-retained original copy; release facts remain."
+      }
+    },
     "config": {
       "scopeTitle": "Select configuration scope",
       "scope": "Scope",
@@ -4596,13 +4639,11 @@
     },
     "deploy": {
       "steps": {
-        "basic": "Basic information",
-        "image": "Artifact",
-        "registry": "Final image",
-        "health": "Ports and health check",
-        "env": "Environment variables",
-        "strategy": "Release strategy",
-        "validate": "Validation result",
+        "basic": "Target service",
+        "image": "Select artifact",
+        "health": "Runtime and health check",
+        "configuration": "Configuration and plan",
+        "validate": "Pre-release validation",
         "confirm": "Confirm"
       },
       "summary": {
@@ -4630,12 +4671,8 @@
         "body": "Choose project, environment, application, and service before registering an artifact."
       },
       "image": {
-        "title": "Ready artifact or existing image",
-        "body": "Select a ready artifact that matches the service type, or register an existing image reference. Source builds, Git, and embedded registries remain out of scope."
-      },
-      "registry": {
-        "title": "Final image and traceability",
-        "body": "Ready artifacts carry their final registry tag and digest. A manual image reference remains weakly traceable until a digest is provided."
+        "title": "Select a deployable artifact",
+        "body": "Prefer a ready artifact that matches the service type; it carries the final tag and digest. You can also register an existing image reference, but it remains weakly traceable until a digest is provided. Source builds, Git, and embedded registries remain out of scope."
       },
       "health": {
         "title": "Ports and health check",
@@ -4647,7 +4684,11 @@
       },
       "strategy": {
         "title": "Replace strategy",
-        "body": "V0.1 uses docker-container runtime, one replica, unless-stopped restart policy, and replace strategy."
+        "body": "V0.5 uses docker-container runtime, one replica, unless-stopped restart policy, and replace strategy."
+      },
+      "configuration": {
+        "title": "Configuration and execution plan",
+        "body": "Record environment variables for this release and confirm the fixed Docker runtime and replace strategy. Sensitive variables remain redacted in the configuration center."
       },
       "validate": {
         "title": "Validation result",
@@ -4660,7 +4701,7 @@
         "ready": "Review the summary, then create the release when ready."
       },
       "confirmRelease": "Create this release now?",
-      "confirmProductionRelease": "This is a production environment. V0.1 replace strategy may cause short downtime. Continue creating the release?",
+      "confirmProductionRelease": "This is a production environment. The V0.5 replace strategy may cause short downtime. Continue creating the release?",
       "productionWarningTitle": "Production warning",
       "productionWarningBody": "V0.5 replace strategy may briefly stop service. Confirm only when the window is acceptable.",
       "releaseCreated": "Release created",

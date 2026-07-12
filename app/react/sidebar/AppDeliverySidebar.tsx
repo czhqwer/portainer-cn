@@ -1,8 +1,7 @@
 import {
   Box,
-  Database,
-  GitBranch,
   History,
+  LayoutDashboard,
   Layers,
   Package,
   Rocket,
@@ -20,6 +19,13 @@ export function AppDeliverySidebar() {
     <SidebarSection
       title={t('platform.navigation.section', { defaultValue: 'App Delivery' })}
     >
+      <SidebarItem
+        label={t('platform.navigation.home', { defaultValue: 'Overview' })}
+        to="portainer.platform.home"
+        icon={LayoutDashboard}
+        data-cy="portainerSidebar-platform-home"
+      />
+
       <SidebarItem
         label={t('platform.navigation.projects', { defaultValue: 'Projects' })}
         to="portainer.platform.projects"
@@ -68,23 +74,6 @@ export function AppDeliverySidebar() {
         data-cy="portainerSidebar-platform-releases"
       />
 
-      <SidebarItem
-        label={t('platform.navigation.gitopsWorkflows', {
-          defaultValue: 'GitOps Workflows',
-        })}
-        to="portainer.gitops.workflows"
-        icon={GitBranch}
-        data-cy="portainerSidebar-workflows"
-      />
-
-      <SidebarItem
-        label={t('platform.navigation.gitopsSources', {
-          defaultValue: 'GitOps Sources',
-        })}
-        to="portainer.gitops.sources"
-        icon={Database}
-        data-cy="portainerSidebar-sources"
-      />
     </SidebarSection>
   );
 }

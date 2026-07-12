@@ -1,5 +1,6 @@
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from '@uirouter/react';
 import {
   Activity,
   AlertTriangle,
@@ -78,6 +79,210 @@ import {
   PlatformServiceDeployment,
   PlatformServiceDefinition,
 } from './types';
+
+export function PlatformHomeView() {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const projectsQuery = usePlatformProjects();
+  const artifactsQuery = usePlatformArtifacts();
+  const releasesQuery = usePlatformReleases();
+  const projects = projectsQuery.data ?? [];
+  const artifacts = artifactsQuery.data ?? [];
+  const releases = releasesQuery.data ?? [];
+  const builtArtifacts = artifacts.filter(
+    (artifact) => artifact.Status === 'built' && !!artifact.CandidateImageRef
+  );
+  const readyArtifacts = artifacts.filter(
+    (artifact) => artifact.Status === 'ready' && !!artifact.ImageRef
+  );
+  const cleanableArtifacts = artifacts.filter(
+    (artifact) => artifact.Retained && artifact.Cleanable
+  );
+  const attentionReleases = releases.filter(
+    (release) =>
+      release.Status === 'failed' ||
+      release.Status === 'recovery-failed' ||
+      release.Status === 'interrupted' ||
+      release.ManualActionRequired
+  );
+  const recentReleases = [...releases]
+    .sort((left, right) => (right.CreatedAt ?? 0) - (left.CreatedAt ?? 0))
+    .slice(0, 8);
+
+  // 概览只由现有平台事实聚合，不能根据浏览器状态推测制品或发布结果；
+  // 这样统计卡和待处理队列始终与服务端权限、任务锁和 Release 状态保持一致。
+  const queueItems = [
+    {
+      count: attentionReleases.length,
+      label: t('platform.home.queue.releaseAttention'),
+      detail: t('platform.home.queue.releaseAttentionDetail'),
+      action: t('platform.home.actions.viewReleases'),
+      onClick: () => router.stateService.go('portainer.platform.releases'),
+      tone: 'danger' as const,
+    },
+    {
+      count: builtArtifacts.length,
+      label: t('platform.home.queue.pushArtifacts'),
+      detail: t('platform.home.queue.pushArtifactsDetail'),
+      action: t('platform.home.actions.viewArtifacts'),
+      onClick: () => router.stateService.go('portainer.platform.artifacts'),
+      tone: 'warning' as const,
+    },
+    {
+      count: readyArtifacts.length,
+      label: t('platform.home.queue.readyArtifacts'),
+      detail: t('platform.home.queue.readyArtifactsDetail'),
+      action: t('platform.home.actions.deployService'),
+      onClick: () => router.stateService.go('portainer.platform.deploy'),
+      tone: 'success' as const,
+    },
+    {
+      count: cleanableArtifacts.length,
+      label: t('platform.home.queue.cleanableArtifacts'),
+      detail: t('platform.home.queue.cleanableArtifactsDetail'),
+      action: t('platform.home.actions.viewArtifacts'),
+      onClick: () => router.stateService.go('portainer.platform.artifacts'),
+      tone: 'default' as const,
+    },
+  ].filter((item) => item.count > 0);
+
+  return (
+    <PlatformPage
+      titleKey="platform.pages.home.title"
+      titleDefault="Delivery overview"
+    >
+      <div className="mx-4 mb-4 rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+          <div>
+            <h2 className="text-lg font-semibold">
+              {t('platform.home.title', { defaultValue: 'Delivery workspace' })}
+            </h2>
+            <p className="text-muted mt-1 max-w-3xl text-sm">
+              {t('platform.home.description', {
+                defaultValue:
+                  'Track real artifact, release, and cleanup states without leaving the application-delivery workflow.',
+              })}
+            </p>
+          </div>
+          <Button
+            color="primary"
+            icon={Rocket}
+            onClick={() => router.stateService.go('portainer.platform.deploy')}
+            data-cy="platform-home-deploy"
+          >
+            {t('platform.home.actions.deployService', {
+              defaultValue: 'Deploy service',
+            })}
+          </Button>
+        </div>
+      </div>
+      <SummaryStrip
+        items={[
+          {
+            label: t('platform.summary.projects', { defaultValue: 'Projects' }),
+            value: projects.filter(
+              (project) => project.LifecycleStatus === 'active'
+            ).length,
+          },
+          {
+            label: t('platform.summary.readyArtifacts', {
+              defaultValue: 'Ready artifacts',
+            }),
+            value: readyArtifacts.length,
+          },
+          {
+            label: t('platform.summary.releases', { defaultValue: 'Releases' }),
+            value: releases.length,
+          },
+          {
+            label: t('platform.summary.needsAttention', {
+              defaultValue: 'Needs attention',
+            }),
+            value: attentionReleases.length,
+          },
+        ]}
+      />
+      <div className="mx-4 mb-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+          <div className="mb-3 flex items-center gap-2 text-lg font-semibold">
+            <AlertTriangle className="icon" />
+            {t('platform.home.queueTitle', {
+              defaultValue: 'Pending actions',
+            })}
+          </div>
+          {projectsQuery.isLoading || artifactsQuery.isLoading || releasesQuery.isLoading ? (
+            <div className="text-muted text-sm">
+              {t('common.loading', { defaultValue: 'Loading...' })}
+            </div>
+          ) : queueItems.length ? (
+            <div className="space-y-3">
+              {queueItems.map((item) => (
+                <WorkspaceQueueItem key={item.label} {...item} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-muted rounded border border-dashed border-gray-5 p-4 text-sm">
+              {t('platform.home.queueEmpty', {
+                defaultValue:
+                  'No artifact or release action currently needs attention.',
+              })}
+            </div>
+          )}
+        </section>
+        <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+          <div className="mb-3 flex items-center gap-2 text-lg font-semibold">
+            <Activity className="icon" />
+            {t('platform.home.safetyTitle', {
+              defaultValue: 'Release safety',
+            })}
+          </div>
+          <Alert color="warn" title={t('platform.alerts.productionRisk.title')}>
+            {t('platform.alerts.productionRisk.body')}
+          </Alert>
+          <Alert
+            className="mt-3"
+            color="default"
+            title={t('platform.alerts.adminOnly.title')}
+          >
+            {t('platform.alerts.adminOnly.body')}
+          </Alert>
+        </section>
+      </div>
+      <DataSection
+        title={t('platform.home.recentReleases', {
+          defaultValue: 'Recent releases',
+        })}
+        isLoading={releasesQuery.isLoading}
+        empty={recentReleases.length === 0}
+        emptyMessage={t('platform.empty.releases')}
+      >
+        <PlatformTable
+          columns={[
+            t('platform.columns.releaseId', { defaultValue: 'Release ID' }),
+            t('platform.columns.version', { defaultValue: 'Version' }),
+            t('platform.columns.status', { defaultValue: 'Status' }),
+            t('platform.columns.image', { defaultValue: 'Image' }),
+            t('platform.columns.failureReason', {
+              defaultValue: 'Failure reason',
+            }),
+            t('platform.home.columns.createdAt', { defaultValue: 'Created at' }),
+          ]}
+          rows={recentReleases.map((release) => ({
+            key: String(release.Id),
+            cells: [
+              String(release.Id),
+              release.Version,
+              <StatusPill key="status" value={release.Status} />,
+              release.Image ?? '',
+              release.FailureReason ?? '',
+              formatUnixTime(release.CreatedAt),
+            ],
+          }))}
+        />
+      </DataSection>
+    </PlatformPage>
+  );
+}
 
 export function PlatformProjectsView() {
   const { t } = useTranslation();
@@ -522,6 +727,49 @@ export function PlatformArtifactsView() {
 			})}
 		</Button>
 		</ActionBar>
+      <SummaryStrip
+        items={[
+          {
+            label: t('platform.summary.artifacts', {
+              defaultValue: 'Artifacts',
+            }),
+            value: artifacts.length,
+          },
+          {
+            label: t('platform.summary.needsPush', {
+              defaultValue: 'Awaiting push',
+            }),
+            value: pushableArtifacts.length,
+          },
+          {
+            label: t('platform.summary.readyArtifacts', {
+              defaultValue: 'Ready artifacts',
+            }),
+            value: artifacts.filter((artifact) => artifact.Status === 'ready')
+              .length,
+          },
+          {
+            label: t('platform.summary.cleanable', {
+              defaultValue: 'Cleanable originals',
+            }),
+            value: cleanupableArtifacts.length,
+          },
+        ]}
+      />
+		<div className="mx-4 mb-4 rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
+			<div className="mb-1 flex items-center gap-2 text-lg font-semibold">
+				<Package className="icon" />
+				{t('platform.artifacts.workflowTitle', {
+					defaultValue: 'Artifact delivery workflow',
+				})}
+			</div>
+			<p className="text-muted text-sm">
+				{t('platform.artifacts.workflowBody', {
+					defaultValue:
+						'Follow the status in each row: validate or package the source, push the candidate to an existing registry, then select the ready artifact in the deployment wizard.',
+				})}
+			</p>
+		</div>
       {isArtifactFormOpen && (
         <CreateArtifactPanel
           projects={artifactProjects}
@@ -984,22 +1232,16 @@ export function PlatformDeployView() {
     useState<PlatformReleaseCreateResponse>();
   const steps = useMemo(
     () => [
-      t('platform.deploy.steps.basic', { defaultValue: 'Basic information' }),
-      t('platform.deploy.steps.image', { defaultValue: 'Artifact' }),
-      t('platform.deploy.steps.registry', {
-        defaultValue: 'Image and registry',
-      }),
+      t('platform.deploy.steps.basic', { defaultValue: 'Target service' }),
+      t('platform.deploy.steps.image', { defaultValue: 'Select artifact' }),
       t('platform.deploy.steps.health', {
-        defaultValue: 'Ports and health check',
+        defaultValue: 'Runtime and health check',
       }),
-      t('platform.deploy.steps.env', {
-        defaultValue: 'Environment variables',
-      }),
-      t('platform.deploy.steps.strategy', {
-        defaultValue: 'Release strategy',
+      t('platform.deploy.steps.configuration', {
+        defaultValue: 'Configuration and plan',
       }),
       t('platform.deploy.steps.validate', {
-        defaultValue: 'Validation result',
+        defaultValue: 'Pre-release validation',
       }),
       t('platform.deploy.steps.confirm', { defaultValue: 'Confirm' }),
     ],
@@ -1127,14 +1369,14 @@ export function PlatformDeployView() {
     const result = await validateReleaseMutation.mutateAsync(payload);
     setValidationResult(result);
     setReleaseResult(undefined);
-    setStep(6);
+    setStep(4);
   }
 
   async function handleCreateRelease() {
     const confirmMessage = currentEnvironment?.IsProduction
       ? t('platform.deploy.confirmProductionRelease', {
           defaultValue:
-            'This is a production environment. V0.1 replace strategy may cause short downtime. Continue creating the release?',
+            'This is a production environment. The V0.5 replace strategy may cause short downtime. Continue creating the release?',
         })
       : t('platform.deploy.confirmRelease', {
           defaultValue: 'Create this release now?',
@@ -1150,7 +1392,7 @@ export function PlatformDeployView() {
     });
     setReleaseResult(result);
     setValidationResult(undefined);
-    setStep(7);
+    setStep(5);
   }
 
   return (
@@ -1168,7 +1410,7 @@ export function PlatformDeployView() {
       )}
       <div className="mx-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="rounded border border-solid border-gray-5 bg-white p-4 th-highcontrast:bg-black th-dark:bg-gray-11">
-          <ol className="mb-4 grid gap-2 md:grid-cols-4">
+          <ol className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
             {steps.map((label, index) => (
               <li key={label}>
                 <button
@@ -2183,7 +2425,7 @@ function PlatformNoticeStack() {
       <Alert color="warn" title={t('platform.alerts.productionRisk.title')}>
         {t('platform.alerts.productionRisk.body', {
           defaultValue:
-            'V0.1 is a technical preview. Production deployments must assume short downtime and should not be treated as lossless releases.',
+            'V0.5 packages supported artifacts into images and records releases. Production deployments may still have short downtime and should not be treated as lossless releases.',
         })}
       </Alert>
       <Alert color="default" title={t('platform.alerts.roleAccess.title')}>
@@ -2395,7 +2637,7 @@ function SummaryStrip({
   items: Array<{ label: string; value: number }>;
 }) {
   return (
-    <div className="mx-4 mb-4 grid gap-3 md:grid-cols-3">
+    <div className="mx-4 mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
         <div
           key={item.label}
@@ -2616,6 +2858,50 @@ function JavaBuildPanel({ artifacts, onDone }: { artifacts: PlatformArtifact[]; 
     <div className="text-muted self-end text-sm">{t('platform.javaBuild.restriction', { defaultValue: 'Uses the platform Java 8 template. Dockerfile, shell commands, and custom base images are not accepted.' })}</div>
     <FormActions isSubmitting={mutation.isLoading} submitLabel={t('platform.actions.packageJava', { defaultValue: 'Package Java 8 artifact' })} submitDisabled={!artifactId || !endpointId || !port} onCancel={onDone} />
   </form></ActionPanel>;
+}
+
+function WorkspaceQueueItem({
+  count,
+  label,
+  detail,
+  action,
+  onClick,
+  tone,
+}: {
+  count: number;
+  label: string;
+  detail: string;
+  action: string;
+  onClick: () => void;
+  tone: 'default' | 'success' | 'warning' | 'danger';
+}) {
+  const toneClass = {
+    default: 'border-gray-5 bg-gray-2 th-dark:bg-gray-10',
+    success: 'border-green-5 bg-green-1 th-dark:bg-green-11',
+    warning: 'border-orange-5 bg-orange-1 th-dark:bg-orange-11',
+    danger: 'border-red-5 bg-red-1 th-dark:bg-red-11',
+  }[tone];
+
+  return (
+    <div
+      className={`flex flex-col gap-3 rounded border border-solid p-3 md:flex-row md:items-center md:justify-between ${toneClass}`}
+    >
+      <div className="flex items-start gap-3">
+        <span className="text-xl font-semibold">{count}</span>
+        <div>
+          <div className="text-sm font-semibold">{label}</div>
+          <div className="text-muted mt-1 text-xs">{detail}</div>
+        </div>
+      </div>
+      <Button
+        color="light"
+        onClick={onClick}
+        data-cy={`platform-home-queue-${tone}`}
+      >
+        {action}
+      </Button>
+    </div>
+  );
 }
 
 function StaticBuildPanel({
@@ -2928,6 +3214,28 @@ function ArtifactCleanupPanel({
 
 function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
   const { t } = useTranslation();
+  function nextAction(artifact: PlatformArtifact) {
+    if (artifact.Status === 'failed') {
+      return t('platform.artifacts.nextActions.reviewFailure');
+    }
+    if (artifact.Status === 'built' && artifact.CandidateImageRef) {
+      return t('platform.artifacts.nextActions.push');
+    }
+    if (artifact.Status === 'ready' && artifact.ImageRef) {
+      return t('platform.artifacts.nextActions.deploy');
+    }
+    if (artifact.Retained && artifact.Cleanable) {
+      return t('platform.artifacts.nextActions.clean');
+    }
+    if (artifact.Type === 'java-jar') {
+      return t('platform.artifacts.nextActions.packageJava');
+    }
+    if (artifact.Type === 'frontend-dist') {
+      return t('platform.artifacts.nextActions.packageStatic');
+    }
+    return t('platform.artifacts.nextActions.inspect');
+  }
+
   return (
     <PlatformTable
       columns={[
@@ -2939,8 +3247,9 @@ function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
         t('platform.columns.image', { defaultValue: 'Image' }),
 		t('platform.columns.imageDigest', { defaultValue: 'Image digest' }),
 		t('platform.columns.retention', { defaultValue: 'Retention' }),
-        t('platform.columns.sha256', { defaultValue: 'SHA256' }),
+		t('platform.columns.sha256', { defaultValue: 'SHA256' }),
 		t('platform.columns.failureReason', { defaultValue: 'Failure reason' }),
+        t('platform.artifacts.nextAction', { defaultValue: 'Next action' }),
       ]}
       rows={artifacts.map((artifact) => ({
         key: String(artifact.Id),
@@ -2963,8 +3272,9 @@ function ArtifactsTable({ artifacts }: { artifacts: PlatformArtifact[] }) {
 				: t('platform.artifacts.retention.cleaned', {
 						defaultValue: 'Original cleaned',
 					}),
-          artifact.SHA256 ?? artifact.ImageDigest ?? '',
+			artifact.SHA256 ?? artifact.ImageDigest ?? '',
 			artifact.FailureReason ?? '',
+          nextAction(artifact),
         ],
       }))}
     />
@@ -4079,29 +4389,16 @@ function WizardStepContent({
     );
   }
 
-  if (step === 1 || step === 2) {
+  if (step === 1) {
     return (
       <WizardPanel
-        title={
-          step === 1
-            ? t('platform.deploy.image.title', {
-                defaultValue: 'Ready artifact or existing image',
-              })
-            : t('platform.deploy.registry.title', {
-                defaultValue: 'Final image and traceability',
-              })
-        }
-        description={
-          step === 1
-            ? t('platform.deploy.image.body', {
-                defaultValue:
-                  'Select a ready artifact that matches the service type, or register an existing image reference. Source builds, Git, and embedded registries remain out of scope.',
-              })
-            : t('platform.deploy.registry.body', {
-                defaultValue:
-                  'Ready artifacts carry their final registry tag and digest. A manual image reference remains weakly traceable until a digest is provided.',
-              })
-        }
+        title={t('platform.deploy.image.title', {
+          defaultValue: 'Select a deployable artifact',
+        })}
+        description={t('platform.deploy.image.body', {
+          defaultValue:
+            'Prefer a ready artifact that matches the service type; it carries the final tag and digest. You can also register an existing image reference, but it remains weakly traceable until a digest is provided.',
+        })}
       >
         <div className="grid gap-3 md:grid-cols-2">
           <label className="form-control-label">
@@ -4195,7 +4492,7 @@ function WizardStepContent({
     );
   }
 
-  if (step === 3) {
+  if (step === 2) {
     return (
       <WizardPanel
         title={t('platform.deploy.health.title', {
@@ -4278,83 +4575,70 @@ function WizardStepContent({
     );
   }
 
+  if (step === 3) {
+    return (
+      <WizardPanel
+        title={t('platform.deploy.configuration.title', {
+          defaultValue: 'Configuration and execution plan',
+        })}
+        description={t('platform.deploy.configuration.body', {
+          defaultValue:
+            'Record environment variables for this release and confirm the fixed Docker runtime and replace strategy.',
+        })}
+      >
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <TextAreaField
+            label={t('platform.forms.envOverrides', {
+              defaultValue: 'Environment variables',
+            })}
+            value={envText}
+            onChange={onEnvTextChange}
+            placeholder="NODE_ENV=production"
+          />
+          <SummaryList
+            rows={[
+              [
+                t('platform.deploy.summary.runtimeDriver', {
+                  defaultValue: 'Runtime driver',
+                }),
+                desiredSpec.Runtime?.RuntimeDriver ?? '',
+              ],
+              [
+                t('platform.deploy.summary.replicas', {
+                  defaultValue: 'Replicas',
+                }),
+                String(desiredSpec.Runtime?.Replicas ?? ''),
+              ],
+              [
+                t('platform.deploy.summary.restartPolicy', {
+                  defaultValue: 'Restart policy',
+                }),
+                desiredSpec.Runtime?.RestartPolicy ?? '',
+              ],
+              [
+                t('platform.deploy.summary.strategy', {
+                  defaultValue: 'Strategy',
+                }),
+                desiredSpec.Strategy?.Type ?? '',
+              ],
+              [
+                t('platform.deploy.summary.deploymentConfig', {
+                  defaultValue: 'Deployment config',
+                }),
+                currentDeployment
+                  ? `#${currentDeployment.Id}`
+                  : t('platform.deploy.summary.willCreateDeployment', {
+                      defaultValue: 'Will create',
+                    }),
+              ],
+            ]}
+          />
+        </div>
+      </WizardPanel>
+    );
+  }
+
   if (step === 4) {
-    return (
-      <WizardPanel
-        title={t('platform.deploy.env.title', {
-          defaultValue: 'Environment variables',
-        })}
-        description={t('platform.deploy.env.body', {
-          defaultValue:
-            'Literal variables can be captured now. Enter one KEY=VALUE pair per line.',
-        })}
-      >
-        <TextAreaField
-          label={t('platform.forms.envOverrides', {
-            defaultValue: 'Environment variables',
-          })}
-          value={envText}
-          onChange={onEnvTextChange}
-          placeholder="NODE_ENV=production"
-        />
-      </WizardPanel>
-    );
-  }
-
-  if (step === 5) {
-    return (
-      <WizardPanel
-        title={t('platform.deploy.strategy.title', {
-          defaultValue: 'Replace strategy',
-        })}
-        description={t('platform.deploy.strategy.body', {
-          defaultValue:
-            'V0.1 uses docker-container runtime, one replica, unless-stopped restart policy, and replace strategy.',
-        })}
-      >
-        <SummaryList
-          rows={[
-            [
-              t('platform.deploy.summary.runtimeDriver', {
-                defaultValue: 'Runtime driver',
-              }),
-              desiredSpec.Runtime?.RuntimeDriver ?? '',
-            ],
-            [
-              t('platform.deploy.summary.replicas', {
-                defaultValue: 'Replicas',
-              }),
-              String(desiredSpec.Runtime?.Replicas ?? ''),
-            ],
-            [
-              t('platform.deploy.summary.restartPolicy', {
-                defaultValue: 'Restart policy',
-              }),
-              desiredSpec.Runtime?.RestartPolicy ?? '',
-            ],
-            [
-              t('platform.deploy.summary.strategy', {
-                defaultValue: 'Strategy',
-              }),
-              desiredSpec.Strategy?.Type ?? '',
-            ],
-            [
-              t('platform.deploy.summary.deploymentConfig', {
-                defaultValue: 'Deployment config',
-              }),
-              currentDeployment
-                ? `#${currentDeployment.Id}`
-                : t('platform.deploy.summary.willCreateDeployment', {
-                    defaultValue: 'Will create',
-                  }),
-            ],
-          ]}
-        />
-      </WizardPanel>
-    );
-  }
-
-  if (step === 6) {
     return (
       <WizardPanel
         title={t('platform.deploy.validate.title', {
@@ -4413,8 +4697,8 @@ function WizardStepContent({
           })}
         >
           {t('platform.deploy.productionWarningBody', {
-            defaultValue:
-              'V0.1 replace strategy may briefly stop service. Confirm only when the window is acceptable.',
+              defaultValue:
+              'V0.5 replace strategy may briefly stop service. Confirm only when the window is acceptable.',
           })}
         </Alert>
       )}

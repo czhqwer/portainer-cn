@@ -362,6 +362,17 @@ angular
         abstract: true,
       };
 
+      var platformHome = {
+        name: 'portainer.platform.home',
+        url: '/home',
+        data: { docs: '/user/app-delivery/platform/home' },
+        views: {
+          'content@': {
+            component: 'platformHomeView',
+          },
+        },
+      };
+
       var platformProjects = {
         name: 'portainer.platform.projects',
         url: '/projects',
@@ -553,6 +564,7 @@ angular
       $stateRegistryProvider.register(gitopsSourceDetail);
       $stateRegistryProvider.register(gitopsSourceCreate);
       $stateRegistryProvider.register(platformBase);
+      $stateRegistryProvider.register(platformHome);
       $stateRegistryProvider.register(platformProjects);
       $stateRegistryProvider.register(platformApplications);
       $stateRegistryProvider.register(platformDeploy);
